@@ -993,6 +993,23 @@ let gameRef=null;
 let playersRef=null;
 let _listeners=[];
 let _presenceRef=null;
+let _presenceConnRef=null;
+function _bindPresence(code,seat){
+try{if(_presenceConnRef)_presenceConnRef.onDisconnect().cancel();}catch(e){}
+const connsRef=db.ref(`rooms/${code}/players/${seat}/conns`);
+const connRef=connsRef.push();
+connRef.onDisconnect().remove();
+connRef.set(true);
+_presenceConnRef=connRef;
+_presenceRef=connsRef;
+}
+function _unbindPresence(){
+if(_presenceConnRef){
+try{_presenceConnRef.onDisconnect().cancel();}catch(e){}
+try{_presenceConnRef.remove();}catch(e){}
+_presenceConnRef=null;
+}
+}
 let PLAYERS=[];
 let G={turn:0,diceVal:null,rolled:false,waiting:false,over:false,sixes:0,tokens:[],placements:[]};
 let G_PAUSED=false;
@@ -1092,7 +1109,7 @@ teamMode:(numPlayers===4&&_pendingTeamMode),
 teamAssign:{0:'A',1:'B',2:'B',3:'A'},
 createdAt:firebase.database.ServerValue.TIMESTAMP,
 players:{
-[MY_SEAT]:{name:MY_NAME,seat:MY_SEAT,online:true,joinedAt:firebase.database.ServerValue.TIMESTAMP}
+[MY_SEAT]:{name:MY_NAME,seat:MY_SEAT,joinedAt:firebase.database.ServerValue.TIMESTAMP}
 }
 });
 }catch(e){
@@ -1100,12 +1117,11 @@ showToast("❌ Room create failed. Firebase rules blocked write. Check console."
 return;
 }
 _onlineTeamModeUpdateUI(numPlayers,true,(numPlayers===4&&_pendingTeamMode));
-_presenceRef=db.ref(`rooms/${code}/players/${MY_SEAT}/online`);
-_presenceRef.onDisconnect().set(false);
+_bindPresence(code,MY_SEAT);
 saveSession();
 document.getElementById("display-room-code").textContent=code;
 document.getElementById("modal-waiting").classList.add("show");
-updatePlayerList({[MY_SEAT]:{name:MY_NAME,seat:MY_SEAT,online:true}});
+updatePlayerList({[MY_SEAT]:{name:MY_NAME,seat:MY_SEAT,conns:{tmp:true}}});
 listenRoom();
 };
 window.joinRoom=async function(){
@@ -1132,10 +1148,9 @@ roomRef=db.ref(`rooms/${code}`);
 gameRef=db.ref(`rooms/${code}/game`);
 playersRef=db.ref(`rooms/${code}/players`);
 await db.ref(`rooms/${code}/players/${MY_SEAT}`).set({
-name:MY_NAME,seat:MY_SEAT,online:true,joinedAt:firebase.database.ServerValue.TIMESTAMP
+name:MY_NAME,seat:MY_SEAT,joinedAt:firebase.database.ServerValue.TIMESTAMP
 });
-_presenceRef=db.ref(`rooms/${code}/players/${MY_SEAT}/online`);
-_presenceRef.onDisconnect().set(false);
+_bindPresence(code,MY_SEAT);
 saveSession();
 closeModals();
 document.getElementById("display-room-code").textContent=code;
@@ -1328,10 +1343,11 @@ const isSelf=p.seat===MY_SEAT;
 const lobbyColor=getDisplayColorForSeat(p.seat);
 const colorNames={[BLUE]:"Blue",[PINK]:"Pink",[YELLOW]:"Yellow",[GREEN]:"Green"};
 const colorLabel=colorNames[lobbyColor]||"";
+const pOnline=!!(p.conns&&Object.keys(p.conns).length)||p.online===true;
 div.innerHTML=`
 <div class="player-slot-dot" style="background:${lobbyColor};box-shadow:0 0 6px ${lobbyColor}88;"></div>
 <div class="player-slot-name">${escapeHtmlLobby(p.name)}${isSelf?`<span style="color:${lobbyColor};font-size:.75rem;">(You · ${colorLabel})</span>`:`<span style="color:${lobbyColor};font-size:.75rem;">(${colorLabel})</span>`}</div>
-<div class="player-slot-status" style="color:${p.online?'#00C853':'#FF2D78'}">${p.online?'● Online':'○ Away'}</div>
+<div class="player-slot-status" style="color:${pOnline?'#00C853':'#FF2D78'}">${pOnline?'● Online':'○ Away'}</div>
 `;
 container.appendChild(div);
 });
@@ -1857,9 +1873,7 @@ ROOM_CODE=s.code;
 roomRef=db.ref(`rooms/${s.code}`);
 gameRef=db.ref(`rooms/${s.code}/game`);
 playersRef=db.ref(`rooms/${s.code}/players`);
-_presenceRef=db.ref(`rooms/${s.code}/players/${s.seat}/online`);
-await _presenceRef.set(true);
-_presenceRef.onDisconnect().set(false);
+_bindPresence(s.code,s.seat);
 document.getElementById('display-room-code').textContent=s.code;
 document.getElementById('modal-waiting').classList.add('show');
 listenRoom();
@@ -1884,9 +1898,7 @@ ROOM_CODE=s.code;
 roomRef=db.ref(`rooms/${s.code}`);
 gameRef=db.ref(`rooms/${s.code}/game`);
 playersRef=db.ref(`rooms/${s.code}/players`);
-_presenceRef=db.ref(`rooms/${s.code}/players/${s.seat}/online`);
-await _presenceRef.set(true);
-_presenceRef.onDisconnect().set(false);
+_bindPresence(s.code,s.seat);
 _gameStarted=true;
 _gameStartLock=true;
 closeModals();
@@ -1961,7 +1973,7 @@ _gameStarted=false;
 _gameStartLock=false;
 _pendingSync=[];
 if(ROOM_CODE&&MY_SEAT!==null){
-await db.ref(`rooms/${ROOM_CODE}/players/${MY_SEAT}/online`).set(false);
+_unbindPresence();
 }
 ROOM_CODE=null;MY_SEAT=null;IS_HOST=false;MY_SLOT=0;
 _rolling=false;_animating=false;_onlineSeats=new Set();
@@ -2062,9 +2074,9 @@ if(MY_SEAT!==null)_onlineSeats.add(MY_SEAT);
 SEAT_LAYOUT_ACTIVE.forEach(seat=>{
 if(!PLAYERS[seat]?.active)return;
 _timerExpireCount[seat]=0;
-const ref=db.ref(`rooms/${ROOM_CODE}/players/${seat}/online`);
+const ref=db.ref(`rooms/${ROOM_CODE}/players/${seat}/conns`);
 const cb=snap=>{
-const online=snap.val()===true;
+const online=snap.exists();
 const wasElder=amIElderPlayer();
 if(online){_onlineSeats.add(seat);}else{_onlineSeats.delete(seat);}
 _cachedElderResult=null;
@@ -3346,20 +3358,6 @@ const col=slotIdx%2,row=Math.floor(slotIdx/2);
 const fbR={x:wbX+pad+col*(cellW+gap)+cellW/2,y:wbY+pad+row*(cellW+gap)+cellW/2};
 return fbR;
 }
-const sizeScale=n=>n<=1?1:n<=2?0.78:n<=4?0.65:n<=6?0.55:0.46;
-function stackOffset(n,idx,cp){
-if(n<=1)return{dx:0,dy:0};
-const cols=n<=3?n:Math.ceil(Math.sqrt(n));
-const rows=Math.ceil(n/cols);
-const col=idx%cols;
-const row=Math.floor(idx/cols);
-const span=cp*0.62;
-const gapX=cols>1?span/(cols-1):0;
-const gapY=rows>1?span/(rows-1):0;
-const dx=(col-(cols-1)/2)*gapX;
-const dy=(row-(rows-1)/2)*gapY;
-return{dx,dy};
-}
 let _renderScheduled=false;
 let _renderGeneration=0;
 function renderTokens(){
@@ -3391,6 +3389,51 @@ if(!groups[key])groups[key]=[];
 groups[key].push(tok);
 });
 const BASE_W=Math.round(cp*1.15);
+const sizeScale=n=>n<=1?1:n<=2?0.78:n<=4?0.65:n<=6?0.55:0.46;
+const stackOffset=(n,idx,cp)=>{
+if(n<=1)return{dx:0,dy:0};
+const r1=cp*0.30;
+const r2=cp*0.54;
+if(n===2){
+return idx===0?{dx:-r1*0.8,dy:0}:{dx:r1*0.8,dy:0};
+}
+if(n===3){
+const a=[-Math.PI/2,Math.PI/2+Math.PI/3,Math.PI/2-Math.PI/3];
+return{dx:r1*Math.cos(a[idx]),dy:r1*Math.sin(a[idx])};
+}
+if(n===4){
+const a=[-Math.PI/2,0,Math.PI/2,Math.PI];
+return{dx:r1*Math.cos(a[idx]),dy:r1*Math.sin(a[idx])};
+}
+if(n===5){
+if(idx===0)return{dx:0,dy:0};
+const a=[-Math.PI/2,0,Math.PI/2,Math.PI];
+return{dx:r1*Math.cos(a[idx-1]),dy:r1*Math.sin(a[idx-1])};
+}
+if(n===6){
+const a=Array.from({length:6},(_,i)=>-Math.PI/2+i*(2*Math.PI/6));
+return{dx:r1*Math.cos(a[idx]),dy:r1*Math.sin(a[idx])};
+}
+if(n===7){
+if(idx===0)return{dx:0,dy:0};
+const a=Array.from({length:6},(_,i)=>-Math.PI/2+i*(2*Math.PI/6));
+return{dx:r1*Math.cos(a[idx-1]),dy:r1*Math.sin(a[idx-1])};
+}
+if(n===8){
+if(idx<4){const a=[-Math.PI/2,0,Math.PI/2,Math.PI];return{dx:r1*Math.cos(a[idx]),dy:r1*Math.sin(a[idx])};}
+const a=[-Math.PI/4,Math.PI/4,3*Math.PI/4,-3*Math.PI/4];
+return{dx:r2*Math.cos(a[idx-4]),dy:r2*Math.sin(a[idx-4])};
+}
+if(n===9){
+if(idx===0)return{dx:0,dy:0};
+if(idx<5){const a=[-Math.PI/2,0,Math.PI/2,Math.PI];return{dx:r1*Math.cos(a[idx-1]),dy:r1*Math.sin(a[idx-1])};}
+const a=[-Math.PI/4,Math.PI/4,3*Math.PI/4,-3*Math.PI/4];
+return{dx:r2*Math.cos(a[idx-5]),dy:r2*Math.sin(a[idx-5])};
+}
+if(idx<4){const a=[-Math.PI/2,0,Math.PI/2,Math.PI];return{dx:r1*Math.cos(a[idx]),dy:r1*Math.sin(a[idx])};}
+if(idx<8){const a=[-Math.PI/4,Math.PI/4,3*Math.PI/4,-3*Math.PI/4];return{dx:r2*Math.cos(a[idx-4]),dy:r2*Math.sin(a[idx-4])};}
+return[{dx:0,dy:-r2},{dx:0,dy:r2}][idx-8]||{dx:0,dy:0};
+};
 const alive=new Set();
 G.tokens.forEach(tok=>{
 const isMovable=movSet.has(`${tok.pid}-${tok.tid}`);
@@ -4122,21 +4165,6 @@ endXY=rcToXY(rc[0],rc[1]);
 const _stepColorName=['PINK','YELLOW','GREEN','BLUE'][tok.pid]||tok.pid;
 const prevKey=`${prevCell[0]}-${prevCell[1]}`;
 const newKey=`${rc[0]}-${rc[1]}`;
-const _isFinalHop=(i===steps-1);
-if(_isFinalHop){
-const landGrp=G.tokens.filter(t=>{
-if(t.step<=0||t.step>=STEP_DONE)return false;
-const trc=(t.pid===tok.pid&&t.tid===tok.tid)?rc:getRenderCell(t.pid,t.step);
-return trc&&`${trc[0]}-${trc[1]}`===newKey;
-});
-const landIdx=landGrp.findIndex(t=>t.pid===tok.pid&&t.tid===tok.tid);
-const landOff=stackOffset(landGrp.length,landIdx,cp);
-if(landOff.dx||landOff.dy){
-const _lRad=_tokenRotationDeg*Math.PI/180;
-const _lCos=Math.cos(_lRad),_lSin=Math.sin(_lRad);
-endXY={x:endXY.x+landOff.dx*_lCos-landOff.dy*_lSin,y:endXY.y+landOff.dx*_lSin+landOff.dy*_lCos};
-}
-}
 G.tokens.forEach(other=>{
 if(other.pid===tok.pid&&other.tid===tok.tid)return;
 if(other.step<=0||other.step>=STEP_DONE)return;
@@ -4146,23 +4174,22 @@ if(ok!==prevKey&&ok!==newKey)return;
 const oEls=_tokEls[`${other.pid}-${other.tid}`];if(!oEls)return;
 const grp=G.tokens.filter(t=>{
 if(t.step<=0||t.step>=STEP_DONE)return false;
-const isMover=(t.pid===tok.pid&&t.tid===tok.tid);
-if(isMover)return ok===newKey&&_isFinalHop;
+if(ok===prevKey&&t.pid===tok.pid&&t.tid===tok.tid)return false;
 const trc=getRenderCell(t.pid,t.step);
 return trc&&`${trc[0]}-${trc[1]}`===ok;
 });
 const n=grp.length,idx=grp.findIndex(t=>t.pid===other.pid&&t.tid===other.tid);
-const sc=sizeScale(n);
-const{dx,dy}=stackOffset(n,idx,cp);
+const sc=n<=1?1:n<=2?0.78:0.65;
+const gap=n<=2?cp*0.52:cp*0.50;let dx=0,dy=0;
+if(n===2){dx=idx===0?-gap*0.5:gap*0.5;}
+else if(n>=3){const col=idx%2,row=Math.floor(idx/2);dx=(col-0.5)*gap;dy=(row-0.5)*gap;}
 const oxy=rcToXY(orc[0],orc[1]);
 const scaleStr=sc!==1?` scale(${sc})`:'';
 const _oRad=_tokenRotationDeg*Math.PI/180;
-const _oCos=Math.cos(_oRad),_oSin=Math.sin(_oRad);
-const rDx=dx*_oCos-dy*_oSin,rDy=dx*_oSin+dy*_oCos;
 const _oTipDX=oTipFromCenter*Math.sin(_oRad);
 const _oTipDY=oTipFromCenter*Math.cos(_oRad);
 oEls.wrap.style.transition=`transform ${JUMP_MS}ms cubic-bezier(0.22,1,0.36,1)`;
-oEls.wrap.style.transform=`translate(${oxy.x+rDx-_rW0/2+_oTipDX}px,${oxy.y+rDy-oHH-_oTipDY}px)rotate(${_tokenRotationDeg}deg)${scaleStr}`;
+oEls.wrap.style.transform=`translate(${oxy.x+dx-_rW0/2+_oTipDX}px,${oxy.y+dy-oHH-_oTipDY}px)rotate(${_tokenRotationDeg}deg)${scaleStr}`;
 oEls.wrap.style.transformOrigin=`${_rW0/2}px ${oHH}px`;
 setTimeout(()=>{if(oEls.wrap)oEls.wrap.style.transition="";},JUMP_MS+10);
 });
@@ -4669,11 +4696,9 @@ roomRef=db.ref(`rooms/${newCode}`);
 gameRef=db.ref(`rooms/${newCode}/game`);
 playersRef=db.ref(`rooms/${newCode}/players`);
 await db.ref(`rooms/${newCode}/players/${MY_SEAT}`).set({
-name:MY_NAME,seat:MY_SEAT,online:true,joinedAt:firebase.database.ServerValue.TIMESTAMP
+name:MY_NAME,seat:MY_SEAT,joinedAt:firebase.database.ServerValue.TIMESTAMP
 });
-_presenceRef=db.ref(`rooms/${newCode}/players/${MY_SEAT}/online`);
-await _presenceRef.set(true);
-_presenceRef.onDisconnect().set(false);
+_bindPresence(newCode,MY_SEAT);
 saveSession();
 _gameStarted=true;
 _gameStartLock=true;
