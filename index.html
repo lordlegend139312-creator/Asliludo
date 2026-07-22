@@ -1835,15 +1835,15 @@ function saveSession(){
 if(window._cpuMode){return;}
 if(!ROOM_CODE||MY_SEAT===null||!MY_NAME){return;}
 const data={code:ROOM_CODE,seat:MY_SEAT,name:MY_NAME};
-try{localStorage.setItem('ludo_session',JSON.stringify(data));}catch(e){}
+try{sessionStorage.setItem('ludo_session',JSON.stringify(data));}catch(e){}
 }
 function clearSession(){
 try{
-localStorage.removeItem('ludo_session');
+sessionStorage.removeItem('ludo_session');
 }catch(e){}
 }
 function loadSession(){
-try{const s=localStorage.getItem('ludo_session');const parsed=s?JSON.parse(s):null;return parsed;}catch(e){return null;}
+try{const s=sessionStorage.getItem('ludo_session');const parsed=s?JSON.parse(s):null;return parsed;}catch(e){return null;}
 }
 window.checkRejoin=function checkRejoin(){
 const s=loadSession();
@@ -3392,47 +3392,8 @@ const BASE_W=Math.round(cp*1.15);
 const sizeScale=n=>n<=1?1:n<=2?0.78:n<=4?0.65:n<=6?0.55:0.46;
 const stackOffset=(n,idx,cp)=>{
 if(n<=1)return{dx:0,dy:0};
-const r1=cp*0.30;
-const r2=cp*0.54;
-if(n===2){
-return idx===0?{dx:-r1*0.8,dy:0}:{dx:r1*0.8,dy:0};
-}
-if(n===3){
-const a=[-Math.PI/2,Math.PI/2+Math.PI/3,Math.PI/2-Math.PI/3];
-return{dx:r1*Math.cos(a[idx]),dy:r1*Math.sin(a[idx])};
-}
-if(n===4){
-const a=[-Math.PI/2,0,Math.PI/2,Math.PI];
-return{dx:r1*Math.cos(a[idx]),dy:r1*Math.sin(a[idx])};
-}
-if(n===5){
-if(idx===0)return{dx:0,dy:0};
-const a=[-Math.PI/2,0,Math.PI/2,Math.PI];
-return{dx:r1*Math.cos(a[idx-1]),dy:r1*Math.sin(a[idx-1])};
-}
-if(n===6){
-const a=Array.from({length:6},(_,i)=>-Math.PI/2+i*(2*Math.PI/6));
-return{dx:r1*Math.cos(a[idx]),dy:r1*Math.sin(a[idx])};
-}
-if(n===7){
-if(idx===0)return{dx:0,dy:0};
-const a=Array.from({length:6},(_,i)=>-Math.PI/2+i*(2*Math.PI/6));
-return{dx:r1*Math.cos(a[idx-1]),dy:r1*Math.sin(a[idx-1])};
-}
-if(n===8){
-if(idx<4){const a=[-Math.PI/2,0,Math.PI/2,Math.PI];return{dx:r1*Math.cos(a[idx]),dy:r1*Math.sin(a[idx])};}
-const a=[-Math.PI/4,Math.PI/4,3*Math.PI/4,-3*Math.PI/4];
-return{dx:r2*Math.cos(a[idx-4]),dy:r2*Math.sin(a[idx-4])};
-}
-if(n===9){
-if(idx===0)return{dx:0,dy:0};
-if(idx<5){const a=[-Math.PI/2,0,Math.PI/2,Math.PI];return{dx:r1*Math.cos(a[idx-1]),dy:r1*Math.sin(a[idx-1])};}
-const a=[-Math.PI/4,Math.PI/4,3*Math.PI/4,-3*Math.PI/4];
-return{dx:r2*Math.cos(a[idx-5]),dy:r2*Math.sin(a[idx-5])};
-}
-if(idx<4){const a=[-Math.PI/2,0,Math.PI/2,Math.PI];return{dx:r1*Math.cos(a[idx]),dy:r1*Math.sin(a[idx])};}
-if(idx<8){const a=[-Math.PI/4,Math.PI/4,3*Math.PI/4,-3*Math.PI/4];return{dx:r2*Math.cos(a[idx-4]),dy:r2*Math.sin(a[idx-4])};}
-return[{dx:0,dy:-r2},{dx:0,dy:r2}][idx-8]||{dx:0,dy:0};
+const gap=cp*0.22;
+return{dx:(idx-(n-1)/2)*gap,dy:0};
 };
 const alive=new Set();
 G.tokens.forEach(tok=>{
