@@ -3378,7 +3378,7 @@ groups[key].push(tok);
 });
 const BASE_W=Math.round(cp*1.15);
 const sizeScale=n=>n<=1?1:n<=2?0.78:n<=4?0.65:n<=6?0.55:0.46;
-const stackOffset=(n,idx,cp,pid)=>{if(n<=1)return{dx:0,dy:0};const r1=cp*0.30;const gap=r1*0.8;const totalW=gap*(n-1);return{dx:idx*gap-totalW/2,dy:0};};
+const stackOffset=(n,idx,cp,pid)=>{if(n<=1)return{dx:0,dy:0};const r1=cp*0.30;const gap=r1*0.8;const totalW=gap*(n-1);const isHorizontal=(pid===1||pid===3);if(isHorizontal){return{dx:idx*gap-totalW/2,dy:0};}else{return{dx:0,dy:idx*gap-totalW/2};}};
 
 const alive=new Set();
 G.tokens.forEach(tok=>{
@@ -4126,9 +4126,10 @@ return trc&&`${trc[0]}-${trc[1]}`===ok;
 });
 const n=grp.length,idx=grp.findIndex(t=>t.pid===other.pid&&t.tid===other.tid);
 const sc=n<=1?1:n<=2?0.78:0.65;
-const gap=n<=2?cp*0.52:cp*0.50;let dx=0,dy=0;
-if(n===2){dx=idx===0?-gap*0.5:gap*0.5;}
-else if(n>=3){const col=idx%2,row=Math.floor(idx/2);dx=(col-0.5)*gap;dy=(row-0.5)*gap;}
+const gap=cp*0.30*0.8;let dx=0,dy=0;
+if(n>=2){const totalW=gap*(n-1);const isHorizontal=(other.pid===1||other.pid===3);const raw=idx*gap-totalW/2;if(isHorizontal){dx=raw;}else{dy=raw;}
+const _rRad=_tokenRotationDeg*Math.PI/180;const _rc=Math.cos(_rRad),_rs=Math.sin(_rRad);
+const _rdx=dx*_rc-dy*_rs,_rdy=dx*_rs+dy*_rc;dx=_rdx;dy=_rdy;}
 const oxy=rcToXY(orc[0],orc[1]);
 const scaleStr=sc!==1?` scale(${sc})`:'';
 const _oRad=_tokenRotationDeg*Math.PI/180;
