@@ -3378,50 +3378,8 @@ groups[key].push(tok);
 });
 const BASE_W=Math.round(cp*1.15);
 const sizeScale=n=>n<=1?1:n<=2?0.78:n<=4?0.65:n<=6?0.55:0.46;
-const stackOffset=(n,idx,cp)=>{
-if(n<=1)return{dx:0,dy:0};
-const r1=cp*0.30;
-const r2=cp*0.54;
-if(n===2){
-return idx===0?{dx:-r1*0.8,dy:0}:{dx:r1*0.8,dy:0};
-}
-if(n===3){
-const a=[-Math.PI/2,Math.PI/2+Math.PI/3,Math.PI/2-Math.PI/3];
-return{dx:r1*Math.cos(a[idx]),dy:r1*Math.sin(a[idx])};
-}
-if(n===4){
-const a=[-Math.PI/2,0,Math.PI/2,Math.PI];
-return{dx:r1*Math.cos(a[idx]),dy:r1*Math.sin(a[idx])};
-}
-if(n===5){
-if(idx===0)return{dx:0,dy:0};
-const a=[-Math.PI/2,0,Math.PI/2,Math.PI];
-return{dx:r1*Math.cos(a[idx-1]),dy:r1*Math.sin(a[idx-1])};
-}
-if(n===6){
-const a=Array.from({length:6},(_,i)=>-Math.PI/2+i*(2*Math.PI/6));
-return{dx:r1*Math.cos(a[idx]),dy:r1*Math.sin(a[idx])};
-}
-if(n===7){
-if(idx===0)return{dx:0,dy:0};
-const a=Array.from({length:6},(_,i)=>-Math.PI/2+i*(2*Math.PI/6));
-return{dx:r1*Math.cos(a[idx-1]),dy:r1*Math.sin(a[idx-1])};
-}
-if(n===8){
-if(idx<4){const a=[-Math.PI/2,0,Math.PI/2,Math.PI];return{dx:r1*Math.cos(a[idx]),dy:r1*Math.sin(a[idx])};}
-const a=[-Math.PI/4,Math.PI/4,3*Math.PI/4,-3*Math.PI/4];
-return{dx:r2*Math.cos(a[idx-4]),dy:r2*Math.sin(a[idx-4])};
-}
-if(n===9){
-if(idx===0)return{dx:0,dy:0};
-if(idx<5){const a=[-Math.PI/2,0,Math.PI/2,Math.PI];return{dx:r1*Math.cos(a[idx-1]),dy:r1*Math.sin(a[idx-1])};}
-const a=[-Math.PI/4,Math.PI/4,3*Math.PI/4,-3*Math.PI/4];
-return{dx:r2*Math.cos(a[idx-5]),dy:r2*Math.sin(a[idx-5])};
-}
-if(idx<4){const a=[-Math.PI/2,0,Math.PI/2,Math.PI];return{dx:r1*Math.cos(a[idx]),dy:r1*Math.sin(a[idx])};}
-if(idx<8){const a=[-Math.PI/4,Math.PI/4,3*Math.PI/4,-3*Math.PI/4];return{dx:r2*Math.cos(a[idx-4]),dy:r2*Math.sin(a[idx-4])};}
-return[{dx:0,dy:-r2},{dx:0,dy:r2}][idx-8]||{dx:0,dy:0};
-};
+const stackOffset=(n,idx,cp,pid)=>{if(n<=1)return{dx:0,dy:0};const r1=cp*0.30;const gap=r1*0.8;const totalW=gap*(n-1);return{dx:idx*gap-totalW/2,dy:0};};
+
 const alive=new Set();
 G.tokens.forEach(tok=>{
 const isMovable=movSet.has(`${tok.pid}-${tok.tid}`);
@@ -3463,7 +3421,7 @@ const grp=groups[rcKey]||[tok];
 const idx=grp.findIndex(t=>t.pid===tok.pid&&t.tid===tok.tid);
 const n=grp.length;
 stackCount=n;scale=sizeScale(n);
-const off=stackOffset(n,idx,cp);
+const off=stackOffset(n,idx,cp,tok.pid);
 const xy=rcToXY(rc[0],rc[1]);
 const rxy=xy;
 if(off.dx!==0||off.dy!==0){
