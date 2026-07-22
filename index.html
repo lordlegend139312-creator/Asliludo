@@ -3384,7 +3384,7 @@ const alive=new Set();
 G.tokens.forEach(tok=>{
 const isMovable=movSet.has(`${tok.pid}-${tok.tid}`);
 const key=`${tok.pid}-${tok.tid}`;
-let px,py,scale=1,stackCount=1;
+let px,py,scale=1,stackCount=1,extraTilt=0;
 let color=getDisplayColorForSeat(tok.pid);
 if(tok.step===0){
 const[hr,hc]=getHomeCornerBySeat(tok.pid);
@@ -3422,6 +3422,8 @@ const idx=grp.findIndex(t=>t.pid===tok.pid&&t.tid===tok.tid);
 const n=grp.length;
 stackCount=n;scale=sizeScale(n);
 const off=stackOffset(n,idx,cp,tok.pid);
+const _isHoriz=(tok.pid===1||tok.pid===3);
+if(n>1&&!_isHoriz){extraTilt=16;}
 const xy=rcToXY(rc[0],rc[1]);
 const rxy=xy;
 if(off.dx!==0||off.dy!==0){
@@ -3465,7 +3467,7 @@ const _verifyTipX=_ctx+rW/2-_tipFromCenter*Math.sin(_rad);
 const _verifyTipY=_cty+rHH+_tipFromCenter*Math.cos(_rad);
 const _errX=(_verifyTipX-px).toFixed(2),_errY=(_verifyTipY-py).toFixed(2);
 if(!wrap.dataset.animating){
-const _newTr=`translate(${_ctx}px,${_cty}px)rotate(${_tr}deg)${scaleTransform}`;
+const _newTr=`translate(${_ctx}px,${_cty}px)rotate(${_tr+extraTilt}deg)${scaleTransform}`;
 if(wrap._lastStaticTr!==_newTr){wrap._lastStaticTr=_newTr;wrap.style.transform=_newTr;}
 }
 const shadowW=rW*0.60,shadowH=rW*0.16,sx=px-shadowW/2,sy=py-shadowH/2+1;
