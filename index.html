@@ -3378,7 +3378,7 @@ groups[key].push(tok);
 });
 const BASE_W=Math.round(cp*1.15);
 const sizeScale=n=>n<=1?1:n<=2?0.78:n<=4?0.65:n<=6?0.55:0.46;
-const stackOffset=(n,idx,cp,pid)=>{if(n<=1)return{dx:0,dy:0};const r1=cp*0.30;const gap=r1*0.8;const totalW=gap*(n-1);const isHorizontal=(pid===1||pid===3);if(isHorizontal){return{dx:idx*gap-totalW/2,dy:0};}else{return{dx:0,dy:idx*gap-totalW/2};}};
+const stackOffset=(n,idx,cp,pid)=>{if(n<=1)return{dx:0,dy:0};const r1=cp*0.30;const gap=r1*0.8;const totalW=gap*(n-1);return{dx:idx*gap-totalW/2,dy:0};};
 
 const alive=new Set();
 G.tokens.forEach(tok=>{
@@ -3422,18 +3422,11 @@ const idx=grp.findIndex(t=>t.pid===tok.pid&&t.tid===tok.tid);
 const n=grp.length;
 stackCount=n;scale=sizeScale(n);
 const off=stackOffset(n,idx,cp,tok.pid);
-const _isHoriz=(tok.pid===1||tok.pid===3);
-if(n>1&&!_isHoriz){extraTilt=16;}
+const _relOff=((tok.pid-(MY_SEAT!==null?MY_SEAT:0))%4+4)%4;
+if(n>1&&(_relOff===1||_relOff===3)){extraTilt=16;}
 const xy=rcToXY(rc[0],rc[1]);
 const rxy=xy;
-if(off.dx!==0||off.dy!==0){
-const _oRad=_tokenRotationDeg*Math.PI/180;
-const _cos=Math.cos(_oRad),_sin=Math.sin(_oRad);
-px=rxy.x+off.dx*_cos-off.dy*_sin;
-py=rxy.y+off.dx*_sin+off.dy*_cos;
-}else{
-px=rxy.x;py=rxy.y;
-}
+px=rxy.x+off.dx;py=rxy.y+off.dy;
 }
 alive.add(key);
 const _curDesign=getTokenDesign(_tokenStyleId);
@@ -4128,17 +4121,17 @@ return trc&&`${trc[0]}-${trc[1]}`===ok;
 });
 const n=grp.length,idx=grp.findIndex(t=>t.pid===other.pid&&t.tid===other.tid);
 const sc=n<=1?1:n<=2?0.78:0.65;
-const gap=cp*0.30*0.8;let dx=0,dy=0;
-if(n>=2){const totalW=gap*(n-1);const isHorizontal=(other.pid===1||other.pid===3);const raw=idx*gap-totalW/2;if(isHorizontal){dx=raw;}else{dy=raw;}
-const _rRad=_tokenRotationDeg*Math.PI/180;const _rc=Math.cos(_rRad),_rs=Math.sin(_rRad);
-const _rdx=dx*_rc-dy*_rs,_rdy=dx*_rs+dy*_rc;dx=_rdx;dy=_rdy;}
+const gap=cp*0.30*0.8;let dx=0,dy=0,_extraTilt2=0;
+if(n>=2){const totalW=gap*(n-1);dx=idx*gap-totalW/2;
+const _relOff2=((other.pid-(MY_SEAT!==null?MY_SEAT:0))%4+4)%4;
+if(_relOff2===1||_relOff2===3){_extraTilt2=16;}}
 const oxy=rcToXY(orc[0],orc[1]);
 const scaleStr=sc!==1?` scale(${sc})`:'';
 const _oRad=_tokenRotationDeg*Math.PI/180;
 const _oTipDX=oTipFromCenter*Math.sin(_oRad);
 const _oTipDY=oTipFromCenter*Math.cos(_oRad);
 oEls.wrap.style.transition=`transform ${JUMP_MS}ms cubic-bezier(0.22,1,0.36,1)`;
-oEls.wrap.style.transform=`translate(${oxy.x+dx-_rW0/2+_oTipDX}px,${oxy.y+dy-oHH-_oTipDY}px)rotate(${_tokenRotationDeg}deg)${scaleStr}`;
+oEls.wrap.style.transform=`translate(${oxy.x+dx-_rW0/2+_oTipDX}px,${oxy.y+dy-oHH-_oTipDY}px)rotate(${_tokenRotationDeg+_extraTilt2}deg)${scaleStr}`;
 oEls.wrap.style.transformOrigin=`${_rW0/2}px ${oHH}px`;
 setTimeout(()=>{if(oEls.wrap)oEls.wrap.style.transition="";},JUMP_MS+10);
 });
