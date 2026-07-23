@@ -4346,6 +4346,21 @@ els.wrap.style.zIndex="";
 delete els.wrap.dataset.animating;
 els.wrap._lastStaticTr=null;
 tok.step=finalStep;
+{
+const _landRC=getRenderCell(tok.pid,tok.step);
+if(_landRC){
+const _landKey=`${_landRC[0]}-${_landRC[1]}`;
+let _mates=0;
+G.tokens.forEach(t=>{
+if(t.step<=0||t.step>=STEP_DONE)return;
+const trc=getRenderCell(t.pid,t.step);
+if(!trc||`${trc[0]}-${trc[1]}`!==_landKey)return;
+const mEls=_tokEls[`${t.pid}-${t.tid}`];
+if(mEls&&mEls.wrap){mEls.wrap._lastStaticTr=null;_mates++;}
+});
+if(_mates>=2)_dbgLog('ONLINE_LAND_FORCE_INVALIDATE',{pid:tok.pid,tid:tok.tid,landKey:_landKey,mates:_mates});
+}
+}
 renderTokens();
 if(tok.step>=STEP_DONE){SFX.play('done');await rafDelay(120);}
 }
