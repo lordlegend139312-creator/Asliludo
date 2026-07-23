@@ -4278,6 +4278,14 @@ const _oTipDY=oTipFromCenter*Math.cos(_oRad);
 oEls.wrap.style.transition=`transform ${JUMP_MS}ms cubic-bezier(0.22,1,0.36,1)`;
 oEls.wrap.style.transform=`translate(${oxy.x+dx-_rW0/2+_oTipDX}px,${oxy.y+dy-oHH-_oTipDY}px)rotate(${_tokenRotationDeg}deg)${scaleStr}`;
 oEls.wrap.style.transformOrigin=`${_rW0/2}px ${oHH}px`;
+/* [FIX] this "make way" transform is written directly and bypasses the
+   _lastStaticTr dirty-check cache used by _doRenderTokens(). If we don't
+   invalidate it here, the next authoritative render may see its freshly
+   computed transform string coincidentally match this stale cache and
+   skip re-applying it — leaving the token visually stuck at this temporary
+   wide-grid position instead of its correct final stacked spot (the
+   "token chhip gya peeche" bug). */
+oEls.wrap._lastStaticTr=null;
 setTimeout(()=>{if(oEls.wrap)oEls.wrap.style.transition="";},JUMP_MS+10);
 });
 if(!_homeStretchFired&&curStep===STEP_STRETCH_START){
