@@ -5,13 +5,21 @@
 /* ===== [DBG] TEMP DIAGNOSTIC LOGGING — standalone, runs first, isolated from rest of app (remove after done) ===== */
 (function(){
 try{
-window._dbg=window._dbg||[];
+window._dbgStoreKey='_ludoDbgLogs_v1';
+try{
+  const _saved=localStorage.getItem(window._dbgStoreKey);
+  window._dbg=_saved?JSON.parse(_saved):(window._dbg||[]);
+}catch(e){window._dbg=window._dbg||[];}
 window._dbgLastGroupSig=window._dbgLastGroupSig||"";
 window._dbgLastOverlapCheck=0;
+window._dbgPersist=function(){
+  try{localStorage.setItem(window._dbgStoreKey,JSON.stringify(window._dbg));}catch(e){}
+};
 window._dbgLog=function(tag,data){
   try{
     window._dbg.push({t:new Date().toISOString().slice(11,23),tag,data:JSON.parse(JSON.stringify(data))});
     if(window._dbg.length>400)window._dbg.shift();
+    window._dbgPersist();
   }catch(e){}
 };
 window._dbgFormatAll=function(){
@@ -46,7 +54,7 @@ function _dbgBuildUI(){
     function refresh(){logEl.textContent=window._dbgFormatAll();countEl.textContent=window._dbg.length+' log entries';logEl.scrollTop=logEl.scrollHeight;}
     btn.addEventListener('click',()=>{panel.style.display='flex';refresh();});
     panel.querySelector('#dbg-close').addEventListener('click',()=>{panel.style.display='none';});
-    panel.querySelector('#dbg-clear').addEventListener('click',()=>{window._dbg=[];refresh();});
+    panel.querySelector('#dbg-clear').addEventListener('click',()=>{window._dbg=[];window._dbgPersist();refresh();});
     panel.querySelector('#dbg-copy').addEventListener('click',()=>{
       const text=window._dbgFormatAll()||'(no logs yet)';
       const b=panel.querySelector('#dbg-copy'),old=b.textContent;
@@ -3678,6 +3686,12 @@ els.shield.className='tok-shield';
 }
 });
 for(const key of Object.keys(_tokEls)){if(!alive.has(key))_removeTokEl(key);}
+if(!window._dbgLastHeartbeat||Date.now()-window._dbgLastHeartbeat>2000){
+window._dbgLastHeartbeat=Date.now();
+try{
+_dbgLog('ONLINE_HEARTBEAT',{MY_SEAT,deg:getBoardRotation(),tokens:G.tokens.map(t=>({pid:t.pid,tid:t.tid,step:t.step}))});
+}catch(e){_dbgLog('heartbeat_error_online',String(e));}
+}
 // [DBG] Overlap detection via real DOM measurement
 if(Date.now()-window._dbgLastOverlapCheck>500){
 window._dbgLastOverlapCheck=Date.now();
