@@ -4294,10 +4294,21 @@ return trc&&`${trc[0]}-${trc[1]}`===ok;
 });
 const n=grp.length,idx=grp.findIndex(t=>t.pid===other.pid&&t.tid===other.tid);
 const sc=n<=1?1:n<=2?0.78:n<=4?0.65:n<=6?0.55:0.46;
-const gap=cp*0.22;let dx=(idx-(n-1)/2)*gap,dy=0;
+const gap=cp*0.22;const _rawDx=(idx-(n-1)/2)*gap,_rawDy=0;
 const oxy=rcToXY(orc[0],orc[1]);
 const scaleStr=sc!==1?` scale(${sc})`:'';
 const _oRad=_tokenRotationDeg*Math.PI/180;
+/* [FIX] rotate the stacking offset by the seat's POV rotation, same as the
+   static renderer in _doRenderTokens() does (px=rxy.x+off.dx*cos-off.dy*sin).
+   #board-wrap is CSS-rotated per seat, and #tokens-layer lives inside it, so
+   any un-rotated (dx,0) offset written here gets auto-rotated again by that
+   parent transform — pushing companions along the wrong on-screen axis for
+   every seat except the one with 0deg rotation. That's the root cause of the
+   "teen token star pe sahi se khade nahi hote / ek token chhip jaata hai" bug:
+   for 3 of 4 seats this temporary push lands a companion off-axis from where
+   the settled layout expects it. */
+const dx=_rawDx*Math.cos(_oRad)-_rawDy*Math.sin(_oRad);
+const dy=_rawDx*Math.sin(_oRad)+_rawDy*Math.cos(_oRad);
 const _oTipDX=oTipFromCenter*Math.sin(_oRad);
 const _oTipDY=oTipFromCenter*Math.cos(_oRad);
 oEls.wrap.style.transition=`transform ${JUMP_MS}ms cubic-bezier(0.22,1,0.36,1)`;
