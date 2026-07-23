@@ -3358,6 +3358,60 @@ const col=slotIdx%2,row=Math.floor(slotIdx/2);
 const fbR={x:wbX+pad+col*(cellW+gap)+cellW/2,y:wbY+pad+row*(cellW+gap)+cellW/2};
 return fbR;
 }
+/* ===== [DBG] TEMP DIAGNOSTIC LOGGING — stacking bug investigation (remove after done) ===== */
+window._dbg=window._dbg||[];
+window._dbgLastGroupSig=window._dbgLastGroupSig||"";
+window._dbgLastOverlapCheck=0;
+function _dbgLog(tag,data){
+  try{
+    window._dbg.push({t:new Date().toISOString().slice(11,23),tag,data:JSON.parse(JSON.stringify(data))});
+    if(window._dbg.length>400)window._dbg.shift();
+  }catch(e){}
+}
+function _dbgFormatAll(){
+  return window._dbg.map(e=>`[${e.t}] ${e.tag} :: ${JSON.stringify(e.data)}`).join('\n');
+}
+function _dbgFallbackCopy(text,cb){
+  const ta=document.createElement('textarea');
+  ta.value=text;ta.style.position='fixed';ta.style.left='-9999px';
+  document.body.appendChild(ta);ta.select();
+  try{document.execCommand('copy');}catch(e){}
+  document.body.removeChild(ta);
+  if(cb)cb();
+}
+function _dbgBuildUI(){
+  if(document.getElementById('dbg-btn'))return;
+  const btn=document.createElement('button');
+  btn.id='dbg-btn';btn.textContent='🐞';
+  btn.style.cssText='position:fixed;bottom:14px;right:14px;z-index:999999;width:46px;height:46px;border-radius:50%;background:#F5C518;color:#000;font-size:22px;border:none;box-shadow:0 4px 14px rgba(0,0,0,.5);';
+  const panel=document.createElement('div');
+  panel.id='dbg-panel';
+  panel.style.cssText='display:none;position:fixed;inset:0;z-index:999998;background:rgba(0,0,0,.94);flex-direction:column;padding:10px;box-sizing:border-box;';
+  panel.innerHTML=`<div style="display:flex;gap:8px;margin-bottom:8px;flex-shrink:0;">
+    <button id="dbg-copy" style="flex:1;padding:12px;border-radius:8px;border:none;background:#00C853;color:#000;font-weight:700;font-size:14px;">📋 Copy All Logs</button>
+    <button id="dbg-clear" style="padding:12px 16px;border-radius:8px;border:none;background:#FF2D78;color:#fff;font-weight:700;font-size:14px;">Clear</button>
+    <button id="dbg-close" style="padding:12px 16px;border-radius:8px;border:none;background:#333;color:#fff;font-weight:700;font-size:14px;">✕</button>
+  </div>
+  <div id="dbg-count" style="color:#F5C518;font-size:12px;margin-bottom:6px;flex-shrink:0;"></div>
+  <pre id="dbg-log" style="flex:1;overflow:auto;background:#111;color:#0f0;font-size:10px;padding:8px;border-radius:8px;margin:0;white-space:pre-wrap;word-break:break-all;"></pre>`;
+  document.body.appendChild(btn);document.body.appendChild(panel);
+  const logEl=panel.querySelector('#dbg-log'),countEl=panel.querySelector('#dbg-count');
+  function refresh(){logEl.textContent=_dbgFormatAll();countEl.textContent=window._dbg.length+' log entries';logEl.scrollTop=logEl.scrollHeight;}
+  btn.addEventListener('click',()=>{panel.style.display='flex';refresh();});
+  panel.querySelector('#dbg-close').addEventListener('click',()=>{panel.style.display='none';});
+  panel.querySelector('#dbg-clear').addEventListener('click',()=>{window._dbg=[];refresh();});
+  panel.querySelector('#dbg-copy').addEventListener('click',()=>{
+    const text=_dbgFormatAll()||'(no logs yet)';
+    const b=panel.querySelector('#dbg-copy'),old=b.textContent;
+    const done=()=>{b.textContent='✅ Copied!';setTimeout(()=>{b.textContent=old;},1200);};
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done).catch(()=>_dbgFallbackCopy(text,done));}
+    else{_dbgFallbackCopy(text,done);}
+  });
+  setInterval(()=>{if(panel.style.display==='flex')refresh();},1000);
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',_dbgBuildUI);
+else _dbgBuildUI();
+/* ===== [DBG] END HEADER ===== */
 let _renderScheduled=false;
 let _renderGeneration=0;
 function renderTokens(){
@@ -3388,6 +3442,21 @@ const key=`${rc[0]}-${rc[1]}`;
 if(!groups[key])groups[key]=[];
 groups[key].push(tok);
 });
+{
+const _multi={};
+Object.keys(groups).forEach(k=>{if(groups[k].length>=2)_multi[k]=groups[k].map(t=>`${t.pid}-${t.tid}(step${t.step})`);});
+if(Object.keys(_multi).length){
+const _deg=getBoardRotation();
+const _sig=JSON.stringify(_multi)+`|seat${MY_SEAT}|deg${_deg}`;
+if(_sig!==window._dbgLastGroupSig){
+window._dbgLastGroupSig=_sig;
+_dbgLog('ONLINE_GROUPS',{groups:_multi,MY_SEAT,deg:_deg,tokenRotDeg:_tokenRotationDeg});
+const _seen={};G.tokens.forEach(t=>{const k=`${t.pid}-${t.tid}`;_seen[k]=(_seen[k]||0)+1;});
+const _dups=Object.keys(_seen).filter(k=>_seen[k]>1);
+if(_dups.length)_dbgLog('ONLINE_DUPLICATE_TOKENS_FOUND',_dups);
+}
+}
+}
 const BASE_W=Math.round(cp*1.15);
 const sizeScale=n=>n<=1?1:n<=2?0.78:n<=4?0.65:n<=6?0.55:0.46;
 const stackOffset=(n,idx,cp)=>{
@@ -3447,6 +3516,7 @@ py=rxy.y+off.dx*_sin+off.dy*_cos;
 }else{
 px=rxy.x;py=rxy.y;
 }
+if(n>=2)_dbgLog('ONLINE_TOKEN_POS',{pid:tok.pid,tid:tok.tid,step:tok.step,rcKey,n,idx,off,MY_SEAT,deg:getBoardRotation(),tokenRotDeg:_tokenRotationDeg,px:+px.toFixed(1),py:+py.toFixed(1)});
 }
 alive.add(key);
 const _curDesign=getTokenDesign(_tokenStyleId);
@@ -3590,6 +3660,30 @@ els.shield.className='tok-shield';
 }
 });
 for(const key of Object.keys(_tokEls)){if(!alive.has(key))_removeTokEl(key);}
+// [DBG] Overlap detection via real DOM measurement
+if(Date.now()-window._dbgLastOverlapCheck>500){
+window._dbgLastOverlapCheck=Date.now();
+requestAnimationFrame(()=>{
+try{
+Object.keys(groups).forEach(rcKey=>{
+const grp=groups[rcKey];
+if(grp.length<2)return;
+const rects=grp.map(t=>{
+const e=_tokEls[`${t.pid}-${t.tid}`];
+if(!e||!e.wrap)return null;
+const r=e.wrap.getBoundingClientRect();
+return{id:`${t.pid}-${t.tid}`,cx:r.left+r.width/2,cy:r.top+r.height/2,w:r.width,h:r.height};
+}).filter(Boolean);
+for(let i=0;i<rects.length;i++)for(let j=i+1;j<rects.length;j++){
+const a=rects[i],b=rects[j];
+const dist=Math.hypot(a.cx-b.cx,a.cy-b.cy);
+const threshold=Math.min(a.w,a.h,b.w,b.h)*0.35;
+_dbgLog(dist<threshold?'⚠️OVERLAP_ONLINE':'stack_dist_online',{rcKey,a:a.id,b:b.id,dist:+dist.toFixed(1),threshold:+threshold.toFixed(1),deg:getBoardRotation()});
+}
+});
+}catch(e){_dbgLog('overlap_check_error_online',String(e));}
+});
+}
 }
 function syncUI(){
 if(window._pnpMode&&window._setMY_SEAT){
