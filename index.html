@@ -4266,10 +4266,8 @@ const trc=getRenderCell(t.pid,t.step);
 return trc&&`${trc[0]}-${trc[1]}`===ok;
 });
 const n=grp.length,idx=grp.findIndex(t=>t.pid===other.pid&&t.tid===other.tid);
-const sc=n<=1?1:n<=2?0.78:0.65;
-const gap=n<=2?cp*0.52:cp*0.50;let dx=0,dy=0;
-if(n===2){dx=idx===0?-gap*0.5:gap*0.5;}
-else if(n>=3){const col=idx%2,row=Math.floor(idx/2);dx=(col-0.5)*gap;dy=(row-0.5)*gap;}
+const sc=n<=1?1:n<=2?0.78:n<=4?0.65:n<=6?0.55:0.46;
+const gap=cp*0.22;let dx=(idx-(n-1)/2)*gap,dy=0;
 const oxy=rcToXY(orc[0],orc[1]);
 const scaleStr=sc!==1?` scale(${sc})`:'';
 const _oRad=_tokenRotationDeg*Math.PI/180;
@@ -4320,7 +4318,8 @@ els.wrap.style.zIndex="";
 delete els.wrap.dataset.animating;
 els.wrap._lastStaticTr=null;
 tok.step=finalStep;
-if(tok.step>=STEP_DONE){SFX.play('done');renderTokens();await rafDelay(120);}
+renderTokens();
+if(tok.step>=STEP_DONE){SFX.play('done');await rafDelay(120);}
 }
 async function sendHomeFast(tok){
 const seat=tok.pid;
