@@ -1882,7 +1882,16 @@ G.waiting=false;
 G.diceVal=null;
 G.sixes=data.sixes||0;
 _applyPlacements(data.placements);
-if(data.tokens&&!_animating)G.tokens=JSON.parse(JSON.stringify(data.tokens));
+if(data.tokens){
+if(!_animating){
+G.tokens=JSON.parse(JSON.stringify(data.tokens));
+}else{
+const _multiRecv={};
+data.tokens.forEach(t=>{if(t.step>0&&t.step<STEP_DONE){const k=`s${t.step}`;(_multiRecv[k]=_multiRecv[k]||[]).push(`${t.pid}-${t.tid}`);}});
+const _hasStack=Object.values(_multiRecv).some(a=>a.length>=2);
+if(_hasStack)_dbgLog('ONLINE_FB_TOKENS_SKIPPED_ANIMATING',{reason:'local _animating=true, remote tokens update dropped',incomingStacks:_multiRecv});
+}
+}
 syncUI();
 }
 let _pushDebounce=null;
@@ -3542,7 +3551,7 @@ py=rxy.y+off.dx*_sin+off.dy*_cos;
 }else{
 px=rxy.x;py=rxy.y;
 }
-if(n>=2)_dbgLog('ONLINE_TOKEN_POS',{pid:tok.pid,tid:tok.tid,step:tok.step,rcKey,n,idx,off,MY_SEAT,deg:getBoardRotation(),tokenRotDeg:_tokenRotationDeg,px:+px.toFixed(1),py:+py.toFixed(1)});
+if(n>=2)_dbgLog('ONLINE_TOKEN_POS',{pid:tok.pid,tid:tok.tid,step:tok.step,rcKey,n,idx,rawOffset:off,appliedOffset:{dx:+(px-rxy.x).toFixed(1),dy:+(py-rxy.y).toFixed(1)},baseXY:{x:+rxy.x.toFixed(1),y:+rxy.y.toFixed(1)},MY_SEAT,deg:getBoardRotation(),tokenRotDeg:_tokenRotationDeg,px:+px.toFixed(1),py:+py.toFixed(1)});
 }
 alive.add(key);
 const _curDesign=getTokenDesign(_tokenStyleId);
@@ -3575,6 +3584,7 @@ const _colorName2=['PINK','YELLOW','GREEN','BLUE'][tok.pid]||tok.pid;
 const _verifyTipX=_ctx+rW/2-_tipFromCenter*Math.sin(_rad);
 const _verifyTipY=_cty+rHH+_tipFromCenter*Math.cos(_rad);
 const _errX=(_verifyTipX-px).toFixed(2),_errY=(_verifyTipY-py).toFixed(2);
+if(stackCount>=2&&(Math.abs(_errX)>0.1||Math.abs(_errY)>0.1))_dbgLog('ONLINE_TIP_GEOM_ERR',{pid:tok.pid,tid:tok.tid,deg:getBoardRotation(),tokenRotDeg:_tr,errX:+_errX,errY:+_errY,px:+px.toFixed(1),py:+py.toFixed(1)});
 if(!wrap.dataset.animating){
 const _newTr=`translate(${_ctx}px,${_cty}px)rotate(${_tr}deg)${scaleTransform}`;
 if(wrap._lastStaticTr!==_newTr){wrap._lastStaticTr=_newTr;wrap.style.transform=_newTr;}
@@ -3697,6 +3707,22 @@ if(Date.now()-window._dbgLastOverlapCheck>500){
 window._dbgLastOverlapCheck=Date.now();
 requestAnimationFrame(()=>{
 try{
+const _bw=document.getElementById('board-wrap');
+if(_bw){
+const _cs=getComputedStyle(_bw).transform;
+let _cssDeg=0;
+if(_cs&&_cs!=='none'){
+const _m=_cs.match(/matrix\(([^)]+)\)/);
+if(_m){const _p=_m[1].split(',').map(Number);_cssDeg=Math.round(Math.atan2(_p[1],_p[0])*180/Math.PI);if(_cssDeg<0)_cssDeg+=360;}
+}
+const _jsDeg=getBoardRotation();
+const _expectedTokenRot=-_jsDeg;
+if(_cssDeg!==_jsDeg||_tokenRotationDeg!==_expectedTokenRot){
+_dbgLog('ONLINE_ROTATION_DESYNC',{cssActualDeg:_cssDeg,jsGetBoardRotation:_jsDeg,tokenRotationDeg:_tokenRotationDeg,expectedTokenRotationDeg:_expectedTokenRot});
+}
+}
+}catch(e){_dbgLog('rotation_sync_check_error_online',String(e));}
+try{
 Object.keys(groups).forEach(rcKey=>{
 const grp=groups[rcKey];
 if(grp.length<2)return;
@@ -3710,7 +3736,7 @@ for(let i=0;i<rects.length;i++)for(let j=i+1;j<rects.length;j++){
 const a=rects[i],b=rects[j];
 const dist=Math.hypot(a.cx-b.cx,a.cy-b.cy);
 const threshold=Math.min(a.w,a.h,b.w,b.h)*0.35;
-_dbgLog(dist<threshold?'⚠️OVERLAP_ONLINE':'stack_dist_online',{rcKey,a:a.id,b:b.id,dist:+dist.toFixed(1),threshold:+threshold.toFixed(1),deg:getBoardRotation()});
+_dbgLog(dist<threshold?'⚠️OVERLAP_ONLINE':'stack_dist_online',{rcKey,a:a.id,b:b.id,dist:+dist.toFixed(1),threshold:+threshold.toFixed(1),deg:getBoardRotation(),tokenRotDeg:_tokenRotationDeg});
 }
 });
 }catch(e){_dbgLog('overlap_check_error_online',String(e));}
@@ -4194,6 +4220,7 @@ const tipWorldX=ex+rWHalf-tipFromCenter*Math.sin(rad);
 const tipWorldY=ey+rHHalf+tipFromCenter*Math.cos(rad);
 const targetX=x+jumpX,targetY=y+jumpY;
 const errX=(tipWorldX-targetX).toFixed(2),errY=(tipWorldY-targetY).toFixed(2);
+if(Math.abs(errX)>0.5||Math.abs(errY)>0.5)_dbgLog('ONLINE_JUMP_GEOM_ERR',{deg:getBoardRotation(),tokenRotDeg:_tr,errX:+errX,errY:+errY,t:+t.toFixed(2)});
 }
 if(shadowEl){
 const peakRatio=1-Math.abs(2*t-1);
@@ -4308,6 +4335,7 @@ const _sqRot=`rotate(${_tokenRotationDeg}deg)`;
 const _lsVerifyX=_tx2+_rW0/2-_tfc2*Math.sin(_rad2);
 const _lsVerifyY=_ty2+_rHH2+_tfc2*Math.cos(_rad2);
 const _lsErrX=(_lsVerifyX-endXY.x).toFixed(2),_lsErrY=(_lsVerifyY-endXY.y).toFixed(2);
+if(Math.abs(_lsErrX)>0.1||Math.abs(_lsErrY)>0.1)_dbgLog('ONLINE_LANDSQUASH_GEOM_ERR',{pid:tok.pid,tid:tok.tid,deg:getBoardRotation(),tokenRotDeg:_tokenRotationDeg,errX:+_lsErrX,errY:+_lsErrY});
 els.wrap.style.setProperty('--sq-trl',_sqTrl);
 els.wrap.style.setProperty('--sq-rot',_sqRot);
 els.wrap.classList.remove('tok-land');
@@ -4382,6 +4410,7 @@ const destY=bp2.y-rHH2-tipFromCenter2*Math.cos(_cRad2);
 els2.wrap.style.transformOrigin=`${_sHFrW/2}px ${rHH2}px`;
 els2.wrap.style.transition=`transform ${FAST_HOME_MS}ms cubic-bezier(0.15,0,0.3,1),opacity ${FAST_HOME_MS}ms`;
 els2.wrap.style.transform=`translate(${destX}px,${destY}px)rotate(${_tokenRotationDeg}deg)`;
+els2.wrap._lastStaticTr=null;
 if(els2.shadow){
 const sw=BASE_W*0.60,sh=BASE_W*0.16;
 els2.shadow.style.transition=`transform ${FAST_HOME_MS}ms cubic-bezier(0.4,0,0.2,1)`;
