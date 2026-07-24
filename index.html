@@ -1234,18 +1234,16 @@ roomRef=db.ref(`rooms/${code}`);
 gameRef=db.ref(`rooms/${code}/game`);
 playersRef=db.ref(`rooms/${code}/players`);
 try{
-await roomRef.set({
-numPlayers,
-status:"waiting",
-host:MY_SEAT,
-seatLayout:layout,
-teamMode:(numPlayers===4&&_pendingTeamMode),
-teamAssign:{0:'A',1:'B',2:'B',3:'A'},
-createdAt:firebase.database.ServerValue.TIMESTAMP,
-players:{
-[MY_SEAT]:{name:MY_NAME,seat:MY_SEAT,joinedAt:firebase.database.ServerValue.TIMESTAMP}
-}
-});
+const roomUpdates={};
+roomUpdates[`rooms/${code}/numPlayers`]=numPlayers;
+roomUpdates[`rooms/${code}/status`]="waiting";
+roomUpdates[`rooms/${code}/host`]=MY_SEAT;
+roomUpdates[`rooms/${code}/seatLayout`]=layout;
+roomUpdates[`rooms/${code}/teamMode`]=(numPlayers===4&&_pendingTeamMode);
+roomUpdates[`rooms/${code}/teamAssign`]={0:'A',1:'B',2:'B',3:'A'};
+roomUpdates[`rooms/${code}/createdAt`]=firebase.database.ServerValue.TIMESTAMP;
+roomUpdates[`rooms/${code}/players/${MY_SEAT}`]={name:MY_NAME,seat:MY_SEAT,joinedAt:firebase.database.ServerValue.TIMESTAMP};
+await db.ref().update(roomUpdates);
 }catch(e){
 console.error('ROOM_CREATE_FAILED',{code:e.code,message:e.message});
 showToast("❌ Room create failed. Firebase rules blocked write. Check console.");
