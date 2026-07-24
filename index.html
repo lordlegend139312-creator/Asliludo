@@ -22,6 +22,24 @@ window._dbgLog=function(tag,data){
     window._dbgPersist();
   }catch(e){}
 };
+/* [FIX] hook console.log/warn/error/info so EVERYTHING ever console'd
+   anywhere in the app (including raw Firebase errors sitting inside
+   catch(e){console.error(e)} blocks) lands in the same visible 🐞 panel —
+   no devtools console needed on a phone. */
+(function(){
+  const _origConsole={log:console.log,warn:console.warn,error:console.error,info:console.info};
+  function _stringifyArg(a){
+    if(a instanceof Error)return {message:a.message,code:a.code,stack:a.stack};
+    if(a&&typeof a==='object'){try{return JSON.parse(JSON.stringify(a));}catch(e){return String(a);}}
+    return a;
+  }
+  ['log','warn','error','info'].forEach(function(level){
+    console[level]=function(...args){
+      try{_origConsole[level].apply(console,args);}catch(e){}
+      try{window._dbgLog('CONSOLE_'+level.toUpperCase(),args.map(_stringifyArg));}catch(e){}
+    };
+  });
+})();
 window._dbgFormatAll=function(){
   return window._dbg.map(e=>`[${e.t}] ${e.tag} :: ${JSON.stringify(e.data)}`).join('\n');
 };
@@ -259,8 +277,10 @@ auth=window.auth||firebase.auth();
 _authReady=false;
 _authResolvers=[];
 auth.onAuthStateChanged(function(user){
-_setAuthReady();
-if(user){setSyncStatus("ok");}
+/* [FIX] fires immediately with user=null before anon sign-in finishes —
+   only mark ready once we actually have a signed-in user, else
+   waitForAuth() resolves too early and rules (auth!=null) reject writes. */
+if(user){_setAuthReady();setSyncStatus("ok");}
 });
 try{_connRef.off("value",_onConnChange);}catch(e){}
 _connRef=db.ref(".info/connected");
@@ -289,10 +309,15 @@ _authResolvers.forEach(r=>r());
 _authResolvers=[];
 }
 auth.onAuthStateChanged((user)=>{
-_setAuthReady();
-if(user){setSyncStatus("ok");}
+/* [FIX] same fix as above — don't mark ready on the initial null callback. */
+if(user){_setAuthReady();setSyncStatus("ok");}
 });
 auth.signInAnonymously().catch((err)=>{
+/* anon sign-in genuinely failed (e.g. Anonymous provider disabled in
+   Firebase console) — log the real reason and still release waitForAuth()
+   so the app doesn't hang forever; downstream write attempts will then
+   correctly fail because auth.currentUser is still null. */
+console.error('ANON_SIGNIN_FAILED',{code:err.code,message:err.message});
 _setAuthReady();
 });
 let _connRef=db.ref(".info/connected");
@@ -1086,7 +1111,7 @@ const updates={};
 updates[`rooms/${code}/memberUids/${uid}`]=true;
 updates[`rooms/${code}/memberCount`]=firebase.database.ServerValue.increment(1);
 await db.ref().update(updates);
-}catch(e){}
+}catch(e){console.error('JOIN_MEMBER_FAILED',{code:e.code,message:e.message});}
 }
 function _bindPresence(code,seat){
 try{if(_presenceConnRef)_presenceConnRef.onDisconnect().cancel();}catch(e){}
@@ -1187,6 +1212,7 @@ window.createRoom=async function(numPlayers){
 closeModals();
 showToast("Connecting to server...");
 try{await waitForAuth();}catch(e){showToast("⚠️ Auth error — check internet");return;}
+if(!auth.currentUser){console.error('CREATE_ROOM_NO_AUTH_USER',{});showToast("⚠️ Sign-in failed. Enable Anonymous Auth in Firebase console & retry.");return;}
 if(!(await waitForRealFirebase())){showToast("❌ Cannot reach server. Check internet & try again.");return;}
 NUM_PLAYERS=numPlayers;
 IS_HOST=true;
@@ -1221,6 +1247,7 @@ players:{
 }
 });
 }catch(e){
+console.error('ROOM_CREATE_FAILED',{code:e.code,message:e.message});
 showToast("❌ Room create failed. Firebase rules blocked write. Check console.");
 return;
 }
@@ -1235,6 +1262,7 @@ listenRoom();
 };
 window.joinRoom=async function(){
 await waitForAuth();
+if(!auth.currentUser){console.error('JOIN_ROOM_NO_AUTH_USER',{});showToast("⚠️ Sign-in failed. Enable Anonymous Auth in Firebase console & retry.");return;}
 showToast("Connecting...");
 if(!(await waitForRealFirebase())){showToast("❌ Cannot reach server. Check internet & try again.");return;}
 const code=document.getElementById("join-code-input").value.trim().toUpperCase();
