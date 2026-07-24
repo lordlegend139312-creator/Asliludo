@@ -1074,6 +1074,20 @@ let playersRef=null;
 let _listeners=[];
 let _presenceRef=null;
 let _presenceConnRef=null;
+async function _joinRoomAsMember(code){
+try{
+const uid=window.auth.currentUser.uid;
+const memberRef=db.ref(`rooms/${code}/memberUids/${uid}`);
+const snap=await memberRef.once('value');
+if(snap.exists()){
+return;
+}
+const updates={};
+updates[`rooms/${code}/memberUids/${uid}`]=true;
+updates[`rooms/${code}/memberCount`]=firebase.database.ServerValue.increment(1);
+await db.ref().update(updates);
+}catch(e){}
+}
 function _bindPresence(code,seat){
 try{if(_presenceConnRef)_presenceConnRef.onDisconnect().cancel();}catch(e){}
 const connsRef=db.ref(`rooms/${code}/players/${seat}/conns`);
@@ -1210,7 +1224,7 @@ players:{
 showToast("❌ Room create failed. Firebase rules blocked write. Check console.");
 return;
 }
-try{await db.ref(`rooms/${code}/memberUids/${window.auth.currentUser.uid}`).set(true);}catch(e){}
+await _joinRoomAsMember(code);
 _onlineTeamModeUpdateUI(numPlayers,true,(numPlayers===4&&_pendingTeamMode));
 _bindPresence(code,MY_SEAT);
 saveSession();
@@ -1260,7 +1274,7 @@ playersRef=db.ref(`rooms/${code}/players`);
 await db.ref(`rooms/${code}/players/${MY_SEAT}`).set({
 name:MY_NAME,seat:MY_SEAT,joinedAt:firebase.database.ServerValue.TIMESTAMP
 });
-try{await db.ref(`rooms/${code}/memberUids/${window.auth.currentUser.uid}`).set(true);}catch(e){}
+await _joinRoomAsMember(code);
 _bindPresence(code,MY_SEAT);
 saveSession();
 closeModals();
@@ -2003,7 +2017,7 @@ numPlayers:numPlayersSnap&&numPlayersSnap.val(),
 abandonedAt:abandonedAtSnap&&abandonedAtSnap.val(),
 lastActiveAt:lastActiveAtSnap&&lastActiveAtSnap.val()
 };
-try{await db.ref(`rooms/${s.code}/memberUids/${window.auth.currentUser.uid}`).set(true);}catch(e){}
+await _joinRoomAsMember(s.code);
 if(rData.status==='waiting'){
 MY_SEAT=s.seat;IS_HOST=(rData.host===s.seat);
 NUM_PLAYERS=rData.numPlayers||4;
@@ -4920,7 +4934,7 @@ playersRef=db.ref(`rooms/${newCode}/players`);
 await db.ref(`rooms/${newCode}/players/${MY_SEAT}`).set({
 name:MY_NAME,seat:MY_SEAT,joinedAt:firebase.database.ServerValue.TIMESTAMP
 });
-try{await db.ref(`rooms/${newCode}/memberUids/${window.auth.currentUser.uid}`).set(true);}catch(e){}
+await _joinRoomAsMember(newCode);
 _bindPresence(newCode,MY_SEAT);
 saveSession();
 _gameStarted=true;
