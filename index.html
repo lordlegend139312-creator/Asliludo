@@ -1182,7 +1182,7 @@ let code,exists;
 try{
 do{
 code=genCode();
-const snap=await db.ref(`rooms/${code}`).once('value');
+const snap=await db.ref(`rooms/${code}/status`).once('value');
 exists=snap.exists();
 }while(exists);
 }catch(e){
@@ -1210,6 +1210,7 @@ players:{
 showToast("❌ Room create failed. Firebase rules blocked write. Check console.");
 return;
 }
+try{await db.ref(`rooms/${code}/memberUids/${window.auth.currentUser.uid}`).set(true);}catch(e){}
 _onlineTeamModeUpdateUI(numPlayers,true,(numPlayers===4&&_pendingTeamMode));
 _bindPresence(code,MY_SEAT);
 saveSession();
@@ -1226,9 +1227,24 @@ const code=document.getElementById("join-code-input").value.trim().toUpperCase()
 const name=document.getElementById("join-name-input").value.trim()||"Player";
 if(code.length!==6){showToast("Enter a 6-digit code");return;}
 MY_NAME=name;
-const rSnap=await db.ref(`rooms/${code}`).once('value');
-if(!rSnap.exists()){showToast("Room not found");return;}
-const rData=rSnap.val();
+const roomBase=db.ref(`rooms/${code}`);
+const[statusSnap,seatLayoutSnap,numPlayersSnap,playersSnap,teamModeSnap,teamAssignSnap]=await Promise.all([
+roomBase.child('status').once('value').catch(()=>null),
+roomBase.child('seatLayout').once('value').catch(()=>null),
+roomBase.child('numPlayers').once('value').catch(()=>null),
+roomBase.child('players').once('value').catch(()=>null),
+roomBase.child('teamMode').once('value').catch(()=>null),
+roomBase.child('teamAssign').once('value').catch(()=>null)
+]);
+if(!statusSnap||!statusSnap.exists()){showToast("Room not found");return;}
+const rData={
+status:statusSnap.val(),
+seatLayout:seatLayoutSnap&&seatLayoutSnap.val(),
+numPlayers:numPlayersSnap&&numPlayersSnap.val(),
+players:(playersSnap&&playersSnap.val())||{},
+teamMode:teamModeSnap&&teamModeSnap.val(),
+teamAssign:teamAssignSnap&&teamAssignSnap.val()
+};
 if(rData.status==="playing"){showToast("Game already started");return;}
 const layout=rData.seatLayout||SEAT_LAYOUTS[rData.numPlayers]||[0,1,2,3];
 const taken=Object.keys(rData.players||{}).map(Number);
@@ -1244,6 +1260,7 @@ playersRef=db.ref(`rooms/${code}/players`);
 await db.ref(`rooms/${code}/players/${MY_SEAT}`).set({
 name:MY_NAME,seat:MY_SEAT,joinedAt:firebase.database.ServerValue.TIMESTAMP
 });
+try{await db.ref(`rooms/${code}/memberUids/${window.auth.currentUser.uid}`).set(true);}catch(e){}
 _bindPresence(code,MY_SEAT);
 saveSession();
 closeModals();
@@ -1467,10 +1484,12 @@ tokens.push({pid:seat,tid,step:0});
 }
 }
 const firstTurn=layout.find(s=>seats.includes(s))??layout[0];
-const roomSnap=await roomRef.once('value');
-const roomData=roomSnap.val()||{};
-const _startTeamMode=(NUM_PLAYERS===4)&&(roomData.teamMode===true);
-const _teamAssign=roomData.teamAssign||{0:'A',1:'B',2:'B',3:'A'};
+const[teamModeSnap,teamAssignSnap]=await Promise.all([
+roomRef.child('teamMode').once('value').catch(()=>null),
+roomRef.child('teamAssign').once('value').catch(()=>null)
+]);
+const _startTeamMode=(NUM_PLAYERS===4)&&(teamModeSnap&&teamModeSnap.val()===true);
+const _teamAssign=(teamAssignSnap&&teamAssignSnap.val())||{0:'A',1:'B',2:'B',3:'A'};
 const initGame={
 turn:firstTurn,
 diceVal:null,
@@ -1968,9 +1987,23 @@ if(!s){clearSession();return;}
 await waitForAuth();
 if(!(await waitForRealFirebase())){showToast("❌ Cannot reach server. Check internet & try again.");return;}
 MY_NAME=s.name;
-const rSnap=await db.ref(`rooms/${s.code}`).once('value').catch((e)=>{return null;});
-if(!rSnap||!rSnap.exists()){showToast('Room no longer exists');clearSession();document.getElementById('rejoin-card').style.display='none';return;}
-const rData=rSnap.val();
+const roomBase=db.ref(`rooms/${s.code}`);
+const[statusSnap,hostSnap,numPlayersSnap,abandonedAtSnap,lastActiveAtSnap]=await Promise.all([
+roomBase.child('status').once('value').catch(()=>null),
+roomBase.child('host').once('value').catch(()=>null),
+roomBase.child('numPlayers').once('value').catch(()=>null),
+roomBase.child('abandonedAt').once('value').catch(()=>null),
+roomBase.child('lastActiveAt').once('value').catch(()=>null)
+]);
+if(!statusSnap||!statusSnap.exists()){showToast('Room no longer exists');clearSession();document.getElementById('rejoin-card').style.display='none';return;}
+const rData={
+status:statusSnap.val(),
+host:hostSnap&&hostSnap.val(),
+numPlayers:numPlayersSnap&&numPlayersSnap.val(),
+abandonedAt:abandonedAtSnap&&abandonedAtSnap.val(),
+lastActiveAt:lastActiveAtSnap&&lastActiveAtSnap.val()
+};
+try{await db.ref(`rooms/${s.code}/memberUids/${window.auth.currentUser.uid}`).set(true);}catch(e){}
 if(rData.status==='waiting'){
 MY_SEAT=s.seat;IS_HOST=(rData.host===s.seat);
 NUM_PLAYERS=rData.numPlayers||4;
@@ -3556,7 +3589,18 @@ const rcKey=`${rc[0]}-${rc[1]}`;
 const grp=groups[rcKey]||[tok];
 const idx=grp.findIndex(t=>t.pid===tok.pid&&t.tid===tok.tid);
 const n=grp.length;
-stackCount=n;scale=sizeScale(n);
+stackCount=n;
+if(G.turn===MY_SEAT&&MY_SEAT!=null){
+const mineCount=grp.filter(t=>t.pid===MY_SEAT).length;
+const otherCount=n-mineCount;
+if(mineCount>0&&otherCount>0){
+scale=tok.pid===MY_SEAT?sizeScale(mineCount):sizeScale(otherCount);
+}else{
+scale=sizeScale(n);
+}
+}else{
+scale=sizeScale(n);
+}
 const off=stackOffset(n,idx,cp);
 const xy=rcToXY(rc[0],rc[1]);
 const rxy=xy;
@@ -4847,9 +4891,20 @@ if(chatPanel)chatPanel.classList.remove("open");
 await new Promise(r=>setTimeout(r,800));
 try{
 await waitForAuth();
-const rSnap=await db.ref(`rooms/${newCode}`).once('value');
-if(!rSnap||!rSnap.exists()){showToast('New room not ready yet,try again');return;}
-const rData=rSnap.val();
+const newRoomBase=db.ref(`rooms/${newCode}`);
+const[seatLayoutSnap,playersSnap,hostSnap,numPlayersSnap]=await Promise.all([
+newRoomBase.child('seatLayout').once('value').catch(()=>null),
+newRoomBase.child('players').once('value').catch(()=>null),
+newRoomBase.child('host').once('value').catch(()=>null),
+newRoomBase.child('numPlayers').once('value').catch(()=>null)
+]);
+if(!seatLayoutSnap||!numPlayersSnap||!numPlayersSnap.exists()){showToast('New room not ready yet,try again');return;}
+const rData={
+seatLayout:seatLayoutSnap.val(),
+players:(playersSnap&&playersSnap.val())||{},
+host:hostSnap&&hostSnap.val(),
+numPlayers:numPlayersSnap.val()
+};
 const layout=rData.seatLayout||SEAT_LAYOUTS[rData.numPlayers]||[0,1,2,3];
 const taken=Object.keys(rData.players||{}).map(Number);
 const oldSeat=MY_SEAT;
@@ -4865,6 +4920,7 @@ playersRef=db.ref(`rooms/${newCode}/players`);
 await db.ref(`rooms/${newCode}/players/${MY_SEAT}`).set({
 name:MY_NAME,seat:MY_SEAT,joinedAt:firebase.database.ServerValue.TIMESTAMP
 });
+try{await db.ref(`rooms/${newCode}/memberUids/${window.auth.currentUser.uid}`).set(true);}catch(e){}
 _bindPresence(newCode,MY_SEAT);
 saveSession();
 _gameStarted=true;
@@ -4892,7 +4948,7 @@ const layout=SEAT_LAYOUTS[numP]||[0,1,2,3];
 let newCode,exists;
 do{
 newCode=genCode();
-const snap=await db.ref(`rooms/${newCode}`).once('value');
+const snap=await db.ref(`rooms/${newCode}/status`).once('value');
 exists=snap.exists();
 }while(exists);
 await db.ref(`rooms/${newCode}`).set({
@@ -5551,7 +5607,19 @@ _openVault();
 }catch(e){
 btn.disabled=false;
 btn.textContent='Unlock 🔓';
+if(e&&e.code==='auth/operation-not-allowed'){
+err.textContent='❌ Email/Password login disabled hai Firebase console mein';
+}else if(e&&e.code==='auth/wrong-password'){
 err.textContent='❌ Galat password';
+}else if(e&&e.code==='auth/user-not-found'){
+err.textContent='❌ Ye account exist nahi karta';
+}else if(e&&e.code==='auth/too-many-requests'){
+err.textContent='❌ Bahut attempts ho gaye, thodi der baad try karo';
+}else if(e&&e.code==='auth/network-request-failed'){
+err.textContent='❌ Network error, connection check karo';
+}else{
+err.textContent='❌ '+((e&&(e.code||e.message))||'Unknown error');
+}
 if(inp){inp.value='';inp.focus();}
 }
 };
