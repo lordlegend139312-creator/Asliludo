@@ -334,6 +334,9 @@ setSyncStatus("ok");
 if(_wasConnected===false&&document.getElementById("game-wrap").style.display!=="none"){
 showToast("🟢 Reconnected!");
 }
+if(ROOM_CODE&&MY_SEAT!==null){
+_bindPresence(ROOM_CODE,MY_SEAT);
+}
 }
 _wasConnected=true;
 }else{
