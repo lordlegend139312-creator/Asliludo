@@ -280,6 +280,7 @@ auth.onAuthStateChanged(function(user){
 /* [FIX] fires immediately with user=null before anon sign-in finishes —
    only mark ready once we actually have a signed-in user, else
    waitForAuth() resolves too early and rules (auth!=null) reject writes. */
+window._dbgLog('AUTH_STATE_CHANGED',{uid:user?user.uid:null,source:'patchFirebaseRefs'});
 if(user){_setAuthReady();setSyncStatus("ok");}
 });
 try{_connRef.off("value",_onConnChange);}catch(e){}
@@ -310,6 +311,7 @@ _authResolvers=[];
 }
 auth.onAuthStateChanged((user)=>{
 /* [FIX] same fix as above — don't mark ready on the initial null callback. */
+window._dbgLog('AUTH_STATE_CHANGED',{uid:user?user.uid:null,source:'topLevel'});
 if(user){_setAuthReady();setSyncStatus("ok");}
 });
 auth.signInAnonymously().catch((err)=>{
@@ -324,6 +326,7 @@ let _connRef=db.ref(".info/connected");
 let _wasConnected=false;
 function _onConnChange(snap){
 const connected=snap.val()===true;
+window._dbgLog('DB_CONNECTED_CHANGE',{connected,wasConnected:_wasConnected,uid:(auth&&auth.currentUser)?auth.currentUser.uid:null,roomCode:ROOM_CODE,mySeat:MY_SEAT});
 const lobbyDot=document.getElementById("lobby-conn-dot");
 const lobbyTxt=document.getElementById("lobby-conn-text");
 if(connected){
@@ -1102,28 +1105,66 @@ let playersRef=null;
 let _listeners=[];
 let _presenceRef=null;
 let _presenceConnRef=null;
+function _waitForDbConnected(timeoutMs=4000){
+return new Promise(resolve=>{
+const ref=db.ref('.info/connected');
+let done=false;
+const cb=snap=>{if(snap.val()===true)finish(true);};
+const finish=(v)=>{if(done)return;done=true;try{ref.off('value',cb);}catch(e){}resolve(v);};
+ref.on('value',cb);
+setTimeout(()=>finish(false),timeoutMs);
+});
+}
+async function _retryAsync(label,fn,retries=3,delayMs=900){
+let lastErr=null;
+for(let i=0;i<=retries;i++){
+try{
+const r=await fn();
+window._dbgLog(label+'_OK',{attempt:i});
+return r;
+}catch(e){
+lastErr=e;
+window._dbgLog(label+'_ATTEMPT_FAILED',{attempt:i,code:e.code,message:e.message});
+if(i<retries){
+const connected=await _waitForDbConnected(2000);
+window._dbgLog(label+'_WAIT_BEFORE_RETRY',{attempt:i,connected,delayMs});
+await new Promise(r=>setTimeout(r,delayMs));
+}
+}
+}
+window._dbgLog(label+'_GAVE_UP',{retries,code:lastErr&&lastErr.code,message:lastErr&&lastErr.message});
+throw lastErr;
+}
 async function _joinRoomAsMember(code){
 try{
 const uid=window.auth.currentUser.uid;
+window._dbgLog('JOIN_MEMBER_START',{code,uid,dbConnectedNow:_wasConnected});
+const connected=await _waitForDbConnected(4000);
+window._dbgLog('JOIN_MEMBER_CONNECTED_WAIT',{code,uid,connected});
 const memberRef=db.ref(`rooms/${code}/memberUids/${uid}`);
 const snap=await memberRef.once('value');
 if(snap.exists()){
+window._dbgLog('JOIN_MEMBER_ALREADY_MEMBER',{code,uid});
 return;
 }
 const updates={};
 updates[`rooms/${code}/memberUids/${uid}`]=true;
 updates[`rooms/${code}/memberCount`]=firebase.database.ServerValue.increment(1);
-await db.ref().update(updates);
-}catch(e){console.error('JOIN_MEMBER_FAILED',{code:e.code,message:e.message});}
+await _retryAsync('JOIN_MEMBER_UPDATE',()=>db.ref().update(updates),3,900);
+}catch(e){window._dbgLog('JOIN_MEMBER_FAILED',{code:e.code,message:e.message});console.error('JOIN_MEMBER_FAILED',{code:e.code,message:e.message});}
 }
 function _bindPresence(code,seat){
+window._dbgLog('BIND_PRESENCE_START',{code,seat,dbConnectedNow:_wasConnected});
 try{if(_presenceConnRef)_presenceConnRef.onDisconnect().cancel();}catch(e){}
 const connsRef=db.ref(`rooms/${code}/players/${seat}/conns`);
 const connRef=connsRef.push();
-connRef.onDisconnect().remove();
-connRef.set(true);
 _presenceConnRef=connRef;
 _presenceRef=connsRef;
+_retryAsync('BIND_PRESENCE_SET',async()=>{
+await _waitForDbConnected(4000);
+connRef.onDisconnect().remove();
+await connRef.set(true);
+},3,900).catch(e=>window._dbgLog('BIND_PRESENCE_GAVE_UP_FINAL',{code:e.code,message:e.message}));
 }
 function _unbindPresence(){
 if(_presenceConnRef){
@@ -1319,6 +1360,7 @@ let _pendingSync=[];
 function listenRoom(){
 const cb1=snap=>{
 const players=snap.val()||{};
+window._dbgLog('PLAYERS_SNAPSHOT',{roomCode:ROOM_CODE,summary:Object.values(players).map(p=>({seat:p.seat,name:p.name,connsCount:p.conns?Object.keys(p.conns).length:0}))});
 updatePlayerList(players);
 const count=Object.keys(players).length;
 if(IS_HOST){
