@@ -201,10 +201,19 @@ if(btn)btn.addEventListener('click',()=>{SFX.setMuted(!SFX.isMuted());});
 </head><link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&display=swap" rel="stylesheet">
 <style>:root{ --gold:#f5c842;--gold2:#e8a500;--gold3:#ffeaa0; --bg-deep:#0a0612;--bg-mid:#130d20;--bg-card:#1a1030;--bg-card2:#221540; --border-gold:rgba(245,200,66,0.35);--border-gold2:rgba(245,200,66,0.6); --purple:#6c3fc5;--purple2:#9b6ee8; --red:#e8364a;--green:#27c45e;--blue:#2d7ef5;--yellow:#f5a623; --shadow-gold:0 0 30px rgba(245,200,66,0.2); --text-light:#f0e8ff;--muted-light:#8878aa;}</style>
 <body>
-<div id="lobby"><div id="lobby-inner"><div id="lobby-crown" onclick="window.togglePrivateChat()">👑</div><div id="lobby-sub">ONLINE MULTIPLAYER</div><div id="lobby-divider"></div><div id="lobby-cards" style="display:flex;flex-direction:column;gap:10px;width:100%;"><div class="s-card" id="btn-create-room"><div class="s-card-icon" style="background:linear-gradient(135deg,#f5a623,#e07b00);">🏠</div><div class="s-card-text"><div class="s-card-title">Create Room</div><div class="s-card-sub">Host a game and share the code</div></div><div class="s-card-arrow">›</div><div class="s-card-shine"></div></div><div class="s-card" id="btn-join-room"><div class="s-card-icon" style="background:linear-gradient(135deg,#00bcd4,#0086a0);">🔗</div><div class="s-card-text"><div class="s-card-title">Join Room</div><div class="s-card-sub">Enter a 6-digit room code</div></div><div class="s-card-arrow">›</div><div class="s-card-shine"></div></div></div><div id="rejoin-card" class="s-card" style="display:none;border-color:rgba(0,174,239,.4);background:rgba(0,174,239,.06);" onclick="window.tryRejoin()"><div class="s-card-icon" style="background:linear-gradient(135deg,#00AEEF,#0077aa);">🔄</div><div class="s-card-text"><div class="s-card-title">Rejoin Game</div><div class="s-card-sub" id="rejoin-sub">Tap to rejoin your last room</div></div><div class="s-card-arrow">›</div><div class="s-card-shine"></div></div><div id="lobby-conn" style="display:flex;align-items:center;gap:6px;margin-top:4px;font-size:11px;font-family:'Nunito',sans-serif;color:var(--muted);"><div id="lobby-conn-dot" style="width:8px;height:8px;border-radius:50%;background:#888;flex-shrink:0;transition:background 0.3s;"></div><span id="lobby-conn-text">Connecting to server...</span></div><div class="s-card" id="btn-customization" style="background:linear-gradient(145deg,#1e1240,#140c28);border:1.5px solid rgba(245,200,66,0.35);"><div class="s-card-icon" style="background:linear-gradient(135deg,#6b0000,#3a0000);"><svg width="26" height="26" viewBox="0 0 26 26" fill="none"><line x1="7" y1="19" x2="18" y2="8" stroke="#F5C518" stroke-width="2" stroke-linecap="round"/><rect x="5.5" y="17.5" width="3" height="3" rx="0.8" fill="#F5C518" transform="rotate(45,7,19)"/><circle cx="19" cy="7" r="2" fill="#ffe57a"/><path d="M19 3.5 V4.5 M19 9.5 V10.5 M15.5 7 H16.5 M21.5 7 H22.5" stroke="#F5C518" stroke-width="1.2" stroke-linecap="round"/><circle cx="11" cy="14" r="1" fill="#F5C518" opacity="0.8"/><path d="M22 14 L22.5 15 L23.5 15.3 L22.5 15.6 L22 16.5 L21.5 15.6 L20.5 15.3 L21.5 15 Z" fill="#ffe57a" opacity="0.9"/><path d="M6 9 L6.4 9.9 L7.4 10.2 L6.4 10.5 L6 11.4 L5.6 10.5 L4.6 10.2 L5.6 9.9 Z" fill="#fff3b0" opacity="0.9"/></svg></div><div class="s-card-text"><div class="s-card-title">Customization</div><div class="s-card-sub" id="custom-sub-label">Tap to customize your game</div></div><div class="s-card-arrow">›</div><div class="s-card-shine"></div></div></div>
+<div id="lobby"><div id="profile-widget" style="position:fixed;top:14px;right:14px;z-index:150;">
+<button id="btn-google-signin" style="display:flex;align-items:center;gap:6px;padding:8px 14px 8px 8px;background:var(--surface2);border:1.5px solid var(--border2);border-radius:20px;cursor:pointer;-webkit-tap-highlight-color:transparent;">
+<svg width="16" height="16" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92C16.66 14.1 17.64 11.9 17.64 9.2z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.81.54-1.85.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.97 10.72A5.4 5.4 0 0 1 3.69 9c0-.6.1-1.18.28-1.72V4.95H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.05l3.01-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58A9 9 0 0 0 .96 4.95L3.97 7.28C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
+<span style="color:var(--text);font-size:.7rem;font-weight:800;font-family:'Nunito',sans-serif;">Sign in</span>
+</button>
+<div id="profile-chip" style="display:none;align-items:center;gap:8px;padding:5px 12px 5px 5px;background:var(--surface2);border:1.5px solid var(--border2);border-radius:20px;cursor:pointer;-webkit-tap-highlight-color:transparent;">
+<img id="profile-avatar" src="" style="width:26px;height:26px;border-radius:50%;flex-shrink:0;border:1.5px solid var(--gold);object-fit:cover;">
+<span id="profile-name-short" style="color:var(--text);font-size:.7rem;font-weight:800;font-family:'Nunito',sans-serif;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+</div>
+</div><div id="lobby-inner"><div id="lobby-crown" onclick="window.togglePrivateChat()">👑</div><div id="lobby-sub">ONLINE MULTIPLAYER</div><div id="lobby-divider"></div><div id="lobby-cards" style="display:flex;flex-direction:column;gap:10px;width:100%;"><div class="s-card" id="btn-create-room"><div class="s-card-icon" style="background:linear-gradient(135deg,#f5a623,#e07b00);">🏠</div><div class="s-card-text"><div class="s-card-title">Create Room</div><div class="s-card-sub">Host a game and share the code</div></div><div class="s-card-arrow">›</div><div class="s-card-shine"></div></div><div class="s-card" id="btn-join-room"><div class="s-card-icon" style="background:linear-gradient(135deg,#00bcd4,#0086a0);">🔗</div><div class="s-card-text"><div class="s-card-title">Join Room</div><div class="s-card-sub">Enter a 6-digit room code</div></div><div class="s-card-arrow">›</div><div class="s-card-shine"></div></div></div><div id="rejoin-card" class="s-card" style="display:none;border-color:rgba(0,174,239,.4);background:rgba(0,174,239,.06);" onclick="window.tryRejoin()"><div class="s-card-icon" style="background:linear-gradient(135deg,#00AEEF,#0077aa);">🔄</div><div class="s-card-text"><div class="s-card-title">Rejoin Game</div><div class="s-card-sub" id="rejoin-sub">Tap to rejoin your last room</div></div><div class="s-card-arrow">›</div><div class="s-card-shine"></div></div><div id="lobby-conn" style="display:flex;align-items:center;gap:6px;margin-top:4px;font-size:11px;font-family:'Nunito',sans-serif;color:var(--muted);"><div id="lobby-conn-dot" style="width:8px;height:8px;border-radius:50%;background:#888;flex-shrink:0;transition:background 0.3s;"></div><span id="lobby-conn-text">Connecting to server...</span></div><div class="s-card" id="btn-customization" style="background:linear-gradient(145deg,#1e1240,#140c28);border:1.5px solid rgba(245,200,66,0.35);"><div class="s-card-icon" style="background:linear-gradient(135deg,#6b0000,#3a0000);"><svg width="26" height="26" viewBox="0 0 26 26" fill="none"><line x1="7" y1="19" x2="18" y2="8" stroke="#F5C518" stroke-width="2" stroke-linecap="round"/><rect x="5.5" y="17.5" width="3" height="3" rx="0.8" fill="#F5C518" transform="rotate(45,7,19)"/><circle cx="19" cy="7" r="2" fill="#ffe57a"/><path d="M19 3.5 V4.5 M19 9.5 V10.5 M15.5 7 H16.5 M21.5 7 H22.5" stroke="#F5C518" stroke-width="1.2" stroke-linecap="round"/><circle cx="11" cy="14" r="1" fill="#F5C518" opacity="0.8"/><path d="M22 14 L22.5 15 L23.5 15.3 L22.5 15.6 L22 16.5 L21.5 15.6 L20.5 15.3 L21.5 15 Z" fill="#ffe57a" opacity="0.9"/><path d="M6 9 L6.4 9.9 L7.4 10.2 L6.4 10.5 L6 11.4 L5.6 10.5 L4.6 10.2 L5.6 9.9 Z" fill="#fff3b0" opacity="0.9"/></svg></div><div class="s-card-text"><div class="s-card-title">Customization</div><div class="s-card-sub" id="custom-sub-label">Tap to customize your game</div></div><div class="s-card-arrow">›</div><div class="s-card-shine"></div></div></div>
 </div><div class="modal-overlay" id="modal-create"><div class="modal-box"><div class="modal-title">Create Room</div><div class="modal-sub">Choose number of players</div><div style="display:flex;gap:8px;width:100%;"><button class="modal-btn" id="btn-2p" style="flex:1;">2P</button><button class="modal-btn" id="btn-3p" style="flex:1;">3P</button><button class="modal-btn" id="btn-4p" style="flex:1;">4P</button></div><div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-radius:12px;border:1.5px solid rgba(155,110,232,.25);background:rgba(155,110,232,.06);cursor:pointer;gap:10px;width:100%;" onclick="_createToggleTeam()"><div style="display:flex;align-items:center;gap:8px;"><div><div style="color:var(--text);font-size:.82rem;font-weight:800;font-family:'Nunito',sans-serif;">Team Mode</div><div style="font-size:11px;margin-top:3px;font-family:'Nunito',sans-serif;font-weight:600;color:rgba(240,240,255,.4);">Two teams, one victory</div></div></div><div id="create-team-toggle" style="width:40px;height:22px;border-radius:11px;background:#2a2a55;border:1.5px solid #444466;position:relative;transition:all .2s;flex-shrink:0;"><div id="create-team-knob" style="position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#888;transition:all .2s;"></div></div></div><div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-radius:12px;border:1.5px solid rgba(155,110,232,.25);background:rgba(155,110,232,.06);cursor:pointer;gap:10px;width:100%;" onclick="_createToggleSpecial()"><div style="display:flex;align-items:center;gap:8px;"><div><div style="color:var(--text);font-size:.82rem;font-weight:800;font-family:'Nunito',sans-serif;">Special Mode</div><div style="font-size:11px;margin-top:3px;font-family:'Nunito',sans-serif;font-weight:600;color:rgba(240,240,255,.4);">Chaos meets strategy</div></div></div><div id="create-special-toggle" style="width:40px;height:22px;border-radius:11px;background:#2a2a55;border:1.5px solid #444466;position:relative;transition:all .2s;flex-shrink:0;"><div id="create-special-knob" style="position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#888;transition:all .2s;"></div></div></div><button class="modal-btn secondary" id="btn-cancel-create">Cancel</button></div>
 </div>
-<div class="modal-overlay" id="modal-waiting"><div class="modal-box"><div class="modal-title">Waiting for Players</div><div class="modal-sub">Share this code with friends</div><div class="room-code-display" id="display-room-code" title="Tap to copy">------</div><div class="copy-hint">📋 Tap to copy</div><div class="copy-toast" id="copy-toast">✓ Copied!</div><div id="lobby-host-line" style="display:none;width:100%;text-align:center;font-family:'Rajdhani',sans-serif;font-weight:800;font-size:.95rem;color:var(--text);letter-spacing:.3px;padding:2px 0 4px;"></div><div id="player-list" style="display:flex;flex-direction:column;gap:6px;width:100%;"></div><div class="modal-sub waiting-dots" id="waiting-status">Waiting</div><div id="online-team-wrap" style="display:none;width:100%;"><div id="online-team-selector" style="display:none;width:100%;"></div></div><button class="modal-btn" id="btn-start-game" disabled style="background:var(--surface);border:1.5px solid var(--border2);color:var(--muted);">Start Game</button><button class="modal-btn secondary" id="btn-leave-waiting">Leave Room</button></div>
+<div class="modal-overlay" id="modal-waiting"><div class="modal-box"><div class="modal-title">Waiting for Players</div><div class="modal-sub">Share this code with friends</div><div class="room-code-display" id="display-room-code" title="Tap to copy">------</div><div class="copy-hint">📋 Tap to copy</div><div class="copy-toast" id="copy-toast">✓ Copied!</div><div id="player-list" style="display:flex;flex-direction:column;gap:6px;width:100%;"></div><div class="modal-sub waiting-dots" id="waiting-status">Waiting</div><div id="online-team-wrap" style="display:none;width:100%;"><div id="online-team-selector" style="display:none;width:100%;"></div></div><button class="modal-btn" id="btn-start-game" disabled style="background:var(--surface);border:1.5px solid var(--border2);color:var(--muted);">Start Game</button><button class="modal-btn secondary" id="btn-leave-waiting">Leave Room</button></div>
 </div>
 <div class="modal-overlay" id="modal-join"><div class="modal-box"><div class="modal-title">Join Room</div><div class="modal-sub">Enter the 6-digit room code</div><input class="modal-input" id="join-code-input" type="text" maxlength="6" placeholder="000000"
       oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')"><input class="modal-input" id="join-name-input" type="text" maxlength="12" placeholder="Your Name"
@@ -214,6 +223,19 @@ if(btn)btn.addEventListener('click',()=>{SFX.setMuted(!SFX.isMuted());});
       style="letter-spacing:1px;"><button class="modal-btn" id="btn-confirm-name">Continue</button><button class="modal-btn secondary" id="btn-cancel-name" style="margin-top:2px;color:#f0f0ff;">Back</button></div>
 </div>
 <div class="modal-overlay" id="modal-home-confirm"><div class="modal-box"><div style="font-size:2rem;">🏠</div><div class="modal-title">Leave Game?</div><div class="modal-sub">You'll leave this match and return to the lobby. Other players will continue without you.</div><button class="modal-btn" id="btn-home-confirm-yes" style="background:#FF2D78;color:#fff;">Yes, Leave</button><button class="modal-btn secondary" id="btn-home-confirm-no">Cancel</button></div>
+</div>
+<div class="modal-overlay" id="modal-profile"><div class="modal-box" style="gap:14px;">
+<img id="profile-modal-avatar" src="" style="width:64px;height:64px;border-radius:50%;border:2px solid var(--gold);object-fit:cover;">
+<div class="modal-title" id="profile-modal-name">Player</div>
+<div style="display:flex;width:100%;gap:8px;">
+<div style="flex:1;background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:12px 4px;text-align:center;"><div id="profile-stat-kills" style="color:#FF2D78;font-size:1.4rem;font-weight:900;font-family:'Rajdhani',sans-serif;">0</div><div style="color:var(--muted);font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-top:2px;">Kills</div></div>
+<div style="flex:1;background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:12px 4px;text-align:center;"><div id="profile-stat-wins" style="color:#00C853;font-size:1.4rem;font-weight:900;font-family:'Rajdhani',sans-serif;">0</div><div style="color:var(--muted);font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-top:2px;">Wins</div></div>
+<div style="flex:1;background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:12px 4px;text-align:center;"><div id="profile-stat-losses" style="color:var(--muted);font-size:1.4rem;font-weight:900;font-family:'Rajdhani',sans-serif;">0</div><div style="color:var(--muted);font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-top:2px;">Losses</div></div>
+</div>
+<div id="profile-sync-note" style="font-size:10px;color:var(--muted);font-family:'Nunito',sans-serif;text-align:center;">Synced to your Google account — safe even if you clear browser data</div>
+<button class="modal-btn secondary" id="btn-profile-close">Close</button>
+<button class="modal-btn secondary" id="btn-profile-signout" style="color:#FF2D78;border-color:rgba(255,45,120,.3);">Sign Out</button>
+</div>
 </div><div id="top-bar"><div id="top-bar-left"></div><div id="top-bar-center"><div id="sync-bar"><div id="sync-dot" class="warn"></div><span id="sync-text">Syncing...</span></div></div><div id="top-bar-right"><button id="btn-mute" title="Mute">🔊</button><button id="btn-perf" title="Performance Mode">⚡</button></div>
 </div><div id="game-wrap"><div class="prow" id="top-row" style="align-items:center;"></div><div id="board-wrap"><div id="board"></div><div id="tokens-layer"></div></div><div class="prow bottom" id="bot-row"></div>
 </div>
@@ -330,6 +352,135 @@ auth.signInAnonymously().catch((err)=>{
 console.error('ANON_SIGNIN_FAILED',{code:err.code,message:err.message});
 _setAuthReady();
 });
+/* ---------- Google Profile System (Kills/Wins/Losses — survives browser data clear) ---------- */
+let _googleProvider=null;
+let MY_PROFILE=null;
+let _statsRoomLogged=null;
+function _getGoogleProvider(){
+if(!_googleProvider&&window.firebase&&firebase.auth&&firebase.auth.GoogleAuthProvider){
+_googleProvider=new firebase.auth.GoogleAuthProvider();
+}
+return _googleProvider;
+}
+window.signInWithGoogle=async function(){
+if(!(await waitForRealFirebase())){showToast("❌ Cannot reach server. Check internet & try again.");return;}
+const provider=_getGoogleProvider();
+if(!provider){showToast("❌ Sign-in unavailable. Try again in a moment.");return;}
+try{
+let result;
+if(auth.currentUser&&auth.currentUser.isAnonymous){
+result=await auth.currentUser.linkWithPopup(provider);
+}else{
+result=await auth.signInWithPopup(provider);
+}
+await _onGoogleSignedIn(result.user);
+}catch(err){
+if(err&&err.code==='auth/credential-already-in-use'){
+try{
+const result2=await auth.signInWithCredential(err.credential);
+await _onGoogleSignedIn(result2.user);
+}catch(err2){
+console.error('GOOGLE_SIGNIN_RESTORE_FAILED',err2);
+showToast("❌ Sign-in failed. Try again.");
+}
+}else if(err&&(err.code==='auth/popup-blocked'||err.code==='auth/cancelled-popup-request')){
+showToast("⚠️ Popup blocked. Allow popups & retry.");
+}else if(err&&err.code==='auth/popup-closed-by-user'){
+/* user closed the popup themselves — no error toast needed */
+}else{
+console.error('GOOGLE_SIGNIN_FAILED',{code:err&&err.code,message:err&&err.message});
+showToast("❌ Sign-in failed. Try again.");
+}
+}
+};
+async function _onGoogleSignedIn(user){
+if(!user)return;
+const uid=user.uid;
+const ref=db.ref('players/'+uid);
+let snap;
+try{snap=await ref.once('value');}
+catch(e){console.error('PROFILE_READ_FAILED',e);showToast("❌ Couldn't load profile. Check Firebase rules.");return;}
+let profile=snap.exists()?snap.val():null;
+if(!profile){
+profile={name:user.displayName||'Player',photoURL:user.photoURL||'',kills:0,wins:0,losses:0,createdAt:firebase.database.ServerValue.TIMESTAMP};
+try{await ref.set(profile);}catch(e){console.error('PROFILE_CREATE_FAILED',e);}
+}else{
+try{await ref.update({name:user.displayName||profile.name||'Player',photoURL:user.photoURL||profile.photoURL||''});}catch(e){}
+profile.name=user.displayName||profile.name;
+profile.photoURL=user.photoURL||profile.photoURL;
+}
+MY_PROFILE={uid,name:profile.name,photoURL:profile.photoURL,kills:profile.kills||0,wins:profile.wins||0,losses:profile.losses||0};
+_applyProfileToUI();
+try{
+if(user.displayName){
+const hostInput=document.getElementById('host-name-input');
+const joinInput=document.getElementById('join-name-input');
+if(hostInput&&!hostInput.value)hostInput.value=user.displayName.slice(0,12);
+if(joinInput&&!joinInput.value)joinInput.value=user.displayName.slice(0,12);
+localStorage.setItem('ludo_player_name',user.displayName.slice(0,12));
+}
+}catch(e){}
+ref.on('value',(s)=>{
+if(!s.exists()||!MY_PROFILE)return;
+const v=s.val();
+MY_PROFILE.kills=v.kills||0;MY_PROFILE.wins=v.wins||0;MY_PROFILE.losses=v.losses||0;
+_applyProfileToUI();
+});
+}
+window._onGoogleSignedIn=_onGoogleSignedIn;
+function _applyProfileToUI(){
+const signInBtn=document.getElementById('btn-google-signin');
+const chip=document.getElementById('profile-chip');
+if(!MY_PROFILE){
+if(signInBtn)signInBtn.style.display='flex';
+if(chip)chip.style.display='none';
+return;
+}
+if(signInBtn)signInBtn.style.display='none';
+if(chip)chip.style.display='flex';
+const av=document.getElementById('profile-avatar');
+const nm=document.getElementById('profile-name-short');
+if(av)av.src=MY_PROFILE.photoURL||'';
+if(nm)nm.textContent=(MY_PROFILE.name||'Player').split(' ')[0];
+const mav=document.getElementById('profile-modal-avatar');
+const mnm=document.getElementById('profile-modal-name');
+const sk=document.getElementById('profile-stat-kills');
+const sw=document.getElementById('profile-stat-wins');
+const sl=document.getElementById('profile-stat-losses');
+if(mav)mav.src=MY_PROFILE.photoURL||'';
+if(mnm)mnm.textContent=MY_PROFILE.name||'Player';
+if(sk)sk.textContent=MY_PROFILE.kills;
+if(sw)sw.textContent=MY_PROFILE.wins;
+if(sl)sl.textContent=MY_PROFILE.losses;
+}
+window.openProfileModal=function(){
+if(!MY_PROFILE)return;
+document.getElementById('modal-profile').classList.add('show');
+};
+window.signOutProfile=async function(){
+try{
+const uid=MY_PROFILE&&MY_PROFILE.uid;
+if(uid){try{db.ref('players/'+uid).off('value');}catch(e){}}
+await auth.signOut();
+}catch(e){}
+MY_PROFILE=null;
+_applyProfileToUI();
+document.getElementById('modal-profile').classList.remove('show');
+try{await auth.signInAnonymously();}catch(e){}
+};
+function recordKill(){
+if(!MY_PROFILE||!MY_PROFILE.uid)return;
+if(!ROOM_CODE||window._cpuMode||window._pnpMode)return;
+db.ref('players/'+MY_PROFILE.uid+'/kills').transaction(v=>(v||0)+1);
+}
+function recordMatchResult(won){
+if(!MY_PROFILE||!MY_PROFILE.uid)return;
+if(!ROOM_CODE||window._cpuMode||window._pnpMode)return;
+if(_statsRoomLogged===ROOM_CODE)return;
+_statsRoomLogged=ROOM_CODE;
+db.ref('players/'+MY_PROFILE.uid+'/'+(won?'wins':'losses')).transaction(v=>(v||0)+1);
+}
+/* ---------- End Google Profile System ---------- */
 let _connRef=db.ref(".info/connected");
 let _wasConnected=false;
 function _onConnChange(snap){
@@ -1552,20 +1703,22 @@ const dimmed=(selSeat!==null&&!isSel);
 const clr=ca[seat]||SEAT_COLOR[seat];
 return `<div ${IS_HOST?`onclick="_onTeamRowClick(${seat})"`:''} style="display:flex;align-items:center;gap:6px;padding:7px 9px;border-radius:8px;cursor:${IS_HOST?'pointer':'default'};background:${isSel?'rgba(255,255,255,.09)':'rgba(255,255,255,.03)'};border:1.5px solid ${isSel?clr:'rgba(255,255,255,.06)'};box-shadow:${isSel?`0 0 10px ${clr}66`:'none'};opacity:${dimmed?0.35:1};filter:${dimmed?'grayscale(.5)':'none'};transform:${isSel?'scale(1.02)':'scale(1)'};transition:all .18s;">
 <div style="width:8px;height:8px;border-radius:50%;background:${clr};box-shadow:0 0 5px ${clr};flex-shrink:0;"></div>
-<div style="flex:1;min-width:0;font-size:.78rem;font-family:'Nunito',sans-serif;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${playerName(seat)} <span style="color:${clr};font-size:.68rem;">(${colorNames[clr]||''})</span></div>
+<div style="flex:1;min-width:0;font-size:.78rem;font-family:'Nunito',sans-serif;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${playerName(seat)}</div>
+${seat===_roomHostSeat?`<span style="background:rgba(0,0,0,.55);color:#F5C518;font-size:.6rem;font-weight:800;padding:3px 9px;border-radius:20px;flex-shrink:0;letter-spacing:.5px;">HOST</span>`:''}
+<span style="background:rgba(255,255,255,.10);color:${clr};font-size:.66rem;font-weight:700;padding:4px 11px;border-radius:20px;flex-shrink:0;">${colorNames[clr]||''}</span>
 </div>`;
 }
-function bracketGroup(seats,label,color){
+function teamCard(seats,label,color,tint){
 const rows=seats.map(rowHtml).join('');
-return `<div style="display:flex;align-items:stretch;gap:8px;">
-<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:5px;border-right:2.5px solid ${color};border-top-right-radius:10px;border-bottom-right-radius:10px;padding-right:9px;">${rows}</div>
-<div style="display:flex;align-items:center;font-family:'Rajdhani',sans-serif;font-weight:900;font-size:.95rem;color:${color};letter-spacing:1px;width:14px;flex-shrink:0;">${label}</div>
+return `<div style="position:relative;border-radius:14px;padding:16px 10px 10px;display:flex;flex-direction:column;gap:6px;background:${tint};border:1.5px solid ${color}59;">
+<div style="position:absolute;top:-11px;left:14px;font-family:'Rajdhani',sans-serif;font-weight:800;font-size:.68rem;letter-spacing:1.5px;padding:3px 10px;border-radius:6px;background:var(--surface2);color:${color};border:1.5px solid ${color}80;">TEAM ${label}</div>
+${rows}
 </div>`;
 }
-sel.innerHTML=`<div style="padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.02);display:flex;flex-direction:column;gap:8px;">
-${bracketGroup(teamA,'A','#00AEEF')}
-${bracketGroup(teamB,'B','#FF2D78')}
-${IS_HOST?`<div style="font-size:.62rem;color:var(--muted);font-family:'Nunito',sans-serif;text-align:center;margin-top:2px;">${selSeat!==null?'👆 Ab doosra player select karo swap karne k liye':'👆 Kisi player ko tap karo, fir doosre ko swap karne k liye'}</div>`:''}
+sel.innerHTML=`<div style="padding:18px 12px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.02);display:flex;flex-direction:column;gap:16px;">
+${teamCard(teamA,'A','#00AEEF','rgba(0,174,239,.07)')}
+${teamCard(teamB,'B','#FF2D78','rgba(255,45,120,.07)')}
+${IS_HOST?`<div style="font-size:13px;color:var(--muted);font-family:'Nunito',sans-serif;font-weight:600;letter-spacing:.2px;text-align:center;margin-top:0;">${selSeat!==null?'Pick a second player to swap with':'Tap any player to start a team swap'}</div>`:''}
 </div>`;
 }
 window._swapTeams=function(seatA,seatB){
@@ -1581,6 +1734,10 @@ function updatePlayerList(players){
 window._lobbyPlayers=players;
 const container=document.getElementById("player-list");
 container.innerHTML="";
+if(_lobbyTeamModeOn){
+container.style.display="none";
+}else{
+container.style.display="flex";
 const seats=Object.values(players).sort((a,b)=>a.seat-b.seat);
 const ca=window._lobbyColorAssign||DEFAULT_COLOR_ASSIGN;
 const colorNames={[BLUE]:"Blue",[PINK]:"Pink",[YELLOW]:"Yellow",[GREEN]:"Green"};
@@ -1599,17 +1756,6 @@ div.innerHTML=`
 `;
 container.appendChild(div);
 });
-const hostLineEl=document.getElementById('lobby-host-line');
-if(hostLineEl){
-const hp=_roomHostSeat!=null?players[_roomHostSeat]:null;
-if(hp){
-const hColor=ca[_roomHostSeat]||SEAT_COLOR[_roomHostSeat]||"#888";
-const hColorLabel=colorNames[hColor]||"";
-hostLineEl.innerHTML=`${escapeHtmlLobby(hp.name)} <span style="color:${hColor};">(Host ${hColorLabel})</span>`;
-hostLineEl.style.display='block';
-}else{
-hostLineEl.style.display='none';
-}
 }
 const status=document.getElementById("waiting-status");
 const needed=NUM_PLAYERS;
@@ -3079,9 +3225,10 @@ const _domCache={banner:null,pbg:{},lbl:{},box:{},ptok:{},d3d:{},dcube:{},pdw:{}
 function rng(){if(window.crypto&&crypto.getRandomValues){const a=new Uint8Array(1);while(true){crypto.getRandomValues(a);if(a[0]<252)return(a[0]%6)+1;}}return Math.floor(Math.random()*6)+1;}
 const _sde={
 recentRolls:{0:[],1:[],2:[],3:[]},
+biasCooldown:{0:0,1:0,2:0,3:0},
 };
 function _sdeReset(){
-[0,1,2,3].forEach(p=>{_sde.recentRolls[p]=[];});
+[0,1,2,3].forEach(p=>{_sde.recentRolls[p]=[];_sde.biasCooldown[p]=0;});
 }
 _sdeReset();
 function _rbNotifyCut(victimPid){
@@ -3099,8 +3246,52 @@ const clamped=dist.map(v=>Math.min(MAX,Math.max(MIN,v)));
 const sum=clamped.reduce((a,b)=>a+b,0);
 return clamped.map(v=>v/sum);
 }
+function _rbProgress(pid){
+return toksOf(pid).reduce((s,t)=>s+Math.min(t.step,STEP_DONE),0);
+}
+function _rbSideProgress(pid){
+const mate=window._teamMode?getTeammate(pid):-1;
+return _rbProgress(pid)+(mate>=0?_rbProgress(mate):0);
+}
+function _rbAnyTokenHome(){
+return G.tokens.some(t=>t.step>=STEP_DONE);
+}
+function _rbStandingBias(pid,dist,blockSix){
+if(_sde.biasCooldown[pid]>0)return;
+const mate=window._teamMode?getTeammate(pid):-1;
+const mySide=_rbSideProgress(pid);
+const maxSide=STEP_DONE*4*(mate>=0?2:1);
+const seen=new Set([pid]);if(mate>=0)seen.add(mate);
+const oppSides=[];
+PLAYERS.forEach(p=>{
+if(!p.active||seen.has(p.id))return;
+const oMate=window._teamMode?getTeammate(p.id):-1;
+seen.add(p.id);if(oMate>=0)seen.add(oMate);
+oppSides.push(_rbSideProgress(p.id));
+});
+if(!oppSides.length)return;
+const avgOpp=oppSides.reduce((a,b)=>a+b,0)/oppSides.length;
+let gap=(mySide-avgOpp)/maxSide;
+gap=Math.max(-1,Math.min(1,gap));
+if(Math.abs(gap)<=0.15)return;
+if(Math.random()>=0.45)return;
+let trailing=gap<0;
+if(Math.random()<0.12)trailing=!trailing;
+let mag=0.10*Math.sqrt(Math.abs(gap));
+if(trailing&&_rbAnyTokenHome())mag+=0.025;
+if(trailing){
+if(!blockSix)dist[5]+=mag*0.6;
+dist[4]+=mag*0.6;
+dist[0]-=mag*0.4;dist[1]-=mag*0.4;dist[2]-=mag*0.4;
+}else{
+dist[0]+=mag*0.6;dist[1]+=mag*0.6;
+dist[3]-=mag*0.4;dist[4]-=mag*0.4;if(!blockSix)dist[5]-=mag*0.4;
+}
+_sde.biasCooldown[pid]=2+Math.floor(Math.random()*2);
+}
 function rubberbandRng(pid){
 if(!PLAYERS[pid]||!PLAYERS[pid].active)return null;
+if(_sde.biasCooldown[pid]>0)_sde.biasCooldown[pid]--;
 if(Math.random()<0.40)return null;
 const blockSix=(G.sixes||0)>=2;
 const myToks=toksOf(pid);
@@ -3160,6 +3351,7 @@ dist[0]-=1/100;dist[1]-=1/100;dist[2]-=1/100;dist[3]-=1/100;dist[4]-=1/100;dist[
 conditionApplied=true;
 }
 }
+_rbStandingBias(pid,dist,blockSix);
 const recent=_sde.recentRolls[pid];
 if(recent.length>=3){
 const last3=[recent[recent.length-1],recent[recent.length-2],recent[recent.length-3]];
@@ -4719,6 +4911,7 @@ capturePromises.push(sendHomeFast(enemy));
 capturedPids.add(enemy.pid);
 captured=true;
 SFX.play('capture');
+if(movingPid===MY_SEAT)recordKill();
 }
 if(capturePromises.length>0)await Promise.all(capturePromises);
 }
@@ -4874,6 +5067,10 @@ const loserPid=G.placements[lastIdx];
 const loserName=loserPid===MY_SEAT?(MY_NAME||"You"):(PLAYERS[loserPid]?.label||`P${loserPid}`);
 const isIWinner=winner===MY_SEAT;
 const isILoser=loserPid===MY_SEAT;
+try{
+const _wonForStats=window._teamMode?(winner===MY_SEAT||getTeammate(winner)===MY_SEAT):isIWinner;
+recordMatchResult(_wonForStats);
+}catch(e){}
 const winColor=getDisplayColorForSeat(winner);
 const winColorEmoji=winColor===BLUE?"🔵":winColor===PINK?"🔴":winColor===YELLOW?"🟡":"🟢";
 let heading;
@@ -5484,6 +5681,10 @@ document.getElementById("shield-tab-super").addEventListener("click",()=>{_shiel
 _updateShieldLobbyLabel();
 _updateTokenLobbyLabel();
 _updateCustomSubLabel();
+bindBtn("btn-google-signin",()=>window.signInWithGoogle());
+bindBtn("profile-chip",()=>window.openProfileModal());
+bindBtn("btn-profile-close",()=>document.getElementById("modal-profile").classList.remove("show"));
+bindBtn("btn-profile-signout",()=>window.signOutProfile());
 bindBtn("btn-resume",()=>window.togglePause());
 bindBtn("btn-leave-pause",()=>{window.leaveToLobby();});
 bindBtn("btn-home-confirm-yes",()=>{document.getElementById("modal-home-confirm").classList.remove("show");window.leaveToLobby();});
@@ -5662,6 +5863,11 @@ window.db=firebase.database();
 window.auth=firebase.auth();
 if(typeof _patchFirebaseRefs==='function')_patchFirebaseRefs();
 window.auth.signInAnonymously().catch(function(e){});
+window.auth.onAuthStateChanged(function(u){
+if(u&&!u.isAnonymous&&typeof window._onGoogleSignedIn==='function'){
+window._onGoogleSignedIn(u);
+}
+});
 const saved=(localStorage.getItem('ludo_player_name')||'').trim();
 if(saved){
 const hostInput=document.getElementById('host-name-input');
