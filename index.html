@@ -1040,13 +1040,24 @@ container.appendChild(row);
 document.getElementById('modal-token-style').classList.add('show');
 }
 const SEAT_COLOR=[PINK,YELLOW,GREEN,BLUE];
+const DEFAULT_COLOR_ASSIGN={0:PINK,1:YELLOW,2:GREEN,3:BLUE};
+function _teamOfColor(c){return(c===BLUE||c===YELLOW)?'A':'B';}
+const DEFAULT_TEAM_ASSIGN={0:'B',1:'A',2:'B',3:'A'};
+function _deriveTeamAssign(colorAssign){
+const ca=colorAssign||DEFAULT_COLOR_ASSIGN;
+const out={};
+for(let s=0;s<4;s++)out[s]=_teamOfColor(ca[s]||SEAT_COLOR[s]);
+return out;
+}
 const CW_INDEX=[1,2,3,0];
 let MY_SLOT=0;
 const SEAT_ROTATION=[270,180,90,0];
 function getBoardRotation(){if(window._pnpMode)return 0;return MY_SEAT!==null?(SEAT_ROTATION[MY_SEAT]||0):0;}
 function getDisplayColorForSeat(seat){
 const t=getBoardTheme();
-return(t.colors&&t.colors[seat])?t.colors[seat]:(SEAT_COLOR[seat]||"#888");
+if(t.colors&&t.colors[seat])return t.colors[seat];
+const ov=window._colorAssign||window._lobbyColorAssign;
+return(ov&&ov[seat])||SEAT_COLOR[seat]||"#888";
 }
 function applyBoardRotation(){
 const deg=getBoardRotation();
@@ -1305,7 +1316,7 @@ roomUpdates[`rooms/${code}/status`]="waiting";
 roomUpdates[`rooms/${code}/host`]=MY_SEAT;
 roomUpdates[`rooms/${code}/seatLayout`]=layout;
 roomUpdates[`rooms/${code}/teamMode`]=(numPlayers===4&&_pendingTeamMode);
-roomUpdates[`rooms/${code}/teamAssign`]={0:'A',1:'B',2:'B',3:'A'};
+roomUpdates[`rooms/${code}/colorAssign`]=DEFAULT_COLOR_ASSIGN;
 roomUpdates[`rooms/${code}/createdAt`]=firebase.database.ServerValue.TIMESTAMP;
 roomUpdates[`rooms/${code}/players/${MY_SEAT}`]={name:MY_NAME,seat:MY_SEAT,joinedAt:firebase.database.ServerValue.TIMESTAMP};
 await db.ref().update(roomUpdates);
@@ -1333,13 +1344,13 @@ const name=document.getElementById("join-name-input").value.trim()||"Player";
 if(code.length!==6){showToast("Enter a 6-digit code");return;}
 MY_NAME=name;
 const roomBase=db.ref(`rooms/${code}`);
-const[statusSnap,seatLayoutSnap,numPlayersSnap,playersSnap,teamModeSnap,teamAssignSnap]=await Promise.all([
+const[statusSnap,seatLayoutSnap,numPlayersSnap,playersSnap,teamModeSnap,colorAssignSnap]=await Promise.all([
 roomBase.child('status').once('value').catch(()=>null),
 roomBase.child('seatLayout').once('value').catch(()=>null),
 roomBase.child('numPlayers').once('value').catch(()=>null),
 roomBase.child('players').once('value').catch(()=>null),
 roomBase.child('teamMode').once('value').catch(()=>null),
-roomBase.child('teamAssign').once('value').catch(()=>null)
+roomBase.child('colorAssign').once('value').catch(()=>null)
 ]);
 if(!statusSnap||!statusSnap.exists()){showToast("Room not found");return;}
 const rData={
@@ -1348,7 +1359,7 @@ seatLayout:seatLayoutSnap&&seatLayoutSnap.val(),
 numPlayers:numPlayersSnap&&numPlayersSnap.val(),
 players:(playersSnap&&playersSnap.val())||{},
 teamMode:teamModeSnap&&teamModeSnap.val(),
-teamAssign:teamAssignSnap&&teamAssignSnap.val()
+colorAssign:colorAssignSnap&&colorAssignSnap.val()
 };
 if(rData.status==="playing"){showToast("Game already started");return;}
 const layout=rData.seatLayout||SEAT_LAYOUTS[rData.numPlayers]||[0,1,2,3];
@@ -1372,7 +1383,7 @@ closeModals();
 document.getElementById("display-room-code").textContent=code;
 document.getElementById("modal-waiting").classList.add("show");
 _onlineTeamModeUpdateUI(rData.numPlayers,false,rData.teamMode||false);
-window._lobbyTeamAssign=rData.teamAssign||{0:'A',1:'B',2:'B',3:'A'};
+window._lobbyColorAssign=rData.colorAssign||DEFAULT_COLOR_ASSIGN;
 listenRoom();
 };
 let _gameStarted=false;
@@ -1456,14 +1467,14 @@ _onlineTeamModeUpdateUI(NUM_PLAYERS,IS_HOST,val);
 };
 teamModeRef.on('value',cbTeamMode);
 _listeners.push(()=>teamModeRef.off('value',cbTeamMode));
-const teamAssignRef=db.ref(`rooms/${ROOM_CODE}/teamAssign`);
-const cbTeamAssign=snap=>{
+const colorAssignRef=db.ref(`rooms/${ROOM_CODE}/colorAssign`);
+const cbColorAssign=snap=>{
 const val=snap.val();
-if(val)window._lobbyTeamAssign=val;
-_renderTeamSelector();
+if(val)window._lobbyColorAssign=val;
+updatePlayerList(window._lobbyPlayers||{});
 };
-teamAssignRef.on('value',cbTeamAssign);
-_listeners.push(()=>teamAssignRef.off('value',cbTeamAssign));
+colorAssignRef.on('value',cbColorAssign);
+_listeners.push(()=>colorAssignRef.off('value',cbColorAssign));
 const forceDiceRef=db.ref(`rooms/${ROOM_CODE}/forceDice`);
 const cbForceDice=snap=>{
 const val=snap.val();
@@ -1516,12 +1527,12 @@ const sel=document.getElementById('online-team-selector');
 if(!sel)return;
 if(!_lobbyTeamModeOn){sel.style.display='none';return;}
 sel.style.display='block';
-const ta=window._lobbyTeamAssign||{0:'A',1:'B',2:'B',3:'A'};
+const ca=window._lobbyColorAssign||DEFAULT_COLOR_ASSIGN;
 const playerList=window._lobbyPlayers||{};
-const colorNames={0:'Yellow',1:'Pink',2:'Green',3:'Blue'};
-const colorHex={0:'#FFD600',1:'#FF2D78',2:'#00C853',3:'#00AEEF'};
-const teamA=Object.keys(ta).map(Number).filter(s=>ta[s]==='A').sort((a,b)=>a-b);
-const teamB=Object.keys(ta).map(Number).filter(s=>ta[s]==='B').sort((a,b)=>a-b);
+const colorNames={[BLUE]:'Blue',[YELLOW]:'Yellow',[PINK]:'Pink',[GREEN]:'Green'};
+const allSeats=[0,1,2,3];
+const teamA=allSeats.filter(s=>_teamOfColor(ca[s]||SEAT_COLOR[s])==='A').sort((a,b)=>a-b);
+const teamB=allSeats.filter(s=>_teamOfColor(ca[s]||SEAT_COLOR[s])==='B').sort((a,b)=>a-b);
 const selSeat=window._teamSwapSelectedSeat;
 function playerName(seat){
 const p=playerList[seat];
@@ -1530,10 +1541,10 @@ return p?`<b>${escapeHtmlLobby(p.name)}</b>`:`<span style="color:var(--muted);fo
 function rowHtml(seat){
 const isSel=selSeat===seat;
 const dimmed=(selSeat!==null&&!isSel);
-const clr=colorHex[seat];
+const clr=ca[seat]||SEAT_COLOR[seat];
 return `<div ${IS_HOST?`onclick="_onTeamRowClick(${seat})"`:''} style="display:flex;align-items:center;gap:6px;padding:7px 9px;border-radius:8px;cursor:${IS_HOST?'pointer':'default'};background:${isSel?'rgba(255,255,255,.09)':'rgba(255,255,255,.03)'};border:1.5px solid ${isSel?clr:'rgba(255,255,255,.06)'};box-shadow:${isSel?`0 0 10px ${clr}66`:'none'};opacity:${dimmed?0.35:1};filter:${dimmed?'grayscale(.5)':'none'};transform:${isSel?'scale(1.02)':'scale(1)'};transition:all .18s;">
 <div style="width:8px;height:8px;border-radius:50%;background:${clr};box-shadow:0 0 5px ${clr};flex-shrink:0;"></div>
-<div style="flex:1;min-width:0;font-size:.78rem;font-family:'Nunito',sans-serif;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${playerName(seat)} <span style="color:${clr};font-size:.68rem;">(${colorNames[seat]})</span></div>
+<div style="flex:1;min-width:0;font-size:.78rem;font-family:'Nunito',sans-serif;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${playerName(seat)} <span style="color:${clr};font-size:.68rem;">(${colorNames[clr]||''})</span></div>
 </div>`;
 }
 function bracketGroup(seats,label,color){
@@ -1551,12 +1562,12 @@ ${IS_HOST?`<div style="font-size:.62rem;color:var(--muted);font-family:'Nunito',
 }
 window._swapTeams=function(seatA,seatB){
 if(!IS_HOST||!ROOM_CODE)return;
-const ta=window._lobbyTeamAssign||{0:'A',1:'B',2:'B',3:'A'};
-const newAssign=Object.assign({},ta);
+const ca=window._lobbyColorAssign||DEFAULT_COLOR_ASSIGN;
+const newAssign=Object.assign({},ca);
 const tmp=newAssign[seatA];
 newAssign[seatA]=newAssign[seatB];
 newAssign[seatB]=tmp;
-db.ref(`rooms/${ROOM_CODE}/teamAssign`).set(newAssign).catch(()=>{});
+db.ref(`rooms/${ROOM_CODE}/colorAssign`).set(newAssign).catch(()=>{});
 };
 function updatePlayerList(players){
 window._lobbyPlayers=players;
@@ -1600,12 +1611,13 @@ tokens.push({pid:seat,tid,step:0});
 }
 }
 const firstTurn=layout.find(s=>seats.includes(s))??layout[0];
-const[teamModeSnap,teamAssignSnap]=await Promise.all([
+const[teamModeSnap,colorAssignSnap]=await Promise.all([
 roomRef.child('teamMode').once('value').catch(()=>null),
-roomRef.child('teamAssign').once('value').catch(()=>null)
+roomRef.child('colorAssign').once('value').catch(()=>null)
 ]);
 const _startTeamMode=(NUM_PLAYERS===4)&&(teamModeSnap&&teamModeSnap.val()===true);
-const _teamAssign=(teamAssignSnap&&teamAssignSnap.val())||{0:'A',1:'B',2:'B',3:'A'};
+const _colorAssign=(colorAssignSnap&&colorAssignSnap.val())||DEFAULT_COLOR_ASSIGN;
+const _teamAssign=_deriveTeamAssign(_colorAssign);
 const initGame={
 turn:firstTurn,
 diceVal:null,
@@ -1616,6 +1628,7 @@ sixes:0,
 tokens,
 placements:[],
 seatLayout:layout,
+colorAssign:_colorAssign,
 teamMode:_startTeamMode,
 teamAssign:_startTeamMode?_teamAssign:null,
 lastAction:null,
@@ -1639,7 +1652,8 @@ const gSnap=await gameRef.once('value');
 const gData=gSnap.val()||{};
 SEAT_LAYOUT_ACTIVE=gData.seatLayout||SEAT_LAYOUTS[NUM_PLAYERS]||[0,1,2,3];
 window._teamMode=(NUM_PLAYERS===4)&&(gData.teamMode===true);
-window._teamAssign=gData.teamAssign||{0:'A',1:'B',2:'B',3:'A'};
+window._colorAssign=gData.colorAssign||DEFAULT_COLOR_ASSIGN;
+window._teamAssign=gData.teamAssign||_deriveTeamAssign(window._colorAssign);
 PLAYERS=[];
 for(let seat=0;seat<4;seat++){
 const p=playersData[seat];
@@ -1647,7 +1661,7 @@ const inLayout=SEAT_LAYOUT_ACTIVE.includes(seat);
 PLAYERS.push({
 id:seat,
 seat,
-color:SEAT_COLOR[seat],
+color:window._colorAssign[seat]||SEAT_COLOR[seat],
 label:p?p.name:`P${seat+1}`,
 active:!!p&&inLayout,
 human:true,
@@ -1690,7 +1704,7 @@ renderTokens();
 updateTurnBanner();
 const _myColorNames={[BLUE]:"Blue",[PINK]:"Pink",[YELLOW]:"Yellow",[GREEN]:"Green"};
 const _teamSuffix=window._teamMode?" — Team Mode 🤝":"";
-showToast("Game started!You are "+(_myColorNames[SEAT_COLOR[MY_SEAT]]||"")+_teamSuffix);
+showToast("Game started!You are "+(_myColorNames[window._colorAssign[MY_SEAT]]||"")+_teamSuffix);
 saveSession();
 SFX.play('gamestart');
 _gameLoaded=true;
@@ -2173,9 +2187,10 @@ _pendingSync=[];
 ROOM_CODE=null;MY_SEAT=null;IS_HOST=false;MY_SLOT=0;
 gameRef=null;roomRef=null;playersRef=null;
 window._teamMode=false;
-window._lobbyTeamAssign={0:'A',1:'B',2:'B',3:'A'};
+window._lobbyColorAssign=DEFAULT_COLOR_ASSIGN;
 window._lobbyPlayers={};
-window._teamAssign={0:'A',1:'B',2:'B',3:'A'};
+window._colorAssign=null;
+window._teamAssign=DEFAULT_TEAM_ASSIGN;
 window._teamSwapSelectedSeat=null;
 const _onTeamWrap=document.getElementById('online-team-wrap');
 if(_onTeamWrap)_onTeamWrap.style.display='none';
@@ -2393,7 +2408,7 @@ txt.textContent='';
 }else{
 const names=voterSeats.map(s=>{
 if(s===MY_SEAT)return 'You';
-return colorNames[SEAT_COLOR[s]]||`P${s+1}`;
+return colorNames[PLAYERS[s]?.color]||colorNames[SEAT_COLOR[s]]||`P${s+1}`;
 });
 txt.textContent=names.join(',')+' voted('+voterSeats.length+'/'+needed+')';
 }
@@ -2686,14 +2701,14 @@ return true;
 }
 function getTeammate(seat){
 if(!window._teamMode)return -1;
-const ta=window._teamAssign||{0:'A',1:'B',2:'B',3:'A'};
+const ta=window._teamAssign||DEFAULT_TEAM_ASSIGN;
 const myTeam=ta[seat];
 if(!myTeam)return -1;
 const mate=Object.keys(ta).map(Number).find(s=>s!==seat&&ta[s]===myTeam);
 return mate!=null?mate:-1;
 }
 function _isTeamASeat(seat){
-const ta=window._teamAssign||{0:'A',1:'B',2:'B',3:'A'};
+const ta=window._teamAssign||DEFAULT_TEAM_ASSIGN;
 return ta[seat]==='A';
 }
 function isTeammate(seatA,seatB){
