@@ -211,7 +211,7 @@ if(btn)btn.addEventListener('click',()=>{SFX.setMuted(!SFX.isMuted());});
 <img id="profile-avatar" src="" style="width:26px;height:26px;border-radius:50%;flex-shrink:0;border:1.5px solid var(--gold);object-fit:cover;">
 <span id="profile-name-short" style="color:var(--text);font-size:.7rem;font-weight:800;font-family:'Nunito',sans-serif;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
 </div>
-</div><div id="lobby-inner"><div id="lobby-crown" onclick="window.togglePrivateChat()">👑</div><div id="lobby-sub">ONLINE MULTIPLAYER</div><div id="lobby-divider"></div><div id="lobby-cards" style="display:flex;flex-direction:row;gap:8px;width:100%;"><div class="s-tile" id="btn-create-room"><div class="s-tile-icon" style="background:linear-gradient(135deg,#f5a623,#e07b00);">🏠</div><div class="s-tile-label">Create</div><div class="s-tile-shine"></div></div><div class="s-tile" id="btn-join-room"><div class="s-tile-icon" style="background:linear-gradient(135deg,#00bcd4,#0086a0);">🔗</div><div class="s-tile-label">Join</div><div class="s-tile-shine"></div></div><div class="s-tile" id="btn-customization" style="border-color:rgba(245,200,66,0.35);"><div class="s-tile-icon" style="background:linear-gradient(135deg,#6b0000,#3a0000);"><svg width="17" height="17" viewBox="0 0 26 26" fill="none"><line x1="7" y1="19" x2="18" y2="8" stroke="#F5C518" stroke-width="2" stroke-linecap="round"/><rect x="5.5" y="17.5" width="3" height="3" rx="0.8" fill="#F5C518" transform="rotate(45,7,19)"/><circle cx="19" cy="7" r="2" fill="#ffe57a"/><path d="M19 3.5 V4.5 M19 9.5 V10.5 M15.5 7 H16.5 M21.5 7 H22.5" stroke="#F5C518" stroke-width="1.2" stroke-linecap="round"/><circle cx="11" cy="14" r="1" fill="#F5C518" opacity="0.8"/><path d="M22 14 L22.5 15 L23.5 15.3 L22.5 15.6 L22 16.5 L21.5 15.6 L20.5 15.3 L21.5 15 Z" fill="#ffe57a" opacity="0.9"/><path d="M6 9 L6.4 9.9 L7.4 10.2 L6.4 10.5 L6 11.4 L5.6 10.5 L4.6 10.2 L5.6 9.9 Z" fill="#fff3b0" opacity="0.9"/></svg></div><div class="s-tile-label">Customize</div><div class="s-tile-shine"></div></div></div><div id="rejoin-card" class="s-card" style="display:none;border-color:rgba(0,174,239,.4);background:rgba(0,174,239,.06);" onclick="window.tryRejoin()"><div class="s-card-icon" style="background:linear-gradient(135deg,#00AEEF,#0077aa);">🔄</div><div class="s-card-text"><div class="s-card-title">Rejoin Game</div><div class="s-card-sub" id="rejoin-sub">Tap to rejoin your last room</div></div><div class="s-card-arrow">›</div><div class="s-card-shine"></div></div><div id="lobby-conn" style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:11px;font-family:'Nunito',sans-serif;color:var(--muted);"><div id="lobby-conn-dot" style="width:8px;height:8px;border-radius:50%;background:#888;flex-shrink:0;transition:background 0.3s;"></div><span id="lobby-conn-text">Connecting to server...</span></div></div>
+</div><div id="lobby-inner"><div id="lobby-crown" onclick="window.togglePrivateChat()">👑</div><div id="lobby-sub">ONLINE MULTIPLAYER</div><div id="lobby-divider"></div><div id="lobby-cards" style="display:flex;flex-direction:column;gap:10px;width:100%;"><div class="s-card" id="btn-create-room"><div class="s-card-icon" style="background:linear-gradient(135deg,#f5a623,#e07b00);">🏠</div><div class="s-card-text"><div class="s-card-title">Create Room</div><div class="s-card-sub">Host a game and share the code</div></div><div class="s-card-arrow">›</div><div class="s-card-shine"></div></div><div class="s-card" id="btn-join-room"><div class="s-card-icon" style="background:linear-gradient(135deg,#00bcd4,#0086a0);">🔗</div><div class="s-card-text"><div class="s-card-title">Join Room</div><div class="s-card-sub">Enter a 6-digit room code</div></div><div class="s-card-arrow">›</div><div class="s-card-shine"></div></div><div class="s-card" id="btn-customization" style="border-color:rgba(245,200,66,0.35);"><div class="s-card-icon" style="background:linear-gradient(135deg,#6b0000,#3a0000);"><svg width="20" height="20" viewBox="0 0 26 26" fill="none"><line x1="7" y1="19" x2="18" y2="8" stroke="#F5C518" stroke-width="2" stroke-linecap="round"/><rect x="5.5" y="17.5" width="3" height="3" rx="0.8" fill="#F5C518" transform="rotate(45,7,19)"/><circle cx="19" cy="7" r="2" fill="#ffe57a"/><path d="M19 3.5 V4.5 M19 9.5 V10.5 M15.5 7 H16.5 M21.5 7 H22.5" stroke="#F5C518" stroke-width="1.2" stroke-linecap="round"/><circle cx="11" cy="14" r="1" fill="#F5C518" opacity="0.8"/><path d="M22 14 L22.5 15 L23.5 15.3 L22.5 15.6 L22 16.5 L21.5 15.6 L20.5 15.3 L21.5 15 Z" fill="#ffe57a" opacity="0.9"/><path d="M6 9 L6.4 9.9 L7.4 10.2 L6.4 10.5 L6 11.4 L5.6 10.5 L4.6 10.2 L5.6 9.9 Z" fill="#fff3b0" opacity="0.9"/></svg></div><div class="s-card-text"><div class="s-card-title">Customize</div><div class="s-card-sub">Themes, tokens & shields</div></div><div class="s-card-arrow">›</div><div class="s-card-shine"></div></div><div id="rejoin-card" class="s-card" style="display:none;border-color:rgba(0,174,239,.4);background:rgba(0,174,239,.06);" onclick="window.tryRejoin()"><div class="s-card-icon" style="background:linear-gradient(135deg,#00AEEF,#0077aa);">🔄</div><div class="s-card-text"><div class="s-card-title">Rejoin Game</div><div class="s-card-sub" id="rejoin-sub">Tap to rejoin your last room</div></div><div class="s-card-arrow">›</div><div class="s-card-shine"></div></div></div><div id="lobby-conn" style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:11px;font-family:'Nunito',sans-serif;color:var(--muted);"><div id="lobby-conn-dot" style="width:8px;height:8px;border-radius:50%;background:#888;flex-shrink:0;transition:background 0.3s;"></div><span id="lobby-conn-text">Connecting to server...</span></div></div>
 </div><div class="modal-overlay" id="modal-create"><div class="modal-box"><div class="modal-title">Create Room</div><div class="modal-sub">Choose number of players</div><div style="display:flex;gap:8px;width:100%;"><button class="modal-btn" id="btn-2p" style="flex:1;">2P</button><button class="modal-btn" id="btn-3p" style="flex:1;">3P</button><button class="modal-btn" id="btn-4p" style="flex:1;">4P</button></div><div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-radius:12px;border:1.5px solid rgba(155,110,232,.25);background:rgba(155,110,232,.06);cursor:pointer;gap:10px;width:100%;" onclick="_createToggleTeam()"><div style="display:flex;align-items:center;gap:8px;"><div><div style="color:var(--text);font-size:.82rem;font-weight:800;font-family:'Nunito',sans-serif;">Team Mode</div><div style="font-size:11px;margin-top:3px;font-family:'Nunito',sans-serif;font-weight:600;color:rgba(240,240,255,.4);">Two teams, one victory</div></div></div><div id="create-team-toggle" style="width:40px;height:22px;border-radius:11px;background:#2a2a55;border:1.5px solid #444466;position:relative;transition:all .2s;flex-shrink:0;"><div id="create-team-knob" style="position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#888;transition:all .2s;"></div></div></div><div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-radius:12px;border:1.5px solid rgba(155,110,232,.25);background:rgba(155,110,232,.06);cursor:pointer;gap:10px;width:100%;" onclick="_createToggleSpecial()"><div style="display:flex;align-items:center;gap:8px;"><div><div style="color:var(--text);font-size:.82rem;font-weight:800;font-family:'Nunito',sans-serif;">Special Mode</div><div style="font-size:11px;margin-top:3px;font-family:'Nunito',sans-serif;font-weight:600;color:rgba(240,240,255,.4);">Chaos meets strategy</div></div></div><div id="create-special-toggle" style="width:40px;height:22px;border-radius:11px;background:#2a2a55;border:1.5px solid #444466;position:relative;transition:all .2s;flex-shrink:0;"><div id="create-special-knob" style="position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#888;transition:all .2s;"></div></div></div><button class="modal-btn secondary" id="btn-cancel-create">Cancel</button></div>
 </div>
 <div class="modal-overlay" id="modal-waiting"><div class="modal-box"><div class="modal-title">Waiting for Players</div><div class="modal-sub">Share this code with friends</div><div class="room-code-display" id="display-room-code" title="Tap to copy">------</div><div class="copy-hint">📋 Tap to copy</div><div class="copy-toast" id="copy-toast">✓ Copied!</div><div id="player-list" style="display:flex;flex-direction:column;gap:6px;width:100%;"></div><div class="modal-sub waiting-dots" id="waiting-status">Waiting</div><div id="online-team-wrap" style="display:none;width:100%;"><div id="online-team-selector" style="display:none;width:100%;"></div></div><button class="modal-btn" id="btn-start-game" disabled style="background:var(--surface);border:1.5px solid var(--border2);color:var(--muted);">Start Game</button><button class="modal-btn secondary" id="btn-leave-waiting">Leave Room</button></div>
@@ -367,18 +367,38 @@ window.signInWithGoogle=async function(){
 if(!(await waitForRealFirebase())){showToast("❌ Cannot reach server. Check internet & try again.");return;}
 const provider=_getGoogleProvider();
 if(!provider){showToast("❌ Sign-in unavailable. Try again in a moment.");return;}
+const wasAnon=!!(auth.currentUser&&auth.currentUser.isAnonymous);
+try{
+const result=wasAnon?await auth.currentUser.linkWithPopup(provider):await auth.signInWithPopup(provider);
+if(result&&result.user)await _onGoogleSignedIn(result.user);
+}catch(err){
+if(err&&err.code==='auth/credential-already-in-use'){
+try{
+const result2=await auth.signInWithCredential(err.credential);
+await _onGoogleSignedIn(result2.user);
+}catch(err2){
+console.error('GOOGLE_SIGNIN_RESTORE_FAILED',err2);
+showToast("❌ Sign-in failed. Try again.");
+}
+}else if(err&&err.code==='auth/popup-blocked'){
+/* browser blocked the popup — fall back to the redirect flow as a safety net */
 try{
 localStorage.setItem('ludo_gsignin_pending','1');
-if(auth.currentUser&&auth.currentUser.isAnonymous){
-await auth.currentUser.linkWithRedirect(provider);
-}else{
-await auth.signInWithRedirect(provider);
-}
-/* page now navigates to Google — result is picked up by _handleGoogleRedirectResult() when it comes back */
-}catch(err){
+if(wasAnon){await auth.currentUser.linkWithRedirect(provider);}else{await auth.signInWithRedirect(provider);}
+}catch(err3){
 localStorage.removeItem('ludo_gsignin_pending');
-console.error('GOOGLE_SIGNIN_START_FAILED',{code:err&&err.code,message:err&&err.message});
+showToast("❌ Sign-in failed. Allow pop-ups and try again.");
+}
+}else if(err&&(err.code==='auth/popup-closed-by-user'||err.code==='auth/cancelled-popup-request')){
+/* user closed the popup themselves — no error toast needed */
+}else{
+console.error('GOOGLE_SIGNIN_FAILED',{code:err&&err.code,message:err&&err.message});
+if(err&&err.code==='auth/unauthorized-domain'){
+showToast("❌ Domain not authorized in Firebase (Authentication → Settings → Authorized domains).");
+}else{
 showToast("❌ Sign-in failed. Try again.");
+}
+}
 }
 };
 async function _handleGoogleRedirectResult(){
@@ -429,6 +449,7 @@ profile.name=user.displayName||profile.name;
 profile.photoURL=user.photoURL||profile.photoURL;
 }
 MY_PROFILE={uid,name:profile.name,photoURL:profile.photoURL,kills:profile.kills||0,wins:profile.wins||0,losses:profile.losses||0};
+try{localStorage.setItem('ludo_had_google','1');}catch(e){}
 _applyProfileToUI();
 try{
 if(user.displayName){
@@ -482,6 +503,7 @@ const uid=MY_PROFILE&&MY_PROFILE.uid;
 if(uid){try{db.ref('players/'+uid).off('value');}catch(e){}}
 await auth.signOut();
 }catch(e){}
+try{localStorage.removeItem('ludo_had_google');}catch(e){}
 MY_PROFILE=null;
 _applyProfileToUI();
 document.getElementById('modal-profile').classList.remove('show');
@@ -5953,16 +5975,49 @@ appId:"1:273830749078:web:b197c8e42fc24b2b8a73b7"
 }
 window.db=firebase.database();
 window.auth=firebase.auth();
+/* [FIX] Explicitly lock persistence to LOCAL (survives tab close, page
+   refresh, and full browser restart — cleared only if the user clears
+   site data). This is already Firebase's default, but setting it
+   explicitly — and waiting for it to resolve before touching auth —
+   removes any chance the SDK falls back to a weaker persistence mode
+   before we start reading/writing sign-in state. */
+window.auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(function(e){}).then(function(){
 if(typeof _patchFirebaseRefs==='function')_patchFirebaseRefs();
 let _authInitHandled=false;
+function _hadGoogleSessionBefore(){
+try{return localStorage.getItem('ludo_had_google')==='1';}catch(e){return false;}
+}
+function _fallbackToAnonIfStillUnhandled(){
+if(_authInitHandled)return;
+_authInitHandled=true;
+window.auth.signInAnonymously().catch(function(e){});
+}
 window.auth.onAuthStateChanged(function(u){
 if(u&&!u.isAnonymous&&typeof window._onGoogleSignedIn==='function'){
 window._onGoogleSignedIn(u);
 }
-if(!_authInitHandled){
+if(u){
+/* [FIX] a real user (Google-linked or anonymous) has arrived — never
+   mint a fresh anonymous user after this point, even if a delayed
+   grace-window fallback below is still pending. */
 _authInitHandled=true;
-if(!u){
-window.auth.signInAnonymously().catch(function(e){});
+return;
+}
+if(!_authInitHandled){
+if(_hadGoogleSessionBefore()){
+/* [FIX] this browser previously signed in with Google. Firebase's
+   own persisted-session restore is async and can occasionally take
+   a moment (slow connection, webview, first paint after browser
+   restart) — the very first onAuthStateChanged callback can fire
+   with null before that restore lands. Previously the code called
+   signInAnonymously() immediately on that first null, which mints a
+   brand-new anonymous UID and silently overwrites/orphans the real
+   linked session — this was the "sign-in disappears on refresh" bug.
+   Give the real session a short grace window to show up before
+   falling back. */
+setTimeout(_fallbackToAnonIfStillUnhandled,2000);
+}else{
+_fallbackToAnonIfStillUnhandled();
 }
 }
 });
@@ -5977,6 +6032,7 @@ const joinInput=document.getElementById('join-name-input');
 if(joinInput)joinInput.value=saved;
 }
 if(typeof window.checkRejoin==='function')window.checkRejoin();
+});
 }).catch(function(){
 });
 });
