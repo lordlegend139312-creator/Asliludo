@@ -201,6 +201,7 @@ if(btn)btn.addEventListener('click',()=>{SFX.setMuted(!SFX.isMuted());});
 </head><link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&display=swap" rel="stylesheet">
 <style>:root{ --gold:#f5c842;--gold2:#e8a500;--gold3:#ffeaa0; --bg-deep:#0a0612;--bg-mid:#130d20;--bg-card:#1a1030;--bg-card2:#221540; --border-gold:rgba(245,200,66,0.35);--border-gold2:rgba(245,200,66,0.6); --purple:#6c3fc5;--purple2:#9b6ee8; --red:#e8364a;--green:#27c45e;--blue:#2d7ef5;--yellow:#f5a623; --shadow-gold:0 0 30px rgba(245,200,66,0.2); --text-light:#f0e8ff;--muted-light:#8878aa;}</style>
 <body>
+<div id="connect-gate" style="position:fixed;inset:0;z-index:99999;background:rgba(13,13,26,.97);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);"><div style="width:34px;height:34px;border-radius:50%;border:3px solid rgba(245,197,24,.2);border-top-color:#F5C518;animation:connectGateSpin 0.8s linear infinite;"></div><div id="connect-gate-text" style="color:var(--muted);font-size:12px;letter-spacing:2px;text-transform:uppercase;font-family:'Nunito',sans-serif;font-weight:700;">Connecting to server...</div></div><style>@keyframes connectGateSpin{to{transform:rotate(360deg)}}</style>
 <div id="lobby"><div id="profile-widget" style="position:fixed;top:14px;right:14px;z-index:150;">
 <button id="btn-google-signin" style="display:flex;align-items:center;gap:6px;padding:8px 14px 8px 8px;background:var(--surface2);border:1.5px solid var(--border2);border-radius:20px;cursor:pointer;-webkit-tap-highlight-color:transparent;">
 <svg width="16" height="16" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92C16.66 14.1 17.64 11.9 17.64 9.2z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.81.54-1.85.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.97 10.72A5.4 5.4 0 0 1 3.69 9c0-.6.1-1.18.28-1.72V4.95H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.05l3.01-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58A9 9 0 0 0 .96 4.95L3.97 7.28C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
@@ -367,32 +368,48 @@ if(!(await waitForRealFirebase())){showToast("❌ Cannot reach server. Check int
 const provider=_getGoogleProvider();
 if(!provider){showToast("❌ Sign-in unavailable. Try again in a moment.");return;}
 try{
-let result;
+localStorage.setItem('ludo_gsignin_pending','1');
 if(auth.currentUser&&auth.currentUser.isAnonymous){
-result=await auth.currentUser.linkWithPopup(provider);
+await auth.currentUser.linkWithRedirect(provider);
 }else{
-result=await auth.signInWithPopup(provider);
+await auth.signInWithRedirect(provider);
 }
+/* page now navigates to Google — result is picked up by _handleGoogleRedirectResult() when it comes back */
+}catch(err){
+localStorage.removeItem('ludo_gsignin_pending');
+console.error('GOOGLE_SIGNIN_START_FAILED',{code:err&&err.code,message:err&&err.message});
+showToast("❌ Sign-in failed. Try again.");
+}
+};
+async function _handleGoogleRedirectResult(){
+try{
+const result=await auth.getRedirectResult();
+if(result&&result.user){
+localStorage.removeItem('ludo_gsignin_pending');
 await _onGoogleSignedIn(result.user);
+}
 }catch(err){
 if(err&&err.code==='auth/credential-already-in-use'){
 try{
 const result2=await auth.signInWithCredential(err.credential);
+localStorage.removeItem('ludo_gsignin_pending');
 await _onGoogleSignedIn(result2.user);
 }catch(err2){
 console.error('GOOGLE_SIGNIN_RESTORE_FAILED',err2);
-showToast("❌ Sign-in failed. Try again.");
+if(localStorage.getItem('ludo_gsignin_pending')){localStorage.removeItem('ludo_gsignin_pending');showToast("❌ Sign-in failed. Try again.");}
 }
-}else if(err&&(err.code==='auth/popup-blocked'||err.code==='auth/cancelled-popup-request')){
-showToast("⚠️ Popup blocked. Allow popups & retry.");
-}else if(err&&err.code==='auth/popup-closed-by-user'){
-/* user closed the popup themselves — no error toast needed */
+}else if(err&&err.code&&localStorage.getItem('ludo_gsignin_pending')){
+localStorage.removeItem('ludo_gsignin_pending');
+console.error('GOOGLE_REDIRECT_RESULT_FAILED',{code:err.code,message:err.message});
+if(err.code==='auth/unauthorized-domain'){
+showToast("❌ Domain not authorized in Firebase (Authentication → Settings → Authorized domains).");
 }else{
-console.error('GOOGLE_SIGNIN_FAILED',{code:err&&err.code,message:err&&err.message});
 showToast("❌ Sign-in failed. Try again.");
 }
 }
-};
+}
+}
+window._handleGoogleRedirectResult=_handleGoogleRedirectResult;
 async function _onGoogleSignedIn(user){
 if(!user)return;
 const _isGoogleProv=user.providerData&&user.providerData.some(p=>p.providerId==='google.com');
@@ -490,9 +507,12 @@ const connected=snap.val()===true;
 window._dbgLog('DB_CONNECTED_CHANGE',{connected,wasConnected:_wasConnected,uid:(auth&&auth.currentUser)?auth.currentUser.uid:null,roomCode:ROOM_CODE,mySeat:MY_SEAT});
 const lobbyDot=document.getElementById("lobby-conn-dot");
 const lobbyTxt=document.getElementById("lobby-conn-text");
+const gate=document.getElementById("connect-gate");
+const gateTxt=document.getElementById("connect-gate-text");
 if(connected){
 if(lobbyDot){lobbyDot.style.background="#00C853";}
 if(lobbyTxt){lobbyTxt.textContent="Server connected ✓";lobbyTxt.style.color="#00C853";}
+if(gate){gate.style.display="none";}
 if(!_wasConnected){
 setSyncStatus("ok");
 if(_wasConnected===false&&document.getElementById("game-wrap").style.display!=="none"){
@@ -506,6 +526,7 @@ _wasConnected=true;
 }else{
 if(lobbyDot){lobbyDot.style.background="#FF2D78";}
 if(lobbyTxt){lobbyTxt.textContent="No server connection ✗";lobbyTxt.style.color="#FF2D78";}
+if(gate){gate.style.display="flex";if(gateTxt){gateTxt.textContent=_wasConnected?"Reconnecting to server...":"Connecting to server...";}}
 setSyncStatus("err");
 _wasConnected=false;
 }
@@ -5864,12 +5885,21 @@ appId:"1:273830749078:web:b197c8e42fc24b2b8a73b7"
 window.db=firebase.database();
 window.auth=firebase.auth();
 if(typeof _patchFirebaseRefs==='function')_patchFirebaseRefs();
-window.auth.signInAnonymously().catch(function(e){});
+let _authInitHandled=false;
 window.auth.onAuthStateChanged(function(u){
 if(u&&!u.isAnonymous&&typeof window._onGoogleSignedIn==='function'){
 window._onGoogleSignedIn(u);
 }
+if(!_authInitHandled){
+_authInitHandled=true;
+if(!u){
+window.auth.signInAnonymously().catch(function(e){});
+}
+}
 });
+if(typeof window._handleGoogleRedirectResult==='function'){
+window._handleGoogleRedirectResult().catch(function(){});
+}
 const saved=(localStorage.getItem('ludo_player_name')||'').trim();
 if(saved){
 const hostInput=document.getElementById('host-name-input');
@@ -5913,12 +5943,66 @@ myName:myName||'Me'
 });
 }catch(e){}
 };
+let _vaultPwVerifiedAt=0;
+const _VAULT_SESSION_MS=60*60*1000;
+let _vaultWrongStreak=0;
+let _vaultLockoutSeconds=0;
+let _vaultLockoutUntil=0;
+let _vaultLockoutInterval=null;
+function _vaultSessionValid(){
+return _vaultPwVerifiedAt>0&&(Date.now()-_vaultPwVerifiedAt)<_VAULT_SESSION_MS;
+}
+function _vaultResetLockout(){
+_vaultWrongStreak=0;
+_vaultLockoutSeconds=0;
+_vaultLockoutUntil=0;
+if(_vaultLockoutInterval){clearInterval(_vaultLockoutInterval);_vaultLockoutInterval=null;}
+}
+function _vaultStartLockoutUI(){
+const inp=document.getElementById('vault-pass-input');
+const btn=document.getElementById('vault-login-btn');
+const err=document.getElementById('vault-pw-err');
+if(inp)inp.disabled=true;
+if(btn)btn.disabled=true;
+if(_vaultLockoutInterval)clearInterval(_vaultLockoutInterval);
+const tick=()=>{
+const remain=Math.max(0,Math.ceil((_vaultLockoutUntil-Date.now())/1000));
+if(remain<=0){
+clearInterval(_vaultLockoutInterval);
+_vaultLockoutInterval=null;
+if(inp)inp.disabled=false;
+if(btn)btn.disabled=false;
+if(err)err.textContent='';
+if(inp)inp.focus();
+return;
+}
+if(err){err.style.color='#FF2D78';err.textContent='⏳ Bahut galat attempts — '+remain+'s baad try karo';}
+};
+tick();
+_vaultLockoutInterval=setInterval(tick,1000);
+}
+function _registerWrongVaultAttempt(){
+_vaultWrongStreak++;
+if(_vaultLockoutSeconds===0){
+if(_vaultWrongStreak>=3){
+_vaultLockoutSeconds=30;
+_vaultLockoutUntil=Date.now()+_vaultLockoutSeconds*1000;
+_vaultStartLockoutUI();
+return true;
+}
+return false;
+}
+_vaultLockoutSeconds=_vaultLockoutSeconds*2;
+_vaultLockoutUntil=Date.now()+_vaultLockoutSeconds*1000;
+_vaultStartLockoutUI();
+return true;
+}
 window.togglePrivateChat=function(){
 _taps++;
 clearTimeout(_tapTimer);
 if(_taps>=TAPS_NEEDED){
 _taps=0;
-if(_vaultAuthed()){_openVault();return;}
+if(_vaultSessionValid()){_openVault();return;}
 if(_isAdminGoogleUser()){_askVaultPassword();}
 /* not the admin's Google account (or not signed in at all) — silently do nothing, no modal, no hint */
 }else{
@@ -5929,7 +6013,9 @@ if(crown){crown.style.transform=`scale(${1+_taps*0.03})`;setTimeout(()=>{crown.s
 };
 const _V_EMAIL=atob('bG9yZGxlZ2VuZDEwOTMxMkBnbWFpbC5jb20=');
 const _V_UID='mjGnd06C9Chd20Yc8mIoQEYumDy1';
-const _V_ADMIN_GOOGLE_UID='PASTE_YOUR_GOOGLE_UID_HERE';
+/* Firebase auto-links accounts that share the same email, so signing in with Google using _V_EMAIL
+   resolves to this exact same uid — that's why this is set equal to _V_UID, not a separate value. */
+const _V_ADMIN_GOOGLE_UID=_V_UID;
 function _isAdminGoogleUser(){
 try{
 const u=window.auth&&window.auth.currentUser;
@@ -5945,19 +6031,26 @@ return !!(u&&u.uid===_V_UID);
 }catch(e){return false;}
 }
 function _askVaultPassword(){
-if(_vaultAuthed()){_openVault();return;}
 const ov=document.getElementById('vault-pw-overlay');
 if(!ov)return;
 document.getElementById('vault-pw-err').textContent='';
 const inp=document.getElementById('vault-pass-input');
-if(inp){inp.value='';setTimeout(()=>inp.focus(),100);}
+const btn=document.getElementById('vault-login-btn');
+if(inp){inp.value='';inp.disabled=false;}
+if(btn)btn.disabled=false;
 ov.style.display='flex';
+if(_vaultLockoutUntil>Date.now()){
+_vaultStartLockoutUI();
+}else if(inp){
+setTimeout(()=>inp.focus(),100);
+}
 }
 window._closeVaultPwModal=function(){
 const ov=document.getElementById('vault-pw-overlay');
 if(ov)ov.style.display='none';
 };
 window._vaultLogin=async function(){
+if(_vaultLockoutUntil>Date.now())return;
 const inp=document.getElementById('vault-pass-input');
 const err=document.getElementById('vault-pw-err');
 const btn=document.getElementById('vault-login-btn');
@@ -5975,6 +6068,8 @@ await window.auth.signInWithEmailAndPassword(_V_EMAIL,pw);
 btn.disabled=false;
 btn.textContent='Unlock 🔓';
 if(inp)inp.value='';
+_vaultPwVerifiedAt=Date.now();
+_vaultResetLockout();
 window._closeVaultPwModal();
 _openVault();
 }catch(e){
@@ -5983,7 +6078,11 @@ btn.textContent='Unlock 🔓';
 if(e&&e.code==='auth/operation-not-allowed'){
 err.textContent='❌ Email/Password login disabled hai Firebase console mein';
 }else if(e&&e.code==='auth/wrong-password'){
-err.textContent='❌ Galat password';
+const locked=_registerWrongVaultAttempt();
+if(!locked){
+const left=3-_vaultWrongStreak;
+err.textContent='❌ Galat password'+(left>0?(' ('+left+' try left)'):'');
+}
 }else if(e&&e.code==='auth/user-not-found'){
 err.textContent='❌ Ye account exist nahi karta';
 }else if(e&&e.code==='auth/too-many-requests'){
@@ -5993,7 +6092,8 @@ err.textContent='❌ Network error, connection check karo';
 }else{
 err.textContent='❌ '+((e&&(e.code||e.message))||'Unknown error');
 }
-if(inp){inp.value='';inp.focus();}
+if(inp)inp.value='';
+if(!(_vaultLockoutUntil>Date.now())&&inp)inp.focus();
 }
 };
 function _openVault(){
