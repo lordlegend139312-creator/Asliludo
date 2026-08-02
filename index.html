@@ -395,6 +395,8 @@ showToast("❌ Sign-in failed. Try again.");
 };
 async function _onGoogleSignedIn(user){
 if(!user)return;
+const _isGoogleProv=user.providerData&&user.providerData.some(p=>p.providerId==='google.com');
+if(!_isGoogleProv)return;
 const uid=user.uid;
 const ref=db.ref('players/'+uid);
 let snap;
@@ -5916,7 +5918,9 @@ _taps++;
 clearTimeout(_tapTimer);
 if(_taps>=TAPS_NEEDED){
 _taps=0;
-_askVaultPassword();
+if(_vaultAuthed()){_openVault();return;}
+if(_isAdminGoogleUser()){_askVaultPassword();}
+/* not the admin's Google account (or not signed in at all) — silently do nothing, no modal, no hint */
 }else{
 _tapTimer=setTimeout(()=>{_taps=0;},RESET_MS);
 const crown=document.getElementById('lobby-crown');
@@ -5925,6 +5929,15 @@ if(crown){crown.style.transform=`scale(${1+_taps*0.03})`;setTimeout(()=>{crown.s
 };
 const _V_EMAIL=atob('bG9yZGxlZ2VuZDEwOTMxMkBnbWFpbC5jb20=');
 const _V_UID='mjGnd06C9Chd20Yc8mIoQEYumDy1';
+const _V_ADMIN_GOOGLE_UID='PASTE_YOUR_GOOGLE_UID_HERE';
+function _isAdminGoogleUser(){
+try{
+const u=window.auth&&window.auth.currentUser;
+if(!u||u.isAnonymous)return false;
+const isGoogle=u.providerData&&u.providerData.some(p=>p.providerId==='google.com');
+return !!(isGoogle&&u.uid===_V_ADMIN_GOOGLE_UID);
+}catch(e){return false;}
+}
 function _vaultAuthed(){
 try{
 const u=window.auth&&window.auth.currentUser;
