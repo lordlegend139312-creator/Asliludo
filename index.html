@@ -5,6 +5,7 @@
 /* ===== [DBG] TEMP DIAGNOSTIC LOGGING — standalone, runs first, isolated from rest of app (remove after done) ===== */
 (function(){
 try{
+window._DBG_ENABLED=true;
 if(!window._DBG_ENABLED){
   /* [DBG] disabled — set window._DBG_ENABLED=true before this script to re-enable full logging+UI.
      _dbgLog is kept as a no-op so scattered calls elsewhere in the app don't throw. */
