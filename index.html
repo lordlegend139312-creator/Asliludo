@@ -368,36 +368,26 @@ if(!(await waitForRealFirebase())){showToast("❌ Cannot reach server. Check int
 const provider=_getGoogleProvider();
 if(!provider){showToast("❌ Sign-in unavailable. Try again in a moment.");return;}
 const wasAnon=!!(auth.currentUser&&auth.currentUser.isAnonymous);
-try{
-const result=wasAnon?await auth.currentUser.linkWithPopup(provider):await auth.signInWithPopup(provider);
-if(result&&result.user)await _onGoogleSignedIn(result.user);
-}catch(err){
-if(err&&err.code==='auth/credential-already-in-use'){
-try{
-const result2=await auth.signInWithCredential(err.credential);
-await _onGoogleSignedIn(result2.user);
-}catch(err2){
-console.error('GOOGLE_SIGNIN_RESTORE_FAILED',err2);
-showToast("❌ Sign-in failed. Try again.");
-}
-}else if(err&&err.code==='auth/popup-blocked'){
-/* browser blocked the popup — fall back to the redirect flow as a safety net */
+/* [FIX] Google sign-in now always goes through the redirect flow instead of
+   a popup. signInWithPopup relies on a cross-window handshake back to this
+   tab that mobile Chrome frequently breaks when third-party storage is
+   restricted (very common on Android + a non-Firebase-Hosting domain like
+   GitHub Pages) — the popup actually completes on Google's side, but the
+   result never reaches this tab, and the SDK misreports it as the user
+   having closed the popup. That failure was previously swallowed silently,
+   which is why tapping "Sign in" appeared to do nothing. signInWithRedirect
+   navigates the whole tab instead, so there's no cross-window message to
+   lose — the same approach Firebase recommends for mobile web. */
 try{
 localStorage.setItem('ludo_gsignin_pending','1');
 if(wasAnon){await auth.currentUser.linkWithRedirect(provider);}else{await auth.signInWithRedirect(provider);}
-}catch(err3){
+}catch(err){
 localStorage.removeItem('ludo_gsignin_pending');
-showToast("❌ Sign-in failed. Allow pop-ups and try again.");
-}
-}else if(err&&(err.code==='auth/popup-closed-by-user'||err.code==='auth/cancelled-popup-request')){
-/* user closed the popup themselves — no error toast needed */
-}else{
 console.error('GOOGLE_SIGNIN_FAILED',{code:err&&err.code,message:err&&err.message});
 if(err&&err.code==='auth/unauthorized-domain'){
 showToast("❌ Domain not authorized in Firebase (Authentication → Settings → Authorized domains).");
 }else{
 showToast("❌ Sign-in failed. Try again.");
-}
 }
 }
 };
@@ -433,7 +423,14 @@ window._handleGoogleRedirectResult=_handleGoogleRedirectResult;
 async function _onGoogleSignedIn(user){
 if(!user)return;
 const _isGoogleProv=user.providerData&&user.providerData.some(p=>p.providerId==='google.com');
-if(!_isGoogleProv)return;
+if(!_isGoogleProv){
+/* [FIX] this used to return silently, which looked identical to "nothing
+   happened" from the user's side. If sign-in ever reaches this point
+   without Google in providerData again, at least surface it. */
+console.warn('SIGNIN_SKIPPED_NOT_GOOGLE_PROVIDER',user&&user.uid,user&&user.providerData);
+showToast("⚠️ Sign-in didn't complete. Please try again.");
+return;
+}
 const uid=user.uid;
 const ref=db.ref('players/'+uid);
 let snap;
