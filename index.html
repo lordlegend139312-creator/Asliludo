@@ -354,85 +354,99 @@ console.error('ANON_SIGNIN_FAILED',{code:err.code,message:err.message});
 _setAuthReady();
 });
 /* ---------- Google Profile System (Kills/Wins/Losses — survives browser data clear) ---------- */
-let _googleProvider=null;
 let MY_PROFILE=null;
 let _statsRoomLogged=null;
-function _getGoogleProvider(){
-if(!_googleProvider&&window.firebase&&firebase.auth&&firebase.auth.GoogleAuthProvider){
-_googleProvider=new firebase.auth.GoogleAuthProvider();
+/* [FIX] Replaced Firebase's own popup/redirect Google sign-in with Google
+   Identity Services (GSI) directly. Both signInWithPopup and
+   signInWithRedirect route the OAuth handshake through the Firebase
+   authDomain (ludo-king-ka-baap.firebaseapp.com) — a different origin than
+   this GitHub Pages site. Completing that handshake requires a hidden
+   iframe on this page to read/write storage on the authDomain's origin,
+   which mobile Chrome/Safari silently block under third-party storage
+   partitioning. That's why the popup looked "closed" and the redirect came
+   back with an empty result (no user, no error) even though sign-in
+   succeeded on Google's side.
+   GSI's token client talks to accounts.google.com in a real popup with no
+   Firebase authDomain in the loop, so there's no third-party storage
+   handshake to break. We get an access token straight from Google and hand
+   it to Firebase's signInWithCredential/linkWithCredential — a plain
+   network call, not a storage/iframe dance. */
+const GOOGLE_WEB_CLIENT_ID='273830749078-cglidp9hq93darv2j2q26jkrvk3gsm45.apps.googleusercontent.com';
+let _gsiLoading=null;
+function _loadGSI(){
+if(window.google&&window.google.accounts&&window.google.accounts.oauth2)return Promise.resolve(true);
+if(_gsiLoading)return _gsiLoading;
+_gsiLoading=new Promise((resolve)=>{
+const s=document.createElement('script');
+s.src='https://accounts.google.com/gsi/client';
+s.async=true;s.defer=true;
+s.onload=()=>resolve(!!(window.google&&window.google.accounts&&window.google.accounts.oauth2));
+s.onerror=()=>resolve(false);
+document.head.appendChild(s);
+});
+return _gsiLoading;
 }
-return _googleProvider;
-}
-window.signInWithGoogle=async function(){
-if(!(await waitForRealFirebase())){showToast("❌ Cannot reach server. Check internet & try again.");return;}
-const provider=_getGoogleProvider();
-if(!provider){showToast("❌ Sign-in unavailable. Try again in a moment.");return;}
+let _gsiTokenClient=null;
+async function _completeGoogleSignIn(accessToken){
+const credential=firebase.auth.GoogleAuthProvider.credential(null,accessToken);
 const wasAnon=!!(auth.currentUser&&auth.currentUser.isAnonymous);
-/* [FIX] Google sign-in now always goes through the redirect flow instead of
-   a popup. signInWithPopup relies on a cross-window handshake back to this
-   tab that mobile Chrome frequently breaks when third-party storage is
-   restricted (very common on Android + a non-Firebase-Hosting domain like
-   GitHub Pages) — the popup actually completes on Google's side, but the
-   result never reaches this tab, and the SDK misreports it as the user
-   having closed the popup. That failure was previously swallowed silently,
-   which is why tapping "Sign in" appeared to do nothing. signInWithRedirect
-   navigates the whole tab instead, so there's no cross-window message to
-   lose — the same approach Firebase recommends for mobile web. */
 try{
-localStorage.setItem('ludo_gsignin_pending','1');
-if(wasAnon){await auth.currentUser.linkWithRedirect(provider);}else{await auth.signInWithRedirect(provider);}
+const result=wasAnon?await auth.currentUser.linkWithCredential(credential):await auth.signInWithCredential(credential);
+await _onGoogleSignedIn(result.user);
 }catch(err){
-localStorage.removeItem('ludo_gsignin_pending');
-console.error('GOOGLE_SIGNIN_FAILED',{code:err&&err.code,message:err&&err.message});
+if(err&&err.code==='auth/credential-already-in-use'){
+try{
+const result2=await auth.signInWithCredential(err.credential);
+await _onGoogleSignedIn(result2.user);
+}catch(err2){
+const _dbgInfo='GOOGLE_SIGNIN_RESTORE_FAILED\ncode: '+(err2&&err2.code)+'\nmessage: '+(err2&&err2.message);
+console.error(_dbgInfo);
+if(typeof window.showSignInDebug==='function')window.showSignInDebug(_dbgInfo);
+showToast("❌ Sign-in failed. Try again.");
+}
+}else{
+const _dbgInfo='GOOGLE_SIGNIN_FAILED\ncode: '+(err&&err.code)+'\nmessage: '+(err&&err.message);
+console.error(_dbgInfo);
+if(typeof window.showSignInDebug==='function')window.showSignInDebug(_dbgInfo);
 if(err&&err.code==='auth/unauthorized-domain'){
 showToast("❌ Domain not authorized in Firebase (Authentication → Settings → Authorized domains).");
 }else{
 showToast("❌ Sign-in failed. Try again.");
 }
 }
-};
-async function _handleGoogleRedirectResult(){
-try{
-const result=await auth.getRedirectResult();
-if(result&&result.user){
-localStorage.removeItem('ludo_gsignin_pending');
-await _onGoogleSignedIn(result.user);
-}else if(localStorage.getItem('ludo_gsignin_pending')){
-/* [FIX] we navigated away for sign-in and came back, but Firebase
-   returned no user and threw no error — this is the silent-failure
-   case we're chasing. Surface it instead of leaving no trace. */
-const _dbgInfo='REDIRECT_RESULT_EMPTY\nhasResult: '+(!!result)+'\ncurrentUser: '+(auth.currentUser?auth.currentUser.uid:'null')+'\nisAnon: '+(auth.currentUser?auth.currentUser.isAnonymous:'n/a')+'\nurl: '+location.href;
-console.warn(_dbgInfo);
-if(typeof window.showSignInDebug==='function')window.showSignInDebug(_dbgInfo);
-localStorage.removeItem('ludo_gsignin_pending');
-showToast("⚠️ Google sign-in didn't complete. Please try again.");
 }
-}catch(err){
-if(err&&err.code==='auth/credential-already-in-use'){
-try{
-const result2=await auth.signInWithCredential(err.credential);
-localStorage.removeItem('ludo_gsignin_pending');
-await _onGoogleSignedIn(result2.user);
-}catch(err2){
-const _dbgInfo='GOOGLE_SIGNIN_RESTORE_FAILED\ncode: '+(err2&&err2.code)+'\nmessage: '+(err2&&err2.message);
-console.error(_dbgInfo);
-if(typeof window.showSignInDebug==='function')window.showSignInDebug(_dbgInfo);
-if(localStorage.getItem('ludo_gsignin_pending')){localStorage.removeItem('ludo_gsignin_pending');showToast("❌ Sign-in failed. Try again.");}
 }
-}else if(err&&err.code&&localStorage.getItem('ludo_gsignin_pending')){
-localStorage.removeItem('ludo_gsignin_pending');
-const _dbgInfo='GOOGLE_REDIRECT_RESULT_FAILED\ncode: '+err.code+'\nmessage: '+err.message;
-console.error(_dbgInfo);
-if(typeof window.showSignInDebug==='function')window.showSignInDebug(_dbgInfo);
-if(err.code==='auth/unauthorized-domain'){
-showToast("❌ Domain not authorized in Firebase (Authentication → Settings → Authorized domains).");
+window.signInWithGoogle=async function(){
+if(!(await waitForRealFirebase())){showToast("❌ Cannot reach server. Check internet & try again.");return;}
+const gsiOk=await _loadGSI();
+if(!gsiOk||!(window.google&&window.google.accounts&&window.google.accounts.oauth2)){
+showToast("❌ Sign-in unavailable. Try again in a moment.");return;
+}
+if(!_gsiTokenClient){
+_gsiTokenClient=google.accounts.oauth2.initTokenClient({
+client_id:GOOGLE_WEB_CLIENT_ID,
+scope:'email profile',
+callback:async(resp)=>{
+if(!resp||!resp.access_token){
+console.error('GOOGLE_GSI_NO_TOKEN',resp);
+showToast("❌ Sign-in failed. Try again.");
+return;
+}
+await _completeGoogleSignIn(resp.access_token);
+},
+error_callback:(err)=>{
+if(err&&(err.type==='popup_closed'||err.type==='user_logged_out'))return;
+console.error('GOOGLE_GSI_ERROR',err);
+if(err&&err.type==='popup_failed_to_open'){
+showToast("❌ Popup blocked. Allow popups & try again.");
 }else{
-showToast("❌ Sign-in failed ("+err.code+"). Try again.");
+showToast("❌ Sign-in failed. Try again.");
 }
 }
+});
 }
-}
-window._handleGoogleRedirectResult=_handleGoogleRedirectResult;
+_gsiTokenClient.requestAccessToken({prompt:''});
+};
 async function _onGoogleSignedIn(user){
 if(!user)return;
 const _isGoogleProv=user.providerData&&user.providerData.some(p=>p.providerId==='google.com');
@@ -6033,9 +6047,7 @@ _authInitHandled=true;
 return;
 }
 if(!_authInitHandled){
-let _pendingRedirect=false;
-try{_pendingRedirect=localStorage.getItem('ludo_gsignin_pending')==='1';}catch(e){}
-if(_pendingRedirect||_hadGoogleSessionBefore()){
+if(_hadGoogleSessionBefore()){
 /* [FIX] this browser previously signed in with Google. Firebase's
    own persisted-session restore is async and can occasionally take
    a moment (slow connection, webview, first paint after browser
@@ -6044,18 +6056,13 @@ if(_pendingRedirect||_hadGoogleSessionBefore()){
    signInAnonymously() immediately on that first null, which mints a
    brand-new anonymous UID and silently overwrites/orphans the real
    linked session — this was the "sign-in disappears on refresh" bug.
-   Give the real session a grace window to show up before falling
-   back — longer if we know a redirect sign-in just happened, since
-   getRedirectResult() needs more slack than a plain restore. */
-setTimeout(_fallbackToAnonIfStillUnhandled,_pendingRedirect?6000:2000);
+   Give the real session a grace window to show up before falling back. */
+setTimeout(_fallbackToAnonIfStillUnhandled,2000);
 }else{
 _fallbackToAnonIfStillUnhandled();
 }
 }
 });
-if(typeof window._handleGoogleRedirectResult==='function'){
-window._handleGoogleRedirectResult().catch(function(){});
-}
 const saved=(localStorage.getItem('ludo_player_name')||'').trim();
 if(saved){
 const hostInput=document.getElementById('host-name-input');
