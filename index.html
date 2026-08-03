@@ -1426,18 +1426,20 @@ let G={turn:0,diceVal:null,rolled:false,waiting:false,over:false,sixes:0,tokens:
 let G_PAUSED=false;
 let _rolling=false;
 let _animating=false;
-let _pendingDroppedTokens=null;
+let _pendingDroppedTokensQueue=[];
 function _replayPendingDroppedTokens(){
-if(!_pendingDroppedTokens)return;
-const incoming=_pendingDroppedTokens;
-_pendingDroppedTokens=null;
+if(!_pendingDroppedTokensQueue.length)return;
+const queue=_pendingDroppedTokensQueue;
+_pendingDroppedTokensQueue=[];
+queue.forEach(incoming=>{
 incoming.forEach(ip=>{
 const cur=G.tokens.find(t=>t.pid===ip.pid&&t.tid===ip.tid);
 if(!cur)return;
 if(ip.step<cur.step)return;
 cur.step=ip.step;
 });
-_dbgLog('ONLINE_REPLAY_PENDING_TOKENS',{tokens:incoming.map(t=>({pid:t.pid,tid:t.tid,step:t.step}))});
+});
+_dbgLog('ONLINE_REPLAY_PENDING_TOKENS',{batches:queue.length,tokens:queue[queue.length-1].map(t=>({pid:t.pid,tid:t.tid,step:t.step}))});
 renderTokens();
 }
 let _gameLoaded=false;
@@ -2321,7 +2323,7 @@ const _multiRecv={};
 data.tokens.forEach(t=>{if(t.step>0&&t.step<STEP_DONE){const k=`s${t.step}`;(_multiRecv[k]=_multiRecv[k]||[]).push(`${t.pid}-${t.tid}`);}});
 const _hasStack=Object.values(_multiRecv).some(a=>a.length>=2);
 if(_hasStack)_dbgLog('ONLINE_FB_TOKENS_SKIPPED_ANIMATING',{reason:'local _animating=true, remote tokens update dropped, queued for replay',incomingStacks:_multiRecv});
-_pendingDroppedTokens=JSON.parse(JSON.stringify(data.tokens));
+_pendingDroppedTokensQueue.push(JSON.parse(JSON.stringify(data.tokens)));
 }
 }
 syncUI();
@@ -2472,7 +2474,7 @@ window._teamAssign=DEFAULT_TEAM_ASSIGN;
 window._teamSwapSelectedSeat=null;
 const _onTeamWrap=document.getElementById('online-team-wrap');
 if(_onTeamWrap)_onTeamWrap.style.display='none';
-_rolling=false;_animating=false;_onlineSeats=new Set();_pendingDroppedTokens=null;
+_rolling=false;_animating=false;_onlineSeats=new Set();_pendingDroppedTokensQueue=[];
 Object.keys(_processedMoveTs).forEach(k=>delete _processedMoveTs[k]);
 Object.keys(_lastSeenDice).forEach(k=>delete _lastSeenDice[k]);
 _lastTimerTurn=-1;
@@ -2525,7 +2527,7 @@ if(ROOM_CODE&&MY_SEAT!==null){
 _unbindPresence();
 }
 ROOM_CODE=null;MY_SEAT=null;IS_HOST=false;MY_SLOT=0;
-_rolling=false;_animating=false;_onlineSeats=new Set();_pendingDroppedTokens=null;
+_rolling=false;_animating=false;_onlineSeats=new Set();_pendingDroppedTokensQueue=[];
 _lastTimerTurn=-1;
 _cachedElderResult=null;_cachedElderOnlineSet='';
 _forcedElderSeat=null;
@@ -2550,7 +2552,7 @@ if(ROOM_CODE&&MY_SEAT!==null){
 _unbindPresence();
 }
 ROOM_CODE=null;MY_SEAT=null;IS_HOST=false;MY_SLOT=0;
-_rolling=false;_animating=false;_onlineSeats=new Set();_pendingDroppedTokens=null;
+_rolling=false;_animating=false;_onlineSeats=new Set();_pendingDroppedTokensQueue=[];
 _lastTimerTurn=-1;
 _cachedElderResult=null;_cachedElderOnlineSet='';
 _forcedElderSeat=null;
@@ -5383,7 +5385,7 @@ clearTimeout(_abandonCheckTimer);_abandonCheckTimer=null;
 _stopHeartbeat();
 _listeners.forEach(fn=>fn());_listeners=[];
 _gameStarted=false;_gameStartLock=false;_pendingSync=[];
-_rolling=false;_animating=false;_onlineSeats=new Set();_pendingDroppedTokens=null;
+_rolling=false;_animating=false;_onlineSeats=new Set();_pendingDroppedTokensQueue=[];
 Object.keys(_processedMoveTs).forEach(k=>delete _processedMoveTs[k]);
 Object.keys(_lastSeenDice).forEach(k=>delete _lastSeenDice[k]);
 _lastTimerTurn=-1;_cachedElderResult=null;_cachedElderOnlineSet='';
