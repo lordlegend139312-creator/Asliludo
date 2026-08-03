@@ -1431,15 +1431,19 @@ function _replayPendingDroppedTokens(){
 if(!_pendingDroppedTokensQueue.length)return;
 const queue=_pendingDroppedTokensQueue;
 _pendingDroppedTokensQueue=[];
-queue.forEach(incoming=>{
-incoming.forEach(ip=>{
+// [FIX] Each queued entry is a FULL authoritative tokens snapshot from Firebase at the moment
+// it was dropped. Only the LAST (most recent) one matters — intermediate drops are superseded.
+// Previously this merged every batch with a "only apply if step increased" guard, which meant
+// a legitimate capture (token sent back to step 0) arriving mid-animation got silently ignored,
+// leaving the token stuck at its old position/stack until some unrelated future render fixed it.
+// Now we just trust the latest snapshot completely, same as a normal (non-dropped) Firebase update.
+const latest=queue[queue.length-1];
+latest.forEach(ip=>{
 const cur=G.tokens.find(t=>t.pid===ip.pid&&t.tid===ip.tid);
 if(!cur)return;
-if(ip.step<cur.step)return;
-cur.step=ip.step;
+Object.assign(cur,ip);
 });
-});
-_dbgLog('ONLINE_REPLAY_PENDING_TOKENS',{batches:queue.length,tokens:queue[queue.length-1].map(t=>({pid:t.pid,tid:t.tid,step:t.step}))});
+_dbgLog('ONLINE_REPLAY_PENDING_TOKENS',{batchesDropped:queue.length,appliedFrom:'latest_only',tokens:latest.map(t=>({pid:t.pid,tid:t.tid,step:t.step}))});
 renderTokens();
 }
 let _gameLoaded=false;
@@ -4263,6 +4267,36 @@ els.shield.className='tok-shield';
 }
 });
 for(const key of Object.keys(_tokEls)){if(!alive.has(key))_removeTokEl(key);}
+// [DBG] STAR_STACK_INTEGRITY — for every cell with 3+ tokens, verify each token
+// actually has a live DOM element that is attached, visible, and has a real transform.
+// If any entry below shows missing:true, inDOM:false, display:none/opacity:0, or
+// transform:null, THAT is the "3rd token silently missing" bug.
+Object.keys(groups).forEach(rcKey=>{
+const grp=groups[rcKey];
+if(grp.length<3)return;
+const _layer=document.getElementById('tokens-layer');
+const report=grp.map(t=>{
+const k=`${t.pid}-${t.tid}`;
+const el=_tokEls[k];
+if(!el)return{key:k,missing:true};
+const inDOM=!!(el.wrap&&_layer&&_layer.contains(el.wrap));
+const cs=el.wrap?getComputedStyle(el.wrap):null;
+return{key:k,missing:false,inDOM,display:cs?cs.display:null,opacity:cs?cs.opacity:null,transform:el.wrap?el.wrap.style.transform:null,rw:el.wrap?el.wrap.dataset.rw:null,rc:el.wrap?el.wrap.dataset.rc:null};
+});
+_dbgLog('STAR_STACK_INTEGRITY',{rcKey,isStarCell:SAFE.has(rcKey),count:grp.length,ids:grp.map(t=>`${t.pid}-${t.tid}(step${t.step})`),report});
+});
+// [DBG] TOK_DOM_COUNT_MISMATCH — compares how many .tok elements physically exist in the DOM
+// vs how many tokens we believe are "alive" this render. A mismatch means either stale elements
+// weren't cleaned up, or an element failed to get created for a live token.
+{
+const _layer=document.getElementById('tokens-layer');
+const _layerCount=_layer?_layer.querySelectorAll('.tok').length:0;
+const _aliveCount=alive.size;
+const _tokElsCount=Object.keys(_tokEls).length;
+if(_layerCount!==_aliveCount||_layerCount!==_tokElsCount){
+_dbgLog('TOK_DOM_COUNT_MISMATCH',{layerCount:_layerCount,aliveCount:_aliveCount,tokElsCount:_tokElsCount,totalGTokens:G.tokens.length,aliveKeys:[...alive],tokElsKeys:Object.keys(_tokEls)});
+}
+}
 if(!window._dbgLastHeartbeat||Date.now()-window._dbgLastHeartbeat>2000){
 window._dbgLastHeartbeat=Date.now();
 try{
