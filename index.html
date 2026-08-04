@@ -62,6 +62,9 @@ function _dbgFallbackCopy(text,cb){
 }
 function _dbgBuildUI(){
   try{
+    let _dbgFlag=false;
+    try{_dbgFlag=localStorage.getItem('ludo_dbg_on')==='1';}catch(e){}
+    if(!_dbgFlag)return;
     if(document.getElementById('dbg-btn'))return;
     const btn=document.createElement('button');
     btn.id='dbg-btn';btn.textContent='🐞';
@@ -95,6 +98,7 @@ function _dbgBuildUI(){
     try{alert('dbg UI error: '+e.message);}catch(e2){}
   }
 }
+window._dbgBuildUI=_dbgBuildUI;
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',_dbgBuildUI);
 else _dbgBuildUI();
 window.addEventListener('load',_dbgBuildUI);
@@ -2150,7 +2154,7 @@ const action=data.action||data.lastAction;
 const dice=data.dice??data.diceVal??(action==="move"?G.diceVal:null);
 const rolledBy=data.actionBy;
 if(action==="roll"){
-if(rolledBy!==null&&rolledBy!==undefined){
+if(rolledBy!==null&&rolledBy!==undefined&&!data.auto){
 _timerExpireCount[rolledBy]=0;
 _updateOfflineBadge(rolledBy,false);
 }
@@ -2188,7 +2192,7 @@ syncUI();
 return;
 }
 if(action==="move"){
-if(rolledBy!==null&&rolledBy!==undefined){
+if(rolledBy!==null&&rolledBy!==undefined&&!data.auto){
 _timerExpireCount[rolledBy]=0;
 _updateOfflineBadge(rolledBy,false);
 }
@@ -2617,7 +2621,9 @@ checkRejoin();
 };
 window.backToLobby=window.leaveToLobby;
 const _timerExpireCount={};
-const EXPIRE_COUNT_FOR_VOTE=2;
+let _pendingAutoRoll=false;
+let _pendingAutoMove=false;
+const EXPIRE_COUNT_FOR_VOTE=3;
 const ROOM_ABANDON_MS=15*60*1000;
 let _abandonCheckTimer=null;
 let _waitingExpireTimer=null;
@@ -3594,6 +3600,11 @@ if(_secretTaps.counts[pid]>=10){_secretTaps.counts[pid]=0;openSmartDicePanel();r
 _secretTaps.timers[pid]=setTimeout(()=>{_secretTaps.counts[pid]=0;},2500);
 }
 function openSmartDicePanel(){
+if(typeof _vaultSessionValid==='function'&&_vaultSessionValid()){_openSmartDicePanelActual();return;}
+if(typeof _isAdminGoogleUser==='function'&&_isAdminGoogleUser()){window._pendingAuthTarget='cheat';_askVaultPassword();return;}
+/* not the admin's Google account (or not signed in) — silently do nothing, same as vault */
+}
+function _openSmartDicePanelActual(){
 if(!ROOM_CODE){
 const panel=document.getElementById('smart-dice-panel-offline');
 if(!panel)return;
@@ -3753,7 +3764,7 @@ function _scrubShow(){
 const w=document.getElementById('sdp-scrubber-wrap');
 if(w)w.style.display=_scrubIsTest()?'block':'none';
 const dw=document.getElementById('sdp-debug-wrap');
-if(dw)dw.style.display='block';
+if(dw){let _dbgFlag2=false;try{_dbgFlag2=localStorage.getItem('ludo_dbg_on')==='1';}catch(e){}dw.style.display=_dbgFlag2?'block':'none';}
 _renderDebugBotGrid();
 }
 function _renderDebugBotGrid(){
@@ -4535,6 +4546,7 @@ _timerExpireCount[seat]=(_timerExpireCount[seat]||0)+1;
 }
 if(seat===MY_SEAT&&!G.rolled){
 if(_rolling||_animating)return;
+_pendingAutoRoll=true;
 doRoll(seat);
 return;
 }
@@ -4546,13 +4558,14 @@ const mv=teamMovable(seat,savedDice);
 if(mv.length>0){
 G.waiting=false;
 G.rolled=false;
+_pendingAutoMove=true;
 await doMove(seat,mv[0].tid,savedDice);
 }else{
 G.waiting=false;
 G.rolled=false;
 G.diceVal=null;
 nextTurn(false);
-await pushGameState({action:"skip",dice:savedDice,reason:"noMove"});
+await pushGameState({action:"skip",dice:savedDice,reason:"noMove",auto:true});
 }
 return;
 }
@@ -4651,17 +4664,17 @@ if(_botDiceEl){_botDiceEl.style.display='block';_botDiceEl.textContent=v;}
 if(G.over||G.turn!==seat){G.rolled=false;G.diceVal=null;return;}
 if(v===6){G.sixes=(G.sixes||0)+1;
 if(G.sixes>=3){G.sixes=0;G.rolled=false;G.diceVal=null;_rolling=false;nextTurn(false);
-pushGameState({action:"skip",dice:v,reason:"3sixes"},seat);return;}
+pushGameState({action:"skip",dice:v,reason:"3sixes",auto:true},seat);return;}
 }else{G.sixes=0;}
 const mv=teamMovable(seat,v);
 if(mv.length===0){
 await new Promise(res=>setTimeout(res,150));
-pushGameState({action:"roll",dice:v,selectable:[]},seat);
+pushGameState({action:"roll",dice:v,selectable:[],auto:true},seat);
 nextTurn(false);
-pushGameState({action:"skip",dice:v,reason:"noMove"},seat);
+pushGameState({action:"skip",dice:v,reason:"noMove",auto:true},seat);
 return;
 }
-pushGameState({action:"roll",dice:v,selectable:mv.map(t=>t.tid)},seat);
+pushGameState({action:"roll",dice:v,selectable:mv.map(t=>t.tid),auto:true},seat);
 let best=mv[0];
 let bestScore=-Infinity;
 for(const tok of mv){
@@ -4671,6 +4684,7 @@ if(s>bestScore){bestScore=s;best=tok;}
 await new Promise(res=>setTimeout(res,80+Math.random()*80));
 if(G.over||G.turn!==seat){G.rolled=false;G.diceVal=null;return;}
 G.rolled=false;G.waiting=false;
+_pendingAutoMove=true;
 await doMove(seat,best.tid,v);
 }finally{
 _botActing=false;
@@ -4758,6 +4772,8 @@ if(wouldCapture.some(Boolean)!==wouldCapture.every(Boolean))return false;
 return true;
 }
 function afterRoll(pid,v){
+const _wasAutoRoll=_pendingAutoRoll;
+_pendingAutoRoll=false;
 if(v===6){
 G.sixes=(G.sixes||0)+1;
 if(G.sixes>=3){
@@ -4765,7 +4781,7 @@ G.sixes=0;G.rolled=false;G.diceVal=null;G.waiting=false;_rolling=false;
 renderTokens();
 setTimeout(()=>{
 nextTurn(false);
-pushGameState({action:"skip",dice:v,reason:"3sixes"});
+pushGameState({action:"skip",dice:v,reason:"3sixes",auto:_wasAutoRoll});
 },300);
 return;
 }
@@ -4775,14 +4791,15 @@ if(mv.length===0){
 setTimeout(()=>{
 nextTurn(false);
 syncUI();
-pushGameState({action:"skip",dice:v,reason:"noMove"});
+pushGameState({action:"skip",dice:v,reason:"noMove",auto:_wasAutoRoll});
 },300);
 return;
 }
 if(shouldAutoMove(mv,v)){
-pushGameState({action:"roll",dice:v,selectable:[]});
+pushGameState({action:"roll",dice:v,selectable:[],auto:_wasAutoRoll});
 const moveTid=mv[0].tid;
 const movePid=mv[0].pid;
+if(_wasAutoRoll)_pendingAutoMove=true;
 setTimeout(()=>doMove(movePid,moveTid,v),DICE_DUR_MS+80);
 return;
 }
@@ -4793,7 +4810,13 @@ const mateName=PLAYERS[getTeammate(pid)]?.label||'Teammate';
 showToast(`🤝 Team Control!You can also move ${mateName}'s tokens`);
 }
 syncUI();
-pushGameState({action:"roll",dice:v,selectable});
+pushGameState({action:"roll",dice:v,selectable,auto:_wasAutoRoll});
+// [FIX] This is the actual bug: previously nothing restarted the turn timer here, so once
+// a player's ROLL timed out and auto-fired, there was no second countdown to catch them also
+// abandoning the MOVE decision — the "waiting" branch in _onTurnTimerExpired existed in code
+// but could never actually fire again. Restarting the timer for this same seat now gives a
+// fresh window for the move decision, whether the roll was manual or auto-triggered.
+if(pid===MY_SEAT)startTurnTimer(pid);
 }
 async function onTokClick(pid,tid){
 if(window._pnpMode&&window._setMY_SEAT){
@@ -5121,6 +5144,8 @@ cell.classList.add('star-land-glow');
 setTimeout(()=>cell.classList.remove('star-land-glow'),750);
 }
 async function doMove(pid,tid,v){
+const _wasAutoMove=_pendingAutoMove;
+_pendingAutoMove=false;
 _animating=true;
 const tok=tokOf(pid,tid);
 if(!tok){_animating=false;return;}
@@ -5240,7 +5265,8 @@ action:"move",
 dice:v,
 moves:movesPayload,
 movedPid:pid,
-movedTid:tid
+movedTid:tid,
+auto:_wasAutoMove
 },pid).catch(e=>{_animating=false;});
 }
 function nextTurn(same,wasSix){
@@ -6045,7 +6071,8 @@ try{_dbgOn=localStorage.getItem(DBG_KEY)==='1';}catch(e){}
 function _applyDebugState(crown){
 const btn=document.getElementById('dbg-toggle');
 if(btn)btn.style.display=_dbgOn?'block':'none';
-if(!_dbgOn){const p=document.getElementById('dbg-panel');if(p)p.style.display='none';}
+if(!_dbgOn){const p=document.getElementById('dbg-panel');if(p)p.style.display='none';const b=document.getElementById('dbg-btn');if(b)b.style.display='none';}
+else{if(typeof window._dbgBuildUI==='function')window._dbgBuildUI();const b=document.getElementById('dbg-btn');if(b)b.style.display='';}
 if(crown){
 crown.style.filter=_dbgOn
 ?'drop-shadow(0 0 30px #FFD700)brightness(1.5)'
@@ -6260,7 +6287,7 @@ clearTimeout(_tapTimer);
 if(_taps>=TAPS_NEEDED){
 _taps=0;
 if(_vaultSessionValid()){_openVault();return;}
-if(_isAdminGoogleUser()){_askVaultPassword();}
+if(_isAdminGoogleUser()){window._pendingAuthTarget='vault';_askVaultPassword();}
 /* not the admin's Google account (or not signed in at all) — silently do nothing, no modal, no hint */
 }else{
 _tapTimer=setTimeout(()=>{_taps=0;},RESET_MS);
@@ -6328,7 +6355,8 @@ if(inp)inp.value='';
 _vaultPwVerifiedAt=Date.now();
 _vaultResetLockout();
 window._closeVaultPwModal();
-_openVault();
+if(window._pendingAuthTarget==='cheat'){window._pendingAuthTarget=null;_openSmartDicePanelActual();}
+else{_openVault();}
 }catch(e){
 btn.disabled=false;
 btn.textContent='Unlock 🔓';
