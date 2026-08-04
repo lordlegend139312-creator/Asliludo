@@ -395,9 +395,10 @@ try{
 const result=wasAnon?await auth.currentUser.linkWithCredential(credential):await auth.signInWithCredential(credential);
 await _onGoogleSignedIn(result.user);
 }catch(err){
-if(err&&err.code==='auth/credential-already-in-use'){
+if(err&&(err.code==='auth/credential-already-in-use'||err.code==='auth/email-already-in-use')){
 try{
-const result2=await auth.signInWithCredential(err.credential);
+const cred2=err.credential||credential;
+const result2=await auth.signInWithCredential(cred2);
 await _onGoogleSignedIn(result2.user);
 }catch(err2){
 const _dbgInfo='GOOGLE_SIGNIN_RESTORE_FAILED\ncode: '+(err2&&err2.code)+'\nmessage: '+(err2&&err2.message);
@@ -424,9 +425,10 @@ try{
 const result=wasAnon?await auth.currentUser.linkWithCredential(credential):await auth.signInWithCredential(credential);
 await _onGoogleSignedIn(result.user);
 }catch(err){
-if(err&&err.code==='auth/credential-already-in-use'){
+if(err&&(err.code==='auth/credential-already-in-use'||err.code==='auth/email-already-in-use')){
 try{
-const result2=await auth.signInWithCredential(err.credential);
+const cred2=err.credential||credential;
+const result2=await auth.signInWithCredential(cred2);
 await _onGoogleSignedIn(result2.user);
 }catch(err2){
 console.error('ONE_TAP_RESTORE_FAILED',{code:err2&&err2.code,message:err2&&err2.message});
@@ -459,35 +461,41 @@ google.accounts.id.prompt();
 }catch(e){console.error('ONE_TAP_INIT_FAILED',e);}
 };
 window.signInWithGoogle=async function(){
-if(!(await waitForRealFirebase())){showToast("❌ Cannot reach server. Check internet & try again.");return;}
-const gsiOk=await _loadGSI();
-if(!gsiOk||!(window.google&&window.google.accounts&&window.google.accounts.oauth2)){
-showToast("❌ Sign-in unavailable. Try again in a moment.");return;
-}
-if(!_gsiTokenClient){
-_gsiTokenClient=google.accounts.oauth2.initTokenClient({
-client_id:GOOGLE_WEB_CLIENT_ID,
-scope:'email profile',
-callback:async(resp)=>{
-if(!resp||!resp.access_token){
-console.error('GOOGLE_GSI_NO_TOKEN',resp);
-showToast("❌ Sign-in failed. Try again.");
-return;
-}
-await _completeGoogleSignIn(resp.access_token);
-},
-error_callback:(err)=>{
-if(err&&(err.type==='popup_closed'||err.type==='user_logged_out'))return;
-console.error('GOOGLE_GSI_ERROR',err);
-if(err&&err.type==='popup_failed_to_open'){
-showToast("❌ Popup blocked. Allow popups & try again.");
-}else{
-showToast("❌ Sign-in failed. Try again.");
-}
-}
-});
-}
-_gsiTokenClient.requestAccessToken({prompt:''});
+// [FIX] Popup-based sign-in (GSI requestAccessToken) opens a real new tab/window.
+// On aggressive-memory-management Android phones (MIUI/Xiaomi, some OnePlus/Samsung
+// battery savers), the ORIGINAL tab gets suspended/killed the moment it goes background
+// while the popup is open — so by the time Google returns the token, the page has already
+// reloaded and the pending JS callback is gone. Sign-in succeeds on Google's side but never
+// reaches the app. Redirect flow avoids this entirely: it's the SAME tab navigating away and
+// back (no second window to kill), and the token comes back in the URL on next load — so it
+// survives even if the tab process itself got fully killed and recreated while backgrounded.
+try{
+sessionStorage.setItem('ludo_gsignin_return','1');
+}catch(e){}
+const redirectUri=location.origin+location.pathname;
+const authUrl='https://accounts.google.com/o/oauth2/v2/auth'
++'?client_id='+encodeURIComponent(GOOGLE_WEB_CLIENT_ID)
++'&redirect_uri='+encodeURIComponent(redirectUri)
++'&response_type=token'
++'&scope='+encodeURIComponent('email profile')
++'&include_granted_scopes=true'
++'&prompt=select_account';
+location.href=authUrl;
+};
+window._checkGoogleRedirectReturn=async function(){
+// Runs on every page load. If we're returning from the redirect above, the access token
+// is in the URL fragment (#access_token=...). Parse it, clean the URL, complete sign-in.
+if(!location.hash||location.hash.indexOf('access_token=')===-1)return;
+const params=new URLSearchParams(location.hash.slice(1));
+const accessToken=params.get('access_token');
+const error=params.get('error');
+history.replaceState(null,'',location.pathname+location.search);
+try{sessionStorage.removeItem('ludo_gsignin_return');}catch(e){}
+if(error){console.error('GOOGLE_REDIRECT_ERROR',error);showToast&&showToast("❌ Sign-in failed. Try again.");return;}
+if(!accessToken)return;
+if(!(await waitForRealFirebase(8000))){showToast&&showToast("❌ Cannot reach server. Check internet & try again.");return;}
+await waitForAuth().catch(()=>{});
+await _completeGoogleSignIn(accessToken);
 };
 async function _onGoogleSignedIn(user){
 if(!user)return;
@@ -6149,7 +6157,13 @@ const joinInput=document.getElementById('join-name-input');
 if(joinInput)joinInput.value=saved;
 }
 if(typeof window.checkRejoin==='function')window.checkRejoin();
-setTimeout(function(){if(typeof window._initGoogleOneTap==='function')window._initGoogleOneTap();},2500);
+if(typeof window._checkGoogleRedirectReturn==='function'){
+window._checkGoogleRedirectReturn().then(function(){
+setTimeout(function(){if(!MY_PROFILE&&typeof window._initGoogleOneTap==='function')window._initGoogleOneTap();},2500);
+});
+}else{
+setTimeout(function(){if(!MY_PROFILE&&typeof window._initGoogleOneTap==='function')window._initGoogleOneTap();},2500);
+}
 });
 }).catch(function(){
 });
