@@ -417,6 +417,47 @@ showToast("❌ Sign-in failed. Try again.");
 }
 }
 }
+async function _completeGoogleSignInIdToken(idToken){
+const credential=firebase.auth.GoogleAuthProvider.credential(idToken);
+const wasAnon=!!(auth.currentUser&&auth.currentUser.isAnonymous);
+try{
+const result=wasAnon?await auth.currentUser.linkWithCredential(credential):await auth.signInWithCredential(credential);
+await _onGoogleSignedIn(result.user);
+}catch(err){
+if(err&&err.code==='auth/credential-already-in-use'){
+try{
+const result2=await auth.signInWithCredential(err.credential);
+await _onGoogleSignedIn(result2.user);
+}catch(err2){
+console.error('ONE_TAP_RESTORE_FAILED',{code:err2&&err2.code,message:err2&&err2.message});
+}
+}else{
+console.error('ONE_TAP_SIGNIN_FAILED',{code:err&&err.code,message:err&&err.message});
+}
+}
+}
+window._initGoogleOneTap=async function(){
+// [FEATURE] Google One Tap — auto-appears top-right on page load if the browser has a
+// signed-in Google session, letting the user pick an account (or "use another account")
+// with a single tap, no separate button click needed. Falls back silently to nothing if
+// suppressed/unavailable — the existing "Sign in with Google" button always still works.
+try{
+if(MY_PROFILE)return; // already signed in with Google, nothing to prompt
+if(!(await waitForRealFirebase(6000)))return;
+const gsiOk=await _loadGSI();
+if(!gsiOk||!(window.google&&window.google.accounts&&window.google.accounts.id))return;
+google.accounts.id.initialize({
+client_id:GOOGLE_WEB_CLIENT_ID,
+callback:async(resp)=>{
+if(!resp||!resp.credential){console.error('ONE_TAP_NO_CREDENTIAL',resp);return;}
+await _completeGoogleSignInIdToken(resp.credential);
+},
+auto_select:false,
+cancel_on_tap_outside:true
+});
+google.accounts.id.prompt();
+}catch(e){console.error('ONE_TAP_INIT_FAILED',e);}
+};
 window.signInWithGoogle=async function(){
 if(!(await waitForRealFirebase())){showToast("❌ Cannot reach server. Check internet & try again.");return;}
 const gsiOk=await _loadGSI();
@@ -6108,6 +6149,7 @@ const joinInput=document.getElementById('join-name-input');
 if(joinInput)joinInput.value=saved;
 }
 if(typeof window.checkRejoin==='function')window.checkRejoin();
+setTimeout(function(){if(typeof window._initGoogleOneTap==='function')window._initGoogleOneTap();},2500);
 });
 }).catch(function(){
 });
