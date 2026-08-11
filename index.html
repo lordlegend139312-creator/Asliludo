@@ -62,9 +62,9 @@ function _dbgFallbackCopy(text,cb){
 }
 function _dbgBuildUI(){
   try{
-    let _dbgFlag=false;
-    try{_dbgFlag=localStorage.getItem('ludo_dbg_on')==='1';}catch(e){}
-    if(!_dbgFlag)return;
+    /* [DBG] always-on for now — the old crown-tap toggle referenced an
+       element (id="hs-crown-dbg") that doesn't exist in the markup, so
+       the panel was unreachable. Forcing it on until debugging is done. */
     if(document.getElementById('dbg-btn'))return;
     const btn=document.createElement('button');
     btn.id='dbg-btn';btn.textContent='🐞';
@@ -81,12 +81,20 @@ function _dbgBuildUI(){
     <pre id="dbg-log" style="flex:1;overflow:auto;background:#111;color:#0f0;font-size:10px;padding:8px;border-radius:8px;margin:0;white-space:pre-wrap;word-break:break-all;"></pre>`;
     document.body.appendChild(btn);document.body.appendChild(panel);
     const logEl=panel.querySelector('#dbg-log'),countEl=panel.querySelector('#dbg-count');
-    function refresh(){logEl.textContent=window._dbgFormatAll();countEl.textContent=window._dbg.length+' log entries';logEl.scrollTop=logEl.scrollHeight;}
+    /* [DBG] show only presence/connection related entries — that's the bug being chased right now */
+    const _dbgFilterTags=['BIND_PRESENCE','DB_CONNECTED_CHANGE','PLAYERS_SNAPSHOT','JOIN_MEMBER','UNBIND_PRESENCE','AUTH_STATE_CHANGED','PROMISE_REJECTION','CONSOLE_ERROR','CONSOLE_WARN'];
+    function _dbgFiltered(){return window._dbg.filter(e=>_dbgFilterTags.some(t=>e.tag.indexOf(t)===0));}
+    function refresh(){
+      const rows=_dbgFiltered();
+      logEl.textContent=rows.map(e=>`[${e.t}] ${e.tag} :: ${JSON.stringify(e.data)}`).join('\n');
+      countEl.textContent=rows.length+' / '+window._dbg.length+' log entries (presence-related only)';
+      logEl.scrollTop=logEl.scrollHeight;
+    }
     btn.addEventListener('click',()=>{panel.style.display='flex';refresh();});
     panel.querySelector('#dbg-close').addEventListener('click',()=>{panel.style.display='none';});
     panel.querySelector('#dbg-clear').addEventListener('click',()=>{window._dbg=[];window._dbgPersist();refresh();});
     panel.querySelector('#dbg-copy').addEventListener('click',()=>{
-      const text=window._dbgFormatAll()||'(no logs yet)';
+      const text=_dbgFiltered().map(e=>`[${e.t}] ${e.tag} :: ${JSON.stringify(e.data)}`).join('\n')||'(no logs yet)';
       const b=panel.querySelector('#dbg-copy'),old=b.textContent;
       const done=()=>{b.textContent='✅ Copied!';setTimeout(()=>{b.textContent=old;},1200);};
       if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done).catch(()=>_dbgFallbackCopy(text,done));}
