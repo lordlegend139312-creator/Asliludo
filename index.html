@@ -1955,6 +1955,9 @@ newAssign[seatA]=newAssign[seatB];
 newAssign[seatB]=tmp;
 db.ref(`rooms/${ROOM_CODE}/colorAssign`).set(newAssign).catch(()=>{});
 };
+const _awayGraceTimers={};
+const _lastRenderedOnline={};
+const AWAY_GRACE_MS=6000;
 function updatePlayerList(players){
 window._lobbyPlayers=players;
 const container=document.getElementById("player-list");
@@ -1972,7 +1975,18 @@ div.className="player-slot";
 const isSelf=p.seat===MY_SEAT;
 const lobbyColor=ca[p.seat]||SEAT_COLOR[p.seat]||"#888";
 const colorLabel=colorNames[lobbyColor]||"";
-const pOnline=!!(p.conns&&Object.keys(p.conns).length)||p.online===true;
+const rawOnline=!!(p.conns&&Object.keys(p.conns).length)||p.online===true;
+if(rawOnline){
+if(_awayGraceTimers[p.seat]){clearTimeout(_awayGraceTimers[p.seat]);delete _awayGraceTimers[p.seat];}
+_lastRenderedOnline[p.seat]=true;
+}else if(_lastRenderedOnline[p.seat]!==false&&!_awayGraceTimers[p.seat]){
+_awayGraceTimers[p.seat]=setTimeout(()=>{
+delete _awayGraceTimers[p.seat];
+_lastRenderedOnline[p.seat]=false;
+updatePlayerList(window._lobbyPlayers||{});
+},AWAY_GRACE_MS);
+}
+const pOnline=rawOnline||_lastRenderedOnline[p.seat]===true;
 const tag=isSelf?`<span style="color:${lobbyColor};font-size:.75rem;">(You · ${colorLabel})</span>`:`<span style="color:${lobbyColor};font-size:.75rem;">(${colorLabel})</span>`;
 div.innerHTML=`
 <div class="player-slot-dot" style="background:${lobbyColor};box-shadow:0 0 6px ${lobbyColor}88;"></div>
