@@ -271,7 +271,7 @@ if(btn)btn.addEventListener('click',()=>{SFX.setMuted(!SFX.isMuted());});
 <div id="win"><canvas id="win-confetti-canvas"></canvas><div id="win-content"><div id="win-trophy">🏆</div><h1 id="win-msg">You Win!</h1><div id="win-podium"></div><button id="btn-play-again">Play Again</button><button id="btn-back-lobby" style="padding:12px 44px;font-size:.88rem;border:1.5px solid var(--border2);border-radius:14px;cursor:pointer;background:var(--surface);color:var(--muted);font-weight:800;letter-spacing:.5px;opacity:0;animation:slideUp 0.5s 1.05s ease-out forwards;transition:transform 0.12s,background 0.12s,color 0.12s;" onmouseover="this.style.background='var(--surface2)';this.style.color='var(--text)'" onmouseout="this.style.background='var(--surface)';this.style.color='var(--muted)'">🏠 Back to Lobby</button></div>
 </div>
 <div id="toast"></div><div id="signin-debug-box" style="display:none;position:fixed;left:12px;right:12px;bottom:90px;z-index:99998;background:var(--surface2);border:1.5px solid var(--gold);border-radius:12px;padding:12px 14px;box-shadow:0 8px 30px rgba(0,0,0,.6);"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;"><span style="color:var(--gold);font-size:11px;font-weight:800;font-family:'Rajdhani',sans-serif;letter-spacing:1px;">SIGN-IN DEBUG INFO</span><button onclick="document.getElementById('signin-debug-box').style.display='none'" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:2px 8px;line-height:1;">×</button></div><div id="signin-debug-text" style="color:var(--text);font-size:11px;font-family:monospace;white-space:pre-wrap;word-break:break-word;line-height:1.5;max-height:200px;overflow-y:auto;"></div><button onclick="try{navigator.clipboard.writeText(document.getElementById('signin-debug-text').textContent);showToast('📋 Copied!');}catch(e){}" style="margin-top:8px;width:100%;padding:9px 0;font-size:11px;font-weight:800;border:none;border-radius:8px;background:var(--gold);color:#1a1204;cursor:pointer;">Copy to send to dev</button></div>
-<div id="chat-panel"><div id="chat-header"><span id="chat-header-title">💬 GAME CHAT</span><button id="chat-bubble-mute" type="button" title="Mute chat popups">🔔</button><button id="chat-close" type="button" ontouchstart="event.preventDefault();event.stopImmediatePropagation();window.toggleChat();">✕</button></div><div id="chat-messages"></div><div id="chat-reply-bar"><div id="chat-reply-bar-line"></div><div id="chat-reply-bar-content"><div id="chat-reply-bar-name"></div><div id="chat-reply-bar-text"></div></div><button id="chat-reply-cancel" onclick="window.clearReply()">✕</button></div><div id="chat-input-row"><input id="chat-input" type="text" inputmode="text" maxlength="120" placeholder="Say something..." autocomplete="off"><button id="chat-send">➤</button></div>
+<div id="chat-panel"><div id="chat-header"><span id="chat-header-title">💬 GAME CHAT</span><button id="chat-bubble-mute" type="button" title="Mute chat popups">🔔</button><button id="chat-close" type="button">✕</button></div><div id="chat-messages"></div><div id="chat-reply-bar"><div id="chat-reply-bar-line"></div><div id="chat-reply-bar-content"><div id="chat-reply-bar-name"></div><div id="chat-reply-bar-text"></div></div><button id="chat-reply-cancel" onclick="window.clearReply()">✕</button></div><div id="chat-input-row"><input id="chat-input" type="text" inputmode="text" maxlength="120" placeholder="Say something..." autocomplete="off"><button id="chat-send">➤</button></div>
 </div>
 <script>(function(){
 var noopRef={
@@ -3774,12 +3774,13 @@ const _sde={
 recentRolls:{0:[],1:[],2:[],3:[]},
 biasCooldown:{0:0,1:0,2:0,3:0},
 turnsSinceSix:{0:0,1:0,2:0,3:0},
+badStreak:{0:0,1:0,2:0,3:0},
 lastTokenStuckTurns:{0:0,1:0,2:0,3:0},
 lastTokenLastStep:{0:null,1:null,2:null,3:null},
 matchBiasMul:1,
 };
 function _sdeReset(){
-[0,1,2,3].forEach(p=>{_sde.recentRolls[p]=[];_sde.biasCooldown[p]=0;_sde.turnsSinceSix[p]=0;_sde.lastTokenStuckTurns[p]=0;_sde.lastTokenLastStep[p]=null;});
+[0,1,2,3].forEach(p=>{_sde.recentRolls[p]=[];_sde.biasCooldown[p]=0;_sde.turnsSinceSix[p]=0;_sde.badStreak[p]=0;_sde.lastTokenStuckTurns[p]=0;_sde.lastTokenLastStep[p]=null;});
 // per-match randomization: each match gets its own bias intensity (0.7x-1.3x)
 // so overall balancing "feel" varies a bit game to game instead of being identical every time
 _sde.matchBiasMul=0.7+Math.random()*0.6;
@@ -3929,9 +3930,16 @@ const blockSix=(G.sixes||0)>=2;
 const myToks=toksOf(pid);
 const debugInfo={playerId:pid,tokensLocked:myToks.filter(t=>t.step===0).length,tokensFinished:myToks.filter(t=>t.step>=STEP_DONE).length,turnsSinceSix:_sde.turnsSinceSix[pid],weightsApplied:[]};
 if(Math.random()<0.40){
-if(!blockSix)_sde.turnsSinceSix[pid]++;
-_sdeRecordTelemetry(Object.assign(debugInfo,{skipped:true,diceResult:null}));
-return null;
+let skipResult=rng();
+if(blockSix){let a=0;while(skipResult===6&&a<20){skipResult=rng();a++;}}
+_sde.recentRolls[pid].push(skipResult);
+if(_sde.recentRolls[pid].length>5)_sde.recentRolls[pid].shift();
+if(skipResult===6){_sde.turnsSinceSix[pid]=0;}
+else if(!blockSix){_sde.turnsSinceSix[pid]++;}
+if(skipResult<=2){_sde.badStreak[pid]++;}
+else{_sde.badStreak[pid]=0;}
+_sdeRecordTelemetry(Object.assign(debugInfo,{skipped:true,diceResult:skipResult}));
+return skipResult;
 }
 const dist=[1/6,1/6,1/6,1/6,1/6,1/6];
 const mul=_sde.matchBiasMul;
@@ -3956,6 +3964,20 @@ if(pity>0){
 dist[5]+=pity;
 dist[0]-=pity*0.25;dist[1]-=pity*0.25;dist[2]-=pity*0.25;dist[3]-=pity*0.25;
 debugInfo.weightsApplied.push(`sixPity(${tss})`);
+}
+}
+// 3. bad-luck streak pity - consecutive low rolls (1-2) nudge future rolls upward
+if(_sde.badStreak[pid]>=2){
+const streak=_sde.badStreak[pid];
+let bp=0;
+if(streak===2)bp=3/100;
+else if(streak===3)bp=6/100;
+else if(streak>=4)bp=10/100;
+bp*=mul;
+if(bp>0){
+dist[3]+=bp*0.3;dist[4]+=bp*0.35;if(!blockSix)dist[5]+=bp*0.35;
+dist[0]-=bp*0.4;dist[1]-=bp*0.3;dist[2]-=bp*0.3;
+debugInfo.weightsApplied.push(`badLuckPity(${streak})`);
 }
 }
 // 4. home-stretch entry bonus
@@ -4050,6 +4072,8 @@ _sde.recentRolls[pid].push(result);
 if(_sde.recentRolls[pid].length>5)_sde.recentRolls[pid].shift();
 if(result===6){_sde.turnsSinceSix[pid]=0;}
 else if(!blockSix){_sde.turnsSinceSix[pid]++;}
+if(result<=2){_sde.badStreak[pid]++;}
+else{_sde.badStreak[pid]=0;}
 _sdeRecordTelemetry(Object.assign(debugInfo,{diceResult:result,homeStretchEntryAvailable:entryVal!==null,exactFinishAvailable:nearHomeVal!==null,killAvailable:killVals.length>0,killNumbers:killVals,playerProgress:_rbProgress(pid),finalProbabilityDistribution:finalDist.slice()}));
 return result;
 }
@@ -6199,7 +6223,7 @@ replyQuoteHTML=`<div class="chat-reply-quote">
 </div>`;
 }
 const _ej=_emojiOnlyInfo(msg.text);
-const _ejCls=(!msg.replyTo&&_ej.only)?(_ej.count<=1?" emoji-x1":_ej.count<=3?" emoji-x2":""):"";
+const _ejCls=_ej.only?(_ej.count<=1?" emoji-x1":_ej.count<=3?" emoji-x2":""):"";
 div.innerHTML=`
 <div class="chat-msg-meta">
 <div class="chat-msg-dot" style="background:${color}"></div>
