@@ -690,7 +690,15 @@ showToast("🟢 Reconnected!");
 if(ROOM_CODE&&MY_SEAT!==null){
 _bindPresence(ROOM_CODE,MY_SEAT);
 }
+/* [FIX] only resync on a REAL drop (was actually disconnected for
+   >5s), not a brief mobile-network blip — those are common exactly
+   around timer-expiry/auto-move moments and firing a resync on every
+   one of them was stomping in-progress moves (see _forceResyncGame
+   guard below too). */
+if(_disconnectedAt&&(Date.now()-_disconnectedAt>5000)){
 _forceResyncGame('reconnect');
+}
+_disconnectedAt=0;
 }
 _wasConnected=true;
 }else{
@@ -698,6 +706,7 @@ if(lobbyDot){lobbyDot.style.background="#FF2D78";}
 if(lobbyTxt){lobbyTxt.textContent="No server connection ✗";lobbyTxt.style.color="#FF2D78";}
 if(gate){gate.style.display="flex";if(gateTxt){gateTxt.textContent=_wasConnected?"Reconnecting to server...":"Connecting to server...";}}
 setSyncStatus("err");
+if(!_disconnectedAt)_disconnectedAt=Date.now();
 _wasConnected=false;
 }
 }
@@ -713,26 +722,39 @@ _connRef.on("value",_onConnChange);
    Firebase reconnect — and applies it directly (no stale animation
    replay), so position + chat always match the server. */
 let _lastHiddenAt=0;
+let _disconnectedAt=0;
 let _resyncInFlight=false;
+function _resyncUnsafeNow(){
+/* true while a local action is actually in flight — never stomp these */
+return _rolling||_animating||_syncAnimPlaying||_pendingAutoRoll||_pendingAutoMove;
+}
 async function _forceResyncGame(reason){
 if(_resyncInFlight)return;
 if(!ROOM_CODE||!gameRef||!_gameLoaded||(typeof G!=='undefined'&&G&&G.over))return;
+if(_resyncUnsafeNow())return;
 _resyncInFlight=true;
 try{
 const gSnap=await gameRef.once('value').catch(()=>null);
 const gData=gSnap&&gSnap.val();
-if(gData){
-_syncAnimPending=[];
-_syncPendingRebuildIndex();
-_syncAnimPlaying=false;
-_animating=false;
-_applySyncGameState({...gData,action:null,lastAction:null});
+/* re-check after the await — a roll/move may have started while we
+   were fetching, and the fetched snapshot could now be stale.
+   [FIX] route through the normal syncGameState(), not a raw
+   _applySyncGameState() call with the action stripped out — the raw
+   call was skipping syncGameState's actionBy===MY_SEAT guard, so if
+   the last write in the room was MY OWN roll (rolled=true, waiting
+   for me to pick a token), this resync fell into the generic branch
+   and force-reset G.rolled/G.waiting/G.diceVal, wiping my own
+   in-progress turn. syncGameState() already has the correct guards
+   for own-action / bot-elder / animation-queueing and routes to the
+   right roll/move/skip branch, so let it decide. */
+if(gData&&!_resyncUnsafeNow()&&_syncAnimPending.length===0&&(!G||!G.over)){
+syncGameState(gData);
 }
 if(playersRef){
 const pSnap=await playersRef.once('value').catch(()=>null);
 if(pSnap)updatePlayerList(pSnap.val()||{});
 }
-if(ROOM_CODE&&_chatListening){
+if(ROOM_CODE&&_chatHistoryReady){
 const chatRefR=db.ref(`rooms/${ROOM_CODE}/chat`);
 const q=_lastChatKey?chatRefR.orderByKey().startAfter(_lastChatKey):chatRefR.orderByKey().limitToLast(30);
 const cSnap=await q.once('value').catch(()=>null);
@@ -1718,7 +1740,7 @@ window.createRoom=async function(numPlayers){
 closeModals();
 _listeners.forEach(fn=>fn());_listeners=[];
 const _cm=document.getElementById("chat-messages");if(_cm)_cm.innerHTML="";
-_chatOpen=false;_unreadCount=0;_chatListening=false;_lastChatKey=null;_replyTarget=null;
+_chatOpen=false;_unreadCount=0;_chatListening=false;_lastChatKey=null;_chatHistoryReady=false;_replyTarget=null;
 if(typeof updateChatBadge==='function')updateChatBadge();
 showToast("Connecting to server...");
 try{await waitForAuth();}catch(e){showToast("⚠️ Auth error — check internet");return;}
@@ -1774,7 +1796,7 @@ _startWaitingExpireTimer(code,Date.now());
 window.joinRoom=async function(){
 _listeners.forEach(fn=>fn());_listeners=[];
 const _cm=document.getElementById("chat-messages");if(_cm)_cm.innerHTML="";
-_chatOpen=false;_unreadCount=0;_chatListening=false;_lastChatKey=null;_replyTarget=null;
+_chatOpen=false;_unreadCount=0;_chatListening=false;_lastChatKey=null;_chatHistoryReady=false;_replyTarget=null;
 if(typeof updateChatBadge==='function')updateChatBadge();
 await waitForAuth();
 if(!auth.currentUser){console.error('JOIN_ROOM_NO_AUTH_USER',{});showToast("⚠️ Sign-in failed. Enable Anonymous Auth in Firebase console & retry.");return;}
@@ -2760,7 +2782,7 @@ document.getElementById("game-wrap").style.display="none";
 document.getElementById("top-bar").style.display="none";
 document.getElementById("win").classList.remove("show");
 document.getElementById("pause-overlay").classList.remove("show");
-_chatOpen=false;_unreadCount=0;_chatListening=false;_lastChatKey=null;
+_chatOpen=false;_unreadCount=0;_chatListening=false;_lastChatKey=null;_chatHistoryReady=false;
 _replyTarget=null;
 const chatPanel=document.getElementById("chat-panel");
 if(chatPanel)chatPanel.classList.remove("open");document.body.classList.remove("chat-open");
@@ -2805,7 +2827,7 @@ _cachedElderResult=null;_cachedElderOnlineSet='';
 _forcedElderSeat=null;
 const chatPanel=document.getElementById("chat-panel");
 if(chatPanel)chatPanel.classList.remove("open");document.body.classList.remove("chat-open");
-_chatOpen=false;_unreadCount=0;_chatListening=false;_lastChatKey=null;_replyTarget=null;_lastVaultLobbySave=0;
+_chatOpen=false;_unreadCount=0;_chatListening=false;_lastChatKey=null;_chatHistoryReady=false;_replyTarget=null;_lastVaultLobbySave=0;
 updateChatBadge();
 const rc=document.getElementById("rejoin-card");if(rc)rc.style.display="none";
 document.getElementById("lobby").style.display="flex";
@@ -2832,7 +2854,7 @@ _cachedElderResult=null;_cachedElderOnlineSet='';
 _forcedElderSeat=null;
 const chatPanel=document.getElementById("chat-panel");
 if(chatPanel)chatPanel.classList.remove("open");document.body.classList.remove("chat-open");
-_chatOpen=false;_unreadCount=0;_chatListening=false;_lastChatKey=null;_replyTarget=null;_lastVaultLobbySave=0;
+_chatOpen=false;_unreadCount=0;_chatListening=false;_lastChatKey=null;_chatHistoryReady=false;_replyTarget=null;_lastVaultLobbySave=0;
 updateChatBadge();
 document.getElementById("lobby").style.display="flex";
 closeModals();
@@ -6101,7 +6123,7 @@ Object.keys(_tokEls).forEach(k=>_removeTokEl(k));
 document.getElementById("game-wrap").style.display="none";
 document.getElementById("top-bar").style.display="none";
 document.getElementById("pause-overlay").classList.remove("show");
-_chatOpen=false;_unreadCount=0;_chatListening=false;_lastChatKey=null;
+_chatOpen=false;_unreadCount=0;_chatListening=false;_lastChatKey=null;_chatHistoryReady=false;
 _replyTarget=null;
 const chatPanel=document.getElementById("chat-panel");
 if(chatPanel)chatPanel.classList.remove("open");document.body.classList.remove("chat-open");
@@ -6230,6 +6252,7 @@ let _chatOpen=false;
 let _unreadCount=0;
 let _chatListening=false;
 let _lastChatKey=null;
+let _chatHistoryReady=false;
 if(window.visualViewport){
 window.visualViewport.addEventListener("resize",()=>{
 if(!_chatOpen)return;
@@ -6496,6 +6519,7 @@ swipeWrap.addEventListener("mouseleave",e=>{if(mouseDown){mouseDown=false;onEnd(
 function listenChat(){
 if(_chatListening||!ROOM_CODE)return;
 _chatListening=true;
+_chatHistoryReady=false;
 const _myChatRoom=ROOM_CODE;
 addChatBadgeToButton();
 const chatRef=db.ref(`rooms/${_myChatRoom}/chat`);
@@ -6530,6 +6554,7 @@ _lastChatKey=snap2.key;
 };
 newRef.on('child_added',childCb);
 handle.cancel=()=>{_cancelled=true;newRef.off('child_added',childCb);};
+_chatHistoryReady=true;
 });
 }
 function addChatBadgeToButton(){
