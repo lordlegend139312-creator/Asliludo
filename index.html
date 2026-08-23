@@ -2114,6 +2114,7 @@ const snap=await playersRef.once('value');
 const playersData=snap.val()||{};
 const gSnap=await gameRef.once('value');
 const gData=gSnap.val()||{};
+console.log('[LOAD-DEBUG]',{turn:gData.turn,tokensCount:(gData.tokens||[]).length,hasProgress:(gData.tokens||[]).some(t=>t&&t.step>0)});
 SEAT_LAYOUT_ACTIVE=gData.seatLayout||SEAT_LAYOUTS[NUM_PLAYERS]||[0,1,2,3];
 window._teamMode=(NUM_PLAYERS===4)&&(gData.teamMode===true);
 window._colorAssign=gData.colorAssign||DEFAULT_COLOR_ASSIGN;
@@ -3023,6 +3024,13 @@ await db.ref(`rooms/${ROOM_CODE}/botVotes/${seat}/${MY_SEAT}`).set(true);
 }catch(e){
 showToast('Vote failed');
 if(badge)badge.classList.remove('voted');
+delete (_botVotes[seat]||{})[MY_SEAT];
+const activePlayersRB=SEAT_LAYOUT_ACTIVE.filter(s=>PLAYERS[s]?.active&&s!==seat);
+const neededRB=Math.ceil(activePlayersRB.length*2/3)||1;
+const votesRB=Object.keys(_botVotes[seat]||{}).length;
+if(PLAYERS[seat]?.isBot&&votesRB<neededRB){
+_deactivateBot(seat);
+}
 }
 };
 window.turnOffMyBot=async function(seat){
@@ -5185,13 +5193,7 @@ if(!amIElderPlayer()||!ROOM_CODE)return;
 _turnTimeoutTimer=setTimeout(()=>{
 if(G.over||G.turn===MY_SEAT)return;
 if(PLAYERS[G.turn]?.isBot)return;
-if(G.rolled&&G.waiting&&G.diceVal!=null)return;
-if(G.rolled)return;
-const skippedTurn=G.turn;
-const savedDice=G.diceVal??-1;
-G.rolled=false;G.diceVal=null;G.waiting=false;
-nextTurn(false);
-pushGameState({action:"skip",dice:savedDice,reason:"timeout",skippedSeat:skippedTurn});
+_onTurnTimerExpired(G.turn);
 },TURN_TIMEOUT_MS);
 }
 function onHumanRoll(){
