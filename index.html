@@ -775,6 +775,13 @@ if(document.hidden){_lastHiddenAt=Date.now();}
 else if(_lastHiddenAt&&(Date.now()-_lastHiddenAt>3000)){
 _forceResyncGame('visibility');
 }
+/* [FIX] elder election (amIElderPlayer) only ever knew whether a seat's
+   websocket was connected, not whether that tab was actually foreground
+   and able to run its timers — see the matching [FIX] note on
+   amIElderPlayer() below. Push a live visibility flag onto our own
+   presence connection every time it changes, so other clients can tell
+   the difference between "online" and "online but backgrounded". */
+if(typeof _presenceConnRef!=='undefined'&&_presenceConnRef){_presenceConnRef.set({v:!document.hidden}).catch(()=>{});}
 });
 window.addEventListener('pageshow',function(e){
 if(e.persisted)_forceResyncGame('pageshow-bfcache');
@@ -1527,6 +1534,26 @@ if(_cachedElderOnlineSet===onlineKey&&_cachedElderResult!==null){
 return _cachedElderResult;
 }
 _cachedElderOnlineSet=onlineKey;
+/* [FIX] elder election used to pick the first active+online seat purely
+   by Firebase connection presence — but presence only tracks the
+   websocket, not whether that tab's JS timers are actually still
+   running. A backgrounded tab (screen off / another app in front) stays
+   "online" for a long time on Android Chrome while its setInterval/
+   setTimeout calls get throttled or fully frozen, so if THAT seat won
+   elder election, nobody was left driving turn timers, bot turns, or
+   AFK-vote detection — the whole room silently hung the moment a real
+   player backgrounded the app mid-turn, no matter how long anyone
+   waited ("timeup ho gaya, computer/opponent chaal nahi chal raha").
+   Now: prefer a seat that is both online AND currently visible
+   (foreground) for elder duty. Only fall back to the old "just online"
+   rule if literally nobody active is currently visible. */
+for(const seat of SEAT_LAYOUT_ACTIVE){
+if(!PLAYERS[seat]?.active)continue;
+if(_onlineSeats.has(seat)&&_visibleSeats.has(seat)){
+_cachedElderResult=(seat===MY_SEAT);
+return _cachedElderResult;
+}
+}
 for(const seat of SEAT_LAYOUT_ACTIVE){
 if(!PLAYERS[seat]?.active)continue;
 if(_onlineSeats.has(seat)){
@@ -1539,6 +1566,7 @@ _cachedElderResult=(first===MY_SEAT);
 return _cachedElderResult;
 }
 let _onlineSeats=new Set();
+let _visibleSeats=new Set();
 let NUM_PLAYERS=4;
 let roomRef=null;
 let gameRef=null;
@@ -1604,7 +1632,7 @@ _presenceRef=connsRef;
 _retryAsync('BIND_PRESENCE_SET',async()=>{
 await _waitForDbConnected(4000);
 connRef.onDisconnect().remove();
-await connRef.set(true);
+await connRef.set({v:!document.hidden});
 },3,900).catch(e=>window._dbgLog('BIND_PRESENCE_GAVE_UP_FINAL',{code:e.code,message:e.message}));
 }
 function _unbindPresence(){
@@ -2977,8 +3005,28 @@ const cb=snap=>{
 const online=snap.exists();
 const wasElder=amIElderPlayer();
 if(online){_onlineSeats.add(seat);}else{_onlineSeats.delete(seat);}
+/* [FIX] see the visibilitychange [FIX] note above — a connection value
+   is now {v:bool} instead of a bare `true`. Treat a legacy bare `true`
+   (or any connection missing `v`) as visible, so a client still running
+   the old build doesn't get permanently excluded from elder duty; only
+   an explicit v:false (a client that HAS the fix and is actually
+   backgrounded) counts as not-visible. */
+let _seatVisible=false;
+if(online){
+snap.forEach(child=>{
+const cv=child.val();
+if(cv===true||cv==null||cv.v!==false)_seatVisible=true;
+});
+}
+if(_seatVisible){_visibleSeats.add(seat);}else{_visibleSeats.delete(seat);}
 _cachedElderResult=null;
-if(!online&&!wasElder&&amIElderPlayer()&&_gameLoaded&&!G.over&&G.turn!==MY_SEAT){
+/* [FIX] this used to only re-check elder handoff on a hard disconnect
+   (!online). Now that elder duty can also change hands purely because a
+   seat went from visible to backgrounded (see amIElderPlayer() [FIX]
+   above) while staying connected, drop the !online requirement so a
+   newly-elected elder picks up turn-timeout duty immediately instead of
+   waiting for a websocket drop that may never come. */
+if(!wasElder&&amIElderPlayer()&&_gameLoaded&&!G.over&&G.turn!==MY_SEAT){
 clearTimeout(_turnTimeoutTimer);
 _turnTimeoutTimer=null;
 setTimeout(()=>{
