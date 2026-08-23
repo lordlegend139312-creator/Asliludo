@@ -690,6 +690,7 @@ showToast("🟢 Reconnected!");
 if(ROOM_CODE&&MY_SEAT!==null){
 _bindPresence(ROOM_CODE,MY_SEAT);
 }
+_forceResyncGame('reconnect');
 }
 _wasConnected=true;
 }else{
@@ -701,6 +702,61 @@ _wasConnected=false;
 }
 }
 _connRef.on("value",_onConnChange);
+/* [FIX] Rejoin/resync after being genuinely offline for a while (tab
+   backgrounded & throttled, or network dropped mid-game). Previously,
+   the app only relied on Firebase's live listeners silently catching
+   back up on their own — on mobile these often don't fire reliably
+   after a long background period, so coming back showed a stale
+   (sometimes pre-game, all-tokens-at-home) board and missed chat.
+   This forces a fresh read of the authoritative game/chat/players data
+   from the server on: tab becoming visible again, bfcache restore, and
+   Firebase reconnect — and applies it directly (no stale animation
+   replay), so position + chat always match the server. */
+let _lastHiddenAt=0;
+let _resyncInFlight=false;
+async function _forceResyncGame(reason){
+if(_resyncInFlight)return;
+if(!ROOM_CODE||!gameRef||!_gameLoaded||(typeof G!=='undefined'&&G&&G.over))return;
+_resyncInFlight=true;
+try{
+const gSnap=await gameRef.once('value').catch(()=>null);
+const gData=gSnap&&gSnap.val();
+if(gData){
+_syncAnimPending=[];
+_syncPendingRebuildIndex();
+_syncAnimPlaying=false;
+_animating=false;
+_applySyncGameState({...gData,action:null,lastAction:null});
+}
+if(playersRef){
+const pSnap=await playersRef.once('value').catch(()=>null);
+if(pSnap)updatePlayerList(pSnap.val()||{});
+}
+if(ROOM_CODE&&_chatListening){
+const chatRefR=db.ref(`rooms/${ROOM_CODE}/chat`);
+const q=_lastChatKey?chatRefR.orderByKey().startAfter(_lastChatKey):chatRefR.orderByKey().limitToLast(30);
+const cSnap=await q.once('value').catch(()=>null);
+if(cSnap&&cSnap.exists()){
+const cdata=cSnap.val();
+Object.keys(cdata).forEach(k=>{
+if(!_lastChatKey||k>_lastChatKey){appendChatMessage(cdata[k],false);_lastChatKey=k;}
+});
+scrollChatBottom();
+}
+}
+window._dbgLog&&window._dbgLog('FORCE_RESYNC',{reason,roomCode:ROOM_CODE});
+}catch(e){}
+_resyncInFlight=false;
+}
+document.addEventListener('visibilitychange',function(){
+if(document.hidden){_lastHiddenAt=Date.now();}
+else if(_lastHiddenAt&&(Date.now()-_lastHiddenAt>3000)){
+_forceResyncGame('visibility');
+}
+});
+window.addEventListener('pageshow',function(e){
+if(e.persisted)_forceResyncGame('pageshow-bfcache');
+});
 let PERF_MODE=(()=>{
 try{return localStorage.getItem('ludo_perf')==='1';}catch(e){return false;}
 })();
@@ -2908,14 +2964,17 @@ if(!amIElderPlayer()||G.over||G.turn===MY_SEAT)return;
 resetTurnTimeout();
 },200);
 }
-if(online){
-_timerExpireCount[seat]=0;
-if(!PLAYERS[seat]?.isBot)_updateOfflineBadge(seat,false);
-if(amIElderPlayer()&&ROOM_CODE&&!PLAYERS[seat]?.isBot){
-db.ref(`rooms/${ROOM_CODE}/botVotes/${seat}`).remove().catch(()=>{});
-db.ref(`rooms/${ROOM_CODE}/afkSeats/${seat}`).remove().catch(()=>{});
-}
-}
+/* [FIX] AFK/vote state (_timerExpireCount, the offline badge, botVotes,
+   afkSeats) used to also get cleared right here the instant Firebase
+   presence reported a seat "online" — but presence is connection-based,
+   not turn-based, and a backgrounded tab's websocket can flap (drop and
+   reconnect) independent of whether the player is actually taking their
+   turns. That flakiness is exactly what caused a vote to fail and the
+   player box to snap back to normal mid-vote. This system reacts purely
+   on a timeup basis now: _timerExpireCount/badge/afkSeats/botVotes are
+   only ever cleared when the player actually rolls or moves for real
+   (see the "roll"/"move" sync handlers above) — never from presence
+   alone. _onlineSeats tracking above is kept only for elder election. */
 setTimeout(_updateAbandonTimestamp,500);
 };
 ref.on('value',cb);
@@ -3052,6 +3111,7 @@ try{
 await waitForAuth();
 await db.ref(`rooms/${ROOM_CODE}/botVotes/${seat}/${MY_SEAT}`).set(true);
 }catch(e){
+console.error('VOTE_FOR_BOT_FAILED',{seat,mySeat:MY_SEAT,code:e.code,message:e.message});
 showToast('Vote failed');
 if(badge)badge.classList.remove('voted');
 delete (_botVotes[seat]||{})[MY_SEAT];
@@ -3110,6 +3170,7 @@ if(_botDice)_botDice.style.display='block';
 showToast(`🤖 ${PLAYERS[seat].label}is now a bot`);
 if(ROOM_CODE)db.ref(`rooms/${ROOM_CODE}/afkSeats/${seat}`).remove().catch(()=>{});
 delete _afkSeats[seat];
+refreshUI();
 if(amIElderPlayer()&&!G.over){
 clearTimeout(_turnTimeoutTimer);
 _turnTimeoutTimer=null;
@@ -3148,6 +3209,8 @@ db.ref(`rooms/${ROOM_CODE}/afkSeats/${seat}`).remove().catch(()=>{});
 }
 delete _botVotes[seat];
 delete _afkSeats[seat];
+refreshUI();
+if(amIElderPlayer())resetTurnTimeout();
 showToast(`✅ ${PLAYERS[seat].label}back in control — bot removed`);
 setTimeout(_updateAbandonTimestamp,300);
 }
@@ -5175,6 +5238,7 @@ if(G.over||G.turn!==seat)return;
 if(G.rolled||G.waiting)return;
 if(_rolling)return;
 if(_botActing)return;
+if(!PLAYERS[seat]?.isBot)return;
 _botActing=true;
 if(G.over||G.turn!==seat||G.rolled){_botActing=false;return;}
 try{
@@ -5183,6 +5247,16 @@ const thinkMs=diff==='easy'?150+Math.random()*150
 :diff==='hard'?300+Math.random()*200
 :200+Math.random()*150;
 await new Promise(res=>setTimeout(res,thinkMs));
+/* [FIX] the "thinking" delay above (and the move-pick delay below) are
+   real await gaps — if the real player taps "Turn off bot" while one is
+   in flight, PLAYERS[seat].isBot flips to false mid-turn but this
+   function had no way of noticing and would barrel on and roll/move for
+   them anyway, stealing the turn right back. Re-checking isBot after
+   every await means a reclaim mid-turn cleanly hands control back:
+   the bot stops, and the seat is left exactly as G currently is —
+   G.turn stays on seat with rolled/waiting reset by whichever branch
+   bailed, so the real player's own tap drives the roll/move from here. */
+if(!PLAYERS[seat]?.isBot){return;}
 if(G.over||G.turn!==seat){return;}
 const v=smartRng(seat);
 G.rolled=true;G.diceVal=v;
@@ -5196,6 +5270,7 @@ pushGameState({action:"skip",dice:v,reason:"3sixes",auto:true},seat);return;}
 const mv=teamMovable(seat,v);
 if(mv.length===0){
 await new Promise(res=>setTimeout(res,150));
+if(!PLAYERS[seat]?.isBot){G.rolled=false;G.diceVal=null;return;}
 pushGameState({action:"roll",dice:v,selectable:[],auto:true},seat);
 nextTurn(false);
 pushGameState({action:"skip",dice:v,reason:"noMove",auto:true},seat);
@@ -5210,6 +5285,7 @@ if(s>bestScore){bestScore=s;best=tok;}
 }
 await new Promise(res=>setTimeout(res,80+Math.random()*80));
 if(G.over||G.turn!==seat){G.rolled=false;G.diceVal=null;return;}
+if(!PLAYERS[seat]?.isBot){return;}
 G.rolled=false;G.waiting=false;
 _pendingAutoMove=true;
 await doMove(seat,best.tid,v);
