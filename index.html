@@ -5234,7 +5234,18 @@ return;
 }
 if(amIElderPlayer()&&seat!==MY_SEAT){
 if(G.turn!==seat)return;
-await _doBotTurn(seat);
+/* [FIX] this awaited a plain _doBotTurn(seat) — but _doBotTurn's own
+   internal guards (`if(!PLAYERS[seat]?.isBot)return;`, repeated after
+   every await inside it) only ever let it act on seats already flagged
+   isBot===true. A real AFK human (dost ka tab backgrounded) is never
+   isBot until 3 misses pile up AND someone manually votes to convert
+   the seat — so on every timeout before that, this call silently
+   no-op'd: G.turn never advanced, no roll, no move ("timeup ho gaya
+   but computer chaal nahi chal raha"). Pass forceAfk=true so this one
+   call site — a genuine elder-driven timeout, already gated above by
+   amIElderPlayer()+G.turn===seat — can drive a non-bot seat's single
+   turn without needing the seat permanently relabeled as a bot. */
+await _doBotTurn(seat,true);
 if((_timerExpireCount[seat]||0)>=EXPIRE_COUNT_FOR_VOTE&&!PLAYERS[seat]?.isBot){
 _updateOfflineBadge(seat,true);
 if(ROOM_CODE)db.ref(`rooms/${ROOM_CODE}/afkSeats/${seat}`).set(true).catch(()=>{});
@@ -5303,12 +5314,19 @@ score+=toStep*2;
 if(diff==='normal')score+=(Math.random()-0.5)*30;
 return score;
 }
-async function _doBotTurn(seat){
+async function _doBotTurn(seat,forceAfk){
 if(G.over||G.turn!==seat)return;
 if(G.rolled||G.waiting)return;
 if(_rolling)return;
 if(_botActing)return;
-if(!PLAYERS[seat]?.isBot)return;
+/* [FIX] forceAfk lets the elder's timeout handler (_onTurnTimerExpired)
+   drive a single turn for a real AFK human seat — isBot only ever
+   becomes true after 3 misses AND a manual vote, so without this every
+   check below silently no-op'd the whole function on a genuine human
+   seat, and the turn just sat there forever. The G.turn/G.over/G.rolled
+   guards above and at every await below are untouched by forceAfk, so a
+   player who comes back mid-"thinking" and taps for real still wins. */
+if(!PLAYERS[seat]?.isBot&&!forceAfk)return;
 _botActing=true;
 if(G.over||G.turn!==seat||G.rolled){_botActing=false;return;}
 try{
@@ -5326,7 +5344,7 @@ await new Promise(res=>setTimeout(res,thinkMs));
    the bot stops, and the seat is left exactly as G currently is —
    G.turn stays on seat with rolled/waiting reset by whichever branch
    bailed, so the real player's own tap drives the roll/move from here. */
-if(!PLAYERS[seat]?.isBot){return;}
+if(!PLAYERS[seat]?.isBot&&!forceAfk){return;}
 if(G.over||G.turn!==seat){return;}
 const v=smartRng(seat);
 G.rolled=true;G.diceVal=v;
@@ -5340,7 +5358,7 @@ pushGameState({action:"skip",dice:v,reason:"3sixes",auto:true},seat);return;}
 const mv=teamMovable(seat,v);
 if(mv.length===0){
 await new Promise(res=>setTimeout(res,150));
-if(!PLAYERS[seat]?.isBot){G.rolled=false;G.diceVal=null;return;}
+if(!PLAYERS[seat]?.isBot&&!forceAfk){G.rolled=false;G.diceVal=null;return;}
 pushGameState({action:"roll",dice:v,selectable:[],auto:true},seat);
 nextTurn(false);
 pushGameState({action:"skip",dice:v,reason:"noMove",auto:true},seat);
@@ -5355,7 +5373,7 @@ if(s>bestScore){bestScore=s;best=tok;}
 }
 await new Promise(res=>setTimeout(res,80+Math.random()*80));
 if(G.over||G.turn!==seat){G.rolled=false;G.diceVal=null;return;}
-if(!PLAYERS[seat]?.isBot){return;}
+if(!PLAYERS[seat]?.isBot&&!forceAfk){return;}
 G.rolled=false;G.waiting=false;
 _pendingAutoMove=true;
 await doMove(seat,best.tid,v);
