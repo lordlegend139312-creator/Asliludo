@@ -5311,6 +5311,21 @@ if(!PLAYERS[seat]?.isBot){return;}
 G.rolled=false;G.waiting=false;
 _pendingAutoMove=true;
 await doMove(seat,best.tid,v);
+}catch(err){
+/* [FIX] a throw anywhere above (teamMovable/_aiScoreMove on a corrupted
+   token) after G.rolled=true but before doMove used to leave G.rolled
+   stuck true forever. _onTurnTimerExpired's own guard
+   (`if(G.rolled&&!G.waiting)return;`) then bails before it ever reaches
+   the isBot branch that would retry _doBotTurn, and _doBotTurn's own
+   top guard (`if(G.rolled||G.waiting)return;`) blocks a fresh call too
+   — so the bot's dice stays showing and nothing ever moves again, even
+   though the turn timer keeps expiring. Recover here instead. */
+console.error('[BOT-RECOVER] _doBotTurn failed, forcing recovery:',err);
+if(!G.over&&G.turn===seat){
+G.rolled=false;G.waiting=false;G.diceVal=null;_pendingAutoMove=false;
+nextTurn(false);
+pushGameState({action:"skip",dice:0,reason:"botError",auto:true},seat).catch(()=>{});
+}
 }finally{
 _botActing=false;
 }
@@ -5766,6 +5781,7 @@ async function doMove(pid,tid,v){
 const _wasAutoMove=_pendingAutoMove;
 _pendingAutoMove=false;
 _animating=true;
+try{
 const tok=tokOf(pid,tid);
 if(!tok){_animating=false;return;}
 const allowed=movable(pid,v);
@@ -5887,6 +5903,24 @@ movedPid:pid,
 movedTid:tid,
 auto:_wasAutoMove
 },pid).catch(e=>{_animating=false;});
+}catch(err){
+/* [FIX] any throw inside the animation/move chain above (e.g. a missing
+   _tokEls entry mid-jumpStep, a null cell lookup) used to leave
+   _animating stuck true forever with no recovery path — every later
+   guard (`if(_animating||_rolling)return;` in _onTurnTimerExpired,
+   updateTurnBanner's smart-dice check, etc) then silently refuses to
+   act, so the turn timer runs out over and over but nothing ever
+   moves ("timeup ho gaya but computer chaal nahi chal raha"). Catching
+   here guarantees _animating always clears and the turn still advances
+   even if this particular move died mid-animation. */
+console.error('[MOVE-RECOVER] doMove failed, forcing recovery:',err);
+_animating=false;
+try{renderTokens();}catch(e){}
+if(!G.over&&G.turn===pid){
+nextTurn(false);
+pushGameState({action:"skip",dice:v,reason:"moveError",auto:true},pid).catch(()=>{});
+}
+}
 }
 function nextTurn(same,wasSix){
 G.rolled=false;_rolling=false;G.diceVal=null;G.waiting=false;
