@@ -2581,6 +2581,19 @@ card.style.display='none';
 window.tryRejoin=async function(){
 const s=loadSession();
 if(!s){clearSession();return;}
+/* [FIX] if the previous session ended abruptly (tab backgrounded/killed
+   mid-game instead of going through leaveToLobby/leaveRoom), old
+   gameRef/chat/presence listeners from before can still be attached.
+   A leftover live listener on the exact same gameRef path can make the
+   .once('value') read below in loadAndStartGame() resolve from that
+   listener's cache instead of a fresh server round-trip — if that
+   listener hadn't yet resynced after reconnecting, rejoin would render
+   the stale pre-disconnect board (tokens still "at home", turn 1) even
+   though the server's actual game/tokens was current. Clear everything
+   out so the reload below is guaranteed to hit the server fresh. */
+_listeners.forEach(fn=>fn());
+_listeners=[];
+_gameLoaded=false;
 await waitForAuth();
 if(!(await waitForRealFirebase())){showToast("❌ Cannot reach server. Check internet & try again.");return;}
 MY_NAME=s.name;
@@ -2649,8 +2662,12 @@ _gameStarted=true;
 _gameStartLock=true;
 closeModals();
 showToast('🔄 Rejoining...');
+/* [FIX] load the authoritative game state FIRST, then attach the live
+   gameRef listener via listenRoom(). Doing it in the old order (listener
+   attached before the once() read) is exactly what let that read
+   shortcut off a stale/not-yet-resynced listener — see note above. */
+await _doLoadAndStartGame();
 listenRoom();
-_doLoadAndStartGame();
 };
 window.leaveToLobby=async function(){
 clearTimeout(_turnTimeoutTimer);_turnTimeoutTimer=null;
@@ -2987,12 +3004,24 @@ const cb=snap=>{
 _botVotes=snap.val()||{};
 SEAT_LAYOUT_ACTIVE.forEach(seat=>{
 if(!PLAYERS[seat]?.active)return;
-if(PLAYERS[seat]?.isBot)return;
 const votes=Object.keys(_botVotes[seat]||{}).length;
 const activePlayers=SEAT_LAYOUT_ACTIVE.filter(s=>PLAYERS[s]?.active&&s!==seat);
 const needed=Math.ceil(activePlayers.length*2/3)||1;
 if(votes>=needed&&votes>0){
-_activateBot(seat);
+if(!PLAYERS[seat]?.isBot)_activateBot(seat);
+return;
+}
+/* [FIX] this used to bail out early with `if(PLAYERS[seat]?.isBot)return;`
+   before even computing votes — so once a seat flipped to bot mode (e.g.
+   via the optimistic local vote echo), this listener could never react
+   to the REAL synced vote count coming back below threshold (e.g. the
+   vote write itself getting rejected/reverted by the server). Player box
+   was stuck showing "bot" while nothing was actually voted for, and the
+   seat never auto-played. Now: if votes are genuinely below threshold
+   and the seat is (still) marked bot, undo it so state always matches
+   the synced data. */
+if(PLAYERS[seat]?.isBot){
+_deactivateBot(seat);
 return;
 }
 _updateOfflineBadge(seat,(_timerExpireCount[seat]||0)>=EXPIRE_COUNT_FOR_VOTE);
@@ -3020,6 +3049,7 @@ if(votes>=needed)_activateBot(seat);
 return;
 }
 try{
+await waitForAuth();
 await db.ref(`rooms/${ROOM_CODE}/botVotes/${seat}/${MY_SEAT}`).set(true);
 }catch(e){
 showToast('Vote failed');
@@ -4925,9 +4955,11 @@ dAcc.rx[p.id]=tg.rx;dAcc.ry[p.id]=tg.ry;dAcc.last[p.id]=6;
 });
 }
 let _lastTimerTurn=-1;
+let _turnExpiryHandled=false;
 function updateTurnBanner(){
 if(G.turn!==_lastTimerTurn){
 _lastTimerTurn=G.turn;
+_turnExpiryHandled=false;
 resetTurnTimeout();
 startTurnTimer(G.turn);
 if(PLAYERS[G.turn]?.isBot&&amIElderPlayer()&&!G.rolled&&!G.over){
@@ -5025,6 +5057,17 @@ async function _onTurnTimerExpired(seat){
 if(G.over||G.turn!==seat)return;
 if(G.rolled&&!G.waiting)return;
 if(seat!==MY_SEAT&&!PLAYERS[seat]?.isBot){
+/* [FIX] startTurnTimer's visual 43s timer and resetTurnTimeout's backup
+   45s timer both end up calling _onTurnTimerExpired for the SAME turn —
+   only ~2s apart. Without this guard, the 2nd call would race the 1st
+   call's still-in-flight _doBotTurn (blocked by its own _botActing flag,
+   so it silently no-ops), while still double-incrementing
+   _timerExpireCount and re-showing the vote badge — which looked like
+   "computer didn't play, vote just appeared". Only handle a given
+   AFK-turn expiry once; updateTurnBanner() resets this when a new turn
+   actually starts. */
+if(_turnExpiryHandled)return;
+_turnExpiryHandled=true;
 _timerExpireCount[seat]=(_timerExpireCount[seat]||0)+1;
 }
 if(seat===MY_SEAT&&!G.rolled){
