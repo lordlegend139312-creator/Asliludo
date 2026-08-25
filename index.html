@@ -62,9 +62,10 @@ function _dbgFallbackCopy(text,cb){
 }
 function _dbgBuildUI(){
   try{
-    /* [DBG] gated behind localStorage flag again — panel stays built into
-       the file (for future debugging) but won't show up by default. */
-    let _dbgFlag=false; /* debug panel permanently disabled */
+    /* [DBG] re-enabled — chasing the AFK-turn/elder-flap, vote-fail and
+       dice-disappear reports now, need the on-device 🐞 panel + copy
+       button again since devtools isn't available mid-phone-test. */
+    let _dbgFlag=true;
     if(!_dbgFlag)return;
     if(document.getElementById('dbg-btn'))return;
     const btn=document.createElement('button');
@@ -82,13 +83,17 @@ function _dbgBuildUI(){
     <pre id="dbg-log" style="flex:1;overflow:auto;background:#111;color:#0f0;font-size:10px;padding:8px;border-radius:8px;margin:0;white-space:pre-wrap;word-break:break-all;"></pre>`;
     document.body.appendChild(btn);document.body.appendChild(panel);
     const logEl=panel.querySelector('#dbg-log'),countEl=panel.querySelector('#dbg-count');
-    /* [DBG] show only presence/connection related entries — that's the bug being chased right now */
-    const _dbgFilterTags=['BIND_PRESENCE','DB_CONNECTED_CHANGE','PLAYERS_SNAPSHOT','JOIN_MEMBER','UNBIND_PRESENCE','AUTH_STATE_CHANGED','PROMISE_REJECTION','CONSOLE_ERROR','CONSOLE_WARN'];
+    /* [DBG] retargeted from the old presence-only hunt to everything
+       relevant to the 3 currently-open reports: elder/timer/AFK
+       auto-play (ELDER_*, TIMER_EXPIRE_*, BOTTURN_*), vote flow
+       (VOTE_*, AFKSEATS_*), dice display (DICE_*), plus anything that
+       hit console.error/warn or an unhandled rejection anywhere. */
+    const _dbgFilterTags=['ELDER_','TIMER_EXPIRE_','BOTTURN_','VOTE_','AFKSEATS_','DICE_','BIND_PRESENCE','DB_CONNECTED_CHANGE','PROMISE_REJECTION','CONSOLE_ERROR','CONSOLE_WARN'];
     function _dbgFiltered(){return window._dbg.filter(e=>_dbgFilterTags.some(t=>e.tag.indexOf(t)===0));}
     function refresh(){
       const rows=_dbgFiltered();
       logEl.textContent=rows.map(e=>`[${e.t}] ${e.tag} :: ${JSON.stringify(e.data)}`).join('\n');
-      countEl.textContent=rows.length+' / '+window._dbg.length+' log entries (presence-related only)';
+      countEl.textContent=rows.length+' / '+window._dbg.length+' log entries (AFK/vote/dice-related)';
       logEl.scrollTop=logEl.scrollHeight;
     }
     btn.addEventListener('click',()=>{panel.style.display='flex';refresh();});
@@ -3020,6 +3025,8 @@ if(cv===true||cv==null||cv.v!==false)_seatVisible=true;
 }
 if(_seatVisible){_visibleSeats.add(seat);}else{_visibleSeats.delete(seat);}
 _cachedElderResult=null;
+const _nowElder=amIElderPlayer();
+_dbgLog('ELDER_PRESENCE_EVENT',{seat,online,seatVisible:_seatVisible,wasElder,nowElder:_nowElder,elderChanged:wasElder!==_nowElder,onlineSeats:[..._onlineSeats],visibleSeats:[..._visibleSeats],gTurn:G.turn});
 /* [FIX] this used to only re-check elder handoff on a hard disconnect
    (!online). Now that elder duty can also change hands purely because a
    seat went from visible to backgrounded (see amIElderPlayer() [FIX]
@@ -3178,10 +3185,13 @@ if(votes>=needed)_activateBot(seat);
 return;
 }
 try{
+_dbgLog('VOTE_ATTEMPT',{seat,mySeat:MY_SEAT,localAfkSeats:_afkSeats[seat]||false,timerExpireCount:_timerExpireCount[seat]||0,localBotVotes:Object.keys(_botVotes[seat]||{})});
 await waitForAuth();
 await db.ref(`rooms/${ROOM_CODE}/botVotes/${seat}/${MY_SEAT}`).set(true);
+_dbgLog('VOTE_OK',{seat,mySeat:MY_SEAT});
 }catch(e){
 console.error('VOTE_FOR_BOT_FAILED',{seat,mySeat:MY_SEAT,code:e.code,message:e.message});
+_dbgLog('VOTE_FAILED',{seat,mySeat:MY_SEAT,code:e.code,message:e.message,localAfkSeatsAtFailure:_afkSeats[seat]||false});
 showToast('Vote failed');
 if(badge)badge.classList.remove('voted');
 delete (_botVotes[seat]||{})[MY_SEAT];
@@ -5067,13 +5077,13 @@ const active=G.turn===p.id&&!G.over;
 const isMyTurn=G.turn===MY_SEAT&&p.id===MY_SEAT;
 if(active){
 const wasInactive=d3d.classList.contains("inactive");
-if(wasInactive)d3d.classList.remove("inactive");
+if(wasInactive){d3d.classList.remove("inactive");_dbgLog('DICE_CUBE_SHOWN',{pid:p.id,gTurn:G.turn,gDiceVal:G.diceVal,gRolled:G.rolled});}
 const canRoll=isMyTurn&&!G.rolled&&!G.over;
 const wasOff=d3d.classList.contains("off");
 if(wasOff!==!canRoll)d3d.classList.toggle("off",!canRoll);
 }else{
 const wasInactive2=d3d.classList.contains("inactive");
-if(!wasInactive2)d3d.classList.add("inactive");
+if(!wasInactive2){d3d.classList.add("inactive");_dbgLog('DICE_CUBE_HIDDEN',{pid:p.id,gTurn:G.turn,gDiceVal:G.diceVal,gRolled:G.rolled});}
 const wasOff2=d3d.classList.contains("off");
 if(wasOff2)d3d.classList.remove("off");
 }
@@ -5187,22 +5197,33 @@ bar.style.stroke='none';
 }catch(e){}
 }
 async function _onTurnTimerExpired(seat){
-if(G.over||G.turn!==seat)return;
-if(G.rolled&&!G.waiting)return;
+_dbgLog('TIMER_EXPIRE_CALLED',{seat,MY_SEAT,gTurn:G.turn,gOver:G.over,gRolled:G.rolled,gWaiting:G.waiting,turnExpiryHandled:_turnExpiryHandled});
+if(G.over||G.turn!==seat){_dbgLog('TIMER_EXPIRE_BAIL_STALE',{seat,gTurn:G.turn,gOver:G.over});return;}
+if(G.rolled&&!G.waiting){_dbgLog('TIMER_EXPIRE_BAIL_ROLLED',{seat,gRolled:G.rolled,gWaiting:G.waiting});return;}
 if(seat!==MY_SEAT&&!PLAYERS[seat]?.isBot){
 /* [FIX] startTurnTimer's visual 43s timer and resetTurnTimeout's backup
    45s timer both end up calling _onTurnTimerExpired for the SAME turn —
-   only ~2s apart. Without this guard, the 2nd call would race the 1st
-   call's still-in-flight _doBotTurn (blocked by its own _botActing flag,
-   so it silently no-ops), while still double-incrementing
-   _timerExpireCount and re-showing the vote badge — which looked like
-   "computer didn't play, vote just appeared". Only handle a given
-   AFK-turn expiry once; updateTurnBanner() resets this when a new turn
-   actually starts. */
-if(_turnExpiryHandled)return;
+   only ~2s apart. This used to `return` on the 2nd call so
+   _timerExpireCount/the vote badge only counted the miss once — that
+   part was correct — but the same early return also skipped the elder
+   branches below on the retry. If the 1st call's amIElderPlayer() check
+   happened to land during a presence flap (dost ka backgrounded tab
+   briefly re-registering online) and came back false that instant,
+   nothing played, G.turn never advanced, and the 2nd call — the only
+   other chance to retry — got thrown away here before ever reaching
+   _doBotTurn. That's the "computer chal raha tha, phir ek dafa achanak
+   atak gaya" pattern: one bad-luck flap on the first attempt, no retry
+   left. Now only the count/badge update is deduped; the elder branches
+   below run on every call and lean on their own guards (_botActing,
+   G.turn!==seat) for idempotency, so a 2nd call genuinely gets a fresh
+   shot instead of being blocked by this flag. */
+if(!_turnExpiryHandled){
 _turnExpiryHandled=true;
 _timerExpireCount[seat]=(_timerExpireCount[seat]||0)+1;
+_dbgLog('TIMER_EXPIRE_COUNT_INC',{seat,newCount:_timerExpireCount[seat]});
 }
+}
+_dbgLog('ELDER_CHECK_AT_EXPIRY',{seat,MY_SEAT,amIElder:amIElderPlayer(),onlineSeats:[..._onlineSeats],visibleSeats:[..._visibleSeats]});
 if(seat===MY_SEAT&&!G.rolled){
 if(_rolling||_animating)return;
 _pendingAutoRoll=true;
@@ -5245,13 +5266,15 @@ if(G.turn!==seat)return;
    call site — a genuine elder-driven timeout, already gated above by
    amIElderPlayer()+G.turn===seat — can drive a non-bot seat's single
    turn without needing the seat permanently relabeled as a bot. */
+_dbgLog('BOTTURN_ELDER_ATTEMPT',{seat,MY_SEAT,expireCount:_timerExpireCount[seat]||0});
 await _doBotTurn(seat,true);
 if((_timerExpireCount[seat]||0)>=EXPIRE_COUNT_FOR_VOTE&&!PLAYERS[seat]?.isBot){
 _updateOfflineBadge(seat,true);
-if(ROOM_CODE)db.ref(`rooms/${ROOM_CODE}/afkSeats/${seat}`).set(true).catch(()=>{});
+if(ROOM_CODE)db.ref(`rooms/${ROOM_CODE}/afkSeats/${seat}`).set(true).then(()=>{_dbgLog('AFKSEATS_WRITE_OK',{seat});}).catch(e=>{_dbgLog('AFKSEATS_WRITE_FAILED',{seat,code:e.code,message:e.message});});
 }
 return;
 }
+_dbgLog('ELDER_NOT_ME_RESYNC',{seat,MY_SEAT,amINotElder:!amIElderPlayer()});
 if(!amIElderPlayer()&&seat!==MY_SEAT&&ROOM_CODE&&gameRef){
 gameRef.once('value').then(snap=>{
 if(!snap||!snap.exists())return;
@@ -5315,10 +5338,11 @@ if(diff==='normal')score+=(Math.random()-0.5)*30;
 return score;
 }
 async function _doBotTurn(seat,forceAfk){
-if(G.over||G.turn!==seat)return;
-if(G.rolled||G.waiting)return;
-if(_rolling)return;
-if(_botActing)return;
+_dbgLog('BOTTURN_ENTRY',{seat,forceAfk:!!forceAfk,isBot:!!PLAYERS[seat]?.isBot,gTurn:G.turn,gRolled:G.rolled,gWaiting:G.waiting,rolling:_rolling,botActing:_botActing});
+if(G.over||G.turn!==seat){_dbgLog('BOTTURN_BAIL',{seat,reason:'stale',gTurn:G.turn,gOver:G.over});return;}
+if(G.rolled||G.waiting){_dbgLog('BOTTURN_BAIL',{seat,reason:'already_rolled_or_waiting',gRolled:G.rolled,gWaiting:G.waiting});return;}
+if(_rolling){_dbgLog('BOTTURN_BAIL',{seat,reason:'rolling_in_progress'});return;}
+if(_botActing){_dbgLog('BOTTURN_BAIL',{seat,reason:'bot_already_acting'});return;}
 /* [FIX] forceAfk lets the elder's timeout handler (_onTurnTimerExpired)
    drive a single turn for a real AFK human seat — isBot only ever
    becomes true after 3 misses AND a manual vote, so without this every
@@ -5326,9 +5350,9 @@ if(_botActing)return;
    seat, and the turn just sat there forever. The G.turn/G.over/G.rolled
    guards above and at every await below are untouched by forceAfk, so a
    player who comes back mid-"thinking" and taps for real still wins. */
-if(!PLAYERS[seat]?.isBot&&!forceAfk)return;
+if(!PLAYERS[seat]?.isBot&&!forceAfk){_dbgLog('BOTTURN_BAIL',{seat,reason:'not_bot_no_force'});return;}
 _botActing=true;
-if(G.over||G.turn!==seat||G.rolled){_botActing=false;return;}
+if(G.over||G.turn!==seat||G.rolled){_dbgLog('BOTTURN_BAIL',{seat,reason:'stale_after_lock'});_botActing=false;return;}
 try{
 const diff=typeof _cpuDifficulty!=='undefined'?_cpuDifficulty:'normal';
 const thinkMs=diff==='easy'?150+Math.random()*150
@@ -5344,21 +5368,24 @@ await new Promise(res=>setTimeout(res,thinkMs));
    the bot stops, and the seat is left exactly as G currently is —
    G.turn stays on seat with rolled/waiting reset by whichever branch
    bailed, so the real player's own tap drives the roll/move from here. */
-if(!PLAYERS[seat]?.isBot&&!forceAfk){return;}
-if(G.over||G.turn!==seat){return;}
+if(!PLAYERS[seat]?.isBot&&!forceAfk){_dbgLog('BOTTURN_BAIL',{seat,reason:'reclaimed_after_think'});return;}
+if(G.over||G.turn!==seat){_dbgLog('BOTTURN_BAIL',{seat,reason:'stale_after_think',gTurn:G.turn});return;}
 const v=smartRng(seat);
 G.rolled=true;G.diceVal=v;
+_dbgLog('BOTTURN_ROLLED',{seat,dice:v,forceAfk:!!forceAfk});
 const _botDiceEl=document.getElementById('botdice-'+seat);
 if(_botDiceEl){_botDiceEl.style.display='block';_botDiceEl.textContent=v;}
-if(G.over||G.turn!==seat){G.rolled=false;G.diceVal=null;return;}
+if(G.over||G.turn!==seat){G.rolled=false;G.diceVal=null;_dbgLog('BOTTURN_BAIL',{seat,reason:'stale_after_roll'});return;}
 if(v===6){G.sixes=(G.sixes||0)+1;
 if(G.sixes>=3){G.sixes=0;G.rolled=false;G.diceVal=null;_rolling=false;nextTurn(false);
+_dbgLog('BOTTURN_3SIXES',{seat});
 pushGameState({action:"skip",dice:v,reason:"3sixes",auto:true},seat);return;}
 }else{G.sixes=0;}
 const mv=teamMovable(seat,v);
 if(mv.length===0){
 await new Promise(res=>setTimeout(res,150));
-if(!PLAYERS[seat]?.isBot&&!forceAfk){G.rolled=false;G.diceVal=null;return;}
+if(!PLAYERS[seat]?.isBot&&!forceAfk){G.rolled=false;G.diceVal=null;_dbgLog('BOTTURN_BAIL',{seat,reason:'reclaimed_no_moves'});return;}
+_dbgLog('BOTTURN_NO_MOVES',{seat,dice:v});
 pushGameState({action:"roll",dice:v,selectable:[],auto:true},seat);
 nextTurn(false);
 pushGameState({action:"skip",dice:v,reason:"noMove",auto:true},seat);
@@ -5372,11 +5399,13 @@ const s=_aiScoreMove(seat,tok,v);
 if(s>bestScore){bestScore=s;best=tok;}
 }
 await new Promise(res=>setTimeout(res,80+Math.random()*80));
-if(G.over||G.turn!==seat){G.rolled=false;G.diceVal=null;return;}
-if(!PLAYERS[seat]?.isBot&&!forceAfk){return;}
+if(G.over||G.turn!==seat){G.rolled=false;G.diceVal=null;_dbgLog('BOTTURN_BAIL',{seat,reason:'stale_after_pick'});return;}
+if(!PLAYERS[seat]?.isBot&&!forceAfk){_dbgLog('BOTTURN_BAIL',{seat,reason:'reclaimed_after_pick'});return;}
 G.rolled=false;G.waiting=false;
 _pendingAutoMove=true;
+_dbgLog('BOTTURN_MOVE_PICKED',{seat,dice:v,tid:best.tid,forceAfk:!!forceAfk});
 await doMove(seat,best.tid,v);
+_dbgLog('BOTTURN_MOVE_DONE',{seat});
 }catch(err){
 /* [FIX] a throw anywhere above (teamMovable/_aiScoreMove on a corrupted
    token) after G.rolled=true but before doMove used to leave G.rolled
@@ -5387,6 +5416,7 @@ await doMove(seat,best.tid,v);
    — so the bot's dice stays showing and nothing ever moves again, even
    though the turn timer keeps expiring. Recover here instead. */
 console.error('[BOT-RECOVER] _doBotTurn failed, forcing recovery:',err);
+_dbgLog('BOTTURN_ERROR',{seat,message:err&&err.message,stack:err&&String(err.stack||'').slice(0,300)});
 if(!G.over&&G.turn===seat){
 G.rolled=false;G.waiting=false;G.diceVal=null;_pendingAutoMove=false;
 nextTurn(false);
@@ -5436,6 +5466,7 @@ if(d3d)d3d.classList.add("off");
 const v=smartRng(pid);
 G.rolled=true;
 G.diceVal=v;
+_dbgLog('DICE_ROLLED_SELF',{pid,dice:v,MY_SEAT});
 navigator.vibrate&&navigator.vibrate(28);
 SFX.play('dice');
 animDice(pid,v,()=>{clearTimeout(rollSafety);_rolling=false;afterRoll(pid,v);});
@@ -5844,6 +5875,7 @@ cell.classList.add('star-land-glow');
 setTimeout(()=>cell.classList.remove('star-land-glow'),750);
 }
 async function doMove(pid,tid,v){
+_dbgLog('DICE_DOMOVE_START',{pid,tid,v,gDiceValBefore:G.diceVal,gRolledBefore:G.rolled,wasAutoMove:_pendingAutoMove});
 const _wasAutoMove=_pendingAutoMove;
 _pendingAutoMove=false;
 _animating=true;
@@ -5989,6 +6021,7 @@ pushGameState({action:"skip",dice:v,reason:"moveError",auto:true},pid).catch(()=
 }
 }
 function nextTurn(same,wasSix){
+_dbgLog('DICE_NEXTTURN_START',{fromSeat:G.turn,same:!!same,wasSix:!!wasSix,diceValBefore:G.diceVal});
 G.rolled=false;_rolling=false;G.diceVal=null;G.waiting=false;
 if(!same){
 G.sixes=0;
@@ -6019,6 +6052,7 @@ if(window._pnpMode&&window._setMY_SEAT){
 window._setMY_SEAT(G.turn);
 if(window._setCacheValid)window._setCacheValid(false);
 }
+_dbgLog('DICE_NEXTTURN_END',{toSeat:G.turn});
 syncUI();
 }
 function endGame(){
