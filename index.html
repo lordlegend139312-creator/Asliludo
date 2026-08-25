@@ -3070,7 +3070,7 @@ if(seat===MY_SEAT){badge.classList.remove('show');return;}
 if(PLAYERS[seat]?.isBot){badge.classList.remove('show');return;}
 if(!isOffline){badge.classList.remove('show');return;}
 badge.classList.add('show');
-const myVote=(_botVotes[seat]||{})[MY_SEAT];
+const myVote=(_botVotes[seat]||{})[_myVoteKey()];
 badge.classList.toggle('voted',!!myVote);
 const botDiceEl=document.getElementById(`botdice-${seat}`);
 if(botDiceEl)botDiceEl.style.display=PLAYERS[seat]?.isBot?"block":"none";
@@ -3085,7 +3085,7 @@ mainTxt.textContent='Tap to vote';
 const txt=document.getElementById(`offtxt-${seat}`);
 if(txt){
 const votes=_botVotes[seat]||{};
-const voterSeats=Object.keys(votes).map(Number);
+const voterSeats=Object.keys(votes).map(_voterSeatForKey).filter(s=>s!==null&&s!==undefined);
 const colorNames={[BLUE]:"Blue",[PINK]:"Pink",[YELLOW]:"Yellow",[GREEN]:"Green"};
 const activePlayers=SEAT_LAYOUT_ACTIVE.filter(s=>PLAYERS[s]?.active&&s!==seat);
 const needed=Math.ceil(activePlayers.length*2/3)||1;
@@ -3103,6 +3103,24 @@ txt.textContent=names.join(',')+' voted('+voterSeats.length+'/'+needed+')';
 let _botVotes={};
 let _afkSeats={};
 let _botOffSeen={};
+/* [FIX] botVotes/{seat}/{key} used to be written with MY_SEAT (a small
+   int like "3") as the key everywhere — but the Realtime Database rule
+   for this path is `$uid === auth.uid`, i.e. the key MUST be the
+   voter's Firebase auth UID, not their seat number. "3" never equals
+   an auth uid string, so every single vote write was rejected with
+   PERMISSION_DENIED — not intermittent, 100% of the time, for anyone.
+   Local pass-and-play (!ROOM_CODE) never touches Firebase so it keeps
+   using the seat number, unaffected. These two helpers centralize the
+   "which key am I / whose seat does this key belong to" logic so the
+   write, the already-voted guard, and the who-voted display all agree. */
+function _myVoteKey(){
+return ROOM_CODE?((window.auth&&window.auth.currentUser)?window.auth.currentUser.uid:null):MY_SEAT;
+}
+function _voterSeatForKey(key){
+if(!ROOM_CODE)return Number(key);
+const found=PLAYERS.find(pl=>pl&&pl.uid===key);
+return found?found.seat:null;
+}
 function listenBotOff(){
 if(!ROOM_CODE)return;
 const ref=db.ref(`rooms/${ROOM_CODE}/botOffAt`);
@@ -3170,13 +3188,15 @@ window.voteForBot=async function(seat){
 if(MY_SEAT===null)return;
 if(seat===MY_SEAT)return;
 if(PLAYERS[seat]?.isBot)return;
-if((_botVotes[seat]||{})[MY_SEAT])return;
+const voteKey=_myVoteKey();
+if(voteKey==null)return;
+if((_botVotes[seat]||{})[voteKey])return;
 const badge=document.getElementById(`offbadge-${seat}`);
 if(badge)badge.classList.add('voted');
 navigator.vibrate&&navigator.vibrate(18);
 if(!ROOM_CODE){
 _botVotes[seat]=_botVotes[seat]||{};
-_botVotes[seat][MY_SEAT]=true;
+_botVotes[seat][voteKey]=true;
 const activePlayers=SEAT_LAYOUT_ACTIVE.filter(s=>PLAYERS[s]?.active&&s!==seat);
 const needed=Math.ceil(activePlayers.length*2/3)||1;
 const votes=Object.keys(_botVotes[seat]).length;
@@ -3185,16 +3205,16 @@ if(votes>=needed)_activateBot(seat);
 return;
 }
 try{
-_dbgLog('VOTE_ATTEMPT',{seat,mySeat:MY_SEAT,localAfkSeats:_afkSeats[seat]||false,timerExpireCount:_timerExpireCount[seat]||0,localBotVotes:Object.keys(_botVotes[seat]||{})});
+_dbgLog('VOTE_ATTEMPT',{seat,mySeat:MY_SEAT,voteKey,localAfkSeats:_afkSeats[seat]||false,timerExpireCount:_timerExpireCount[seat]||0,localBotVotes:Object.keys(_botVotes[seat]||{})});
 await waitForAuth();
-await db.ref(`rooms/${ROOM_CODE}/botVotes/${seat}/${MY_SEAT}`).set(true);
-_dbgLog('VOTE_OK',{seat,mySeat:MY_SEAT});
+await db.ref(`rooms/${ROOM_CODE}/botVotes/${seat}/${voteKey}`).set(true);
+_dbgLog('VOTE_OK',{seat,mySeat:MY_SEAT,voteKey});
 }catch(e){
-console.error('VOTE_FOR_BOT_FAILED',{seat,mySeat:MY_SEAT,code:e.code,message:e.message});
-_dbgLog('VOTE_FAILED',{seat,mySeat:MY_SEAT,code:e.code,message:e.message,localAfkSeatsAtFailure:_afkSeats[seat]||false});
+console.error('VOTE_FOR_BOT_FAILED',{seat,mySeat:MY_SEAT,voteKey,code:e.code,message:e.message});
+_dbgLog('VOTE_FAILED',{seat,mySeat:MY_SEAT,voteKey,code:e.code,message:e.message,localAfkSeatsAtFailure:_afkSeats[seat]||false});
 showToast('Vote failed');
 if(badge)badge.classList.remove('voted');
-delete (_botVotes[seat]||{})[MY_SEAT];
+delete (_botVotes[seat]||{})[voteKey];
 const activePlayersRB=SEAT_LAYOUT_ACTIVE.filter(s=>PLAYERS[s]?.active&&s!==seat);
 const neededRB=Math.ceil(activePlayersRB.length*2/3)||1;
 const votesRB=Object.keys(_botVotes[seat]||{}).length;
