@@ -3322,7 +3322,16 @@ const _botDice2=document.getElementById(`botdice-${seat}`);
 if(_botDice2){_botDice2.style.display='none';_botDice2.textContent='';}
 }
 if(ROOM_CODE){
-db.ref(`rooms/${ROOM_CODE}/botVotes/${seat}`).remove().catch(()=>{});
+/* [FIX] a seat can never remove its own botVotes node — the security
+   rules block that self-write, mirroring the self-vote guard already
+   in voteForBot (seat===MY_SEAT). When a player reclaims their own
+   bot via turnOffMyBot, this call used to fire anyway and always
+   failed with permission_denied (pure console spam, promise already
+   swallowed by .catch). The real cleanup for that seat still happens
+   correctly on every OTHER connected client via listenBotOff ->
+   _deactivateBot, whose remove() targets someone else's seat and is
+   allowed. Just skip the doomed self-removal here. */
+if(seat!==MY_SEAT)db.ref(`rooms/${ROOM_CODE}/botVotes/${seat}`).remove().catch(()=>{});
 db.ref(`rooms/${ROOM_CODE}/afkSeats/${seat}`).remove().catch(()=>{});
 }
 delete _botVotes[seat];
