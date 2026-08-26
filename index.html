@@ -2258,7 +2258,15 @@ waiting:_myTurnNow?false:(gData.waiting||false),
 over:false,
 sixes:gData.sixes||0,
 tokens:gData.tokens||[],
-placements:gData.placements||[]
+placements:gData.placements||[],
+/* [FIX] server's timestamp on the last game-state write IS the start
+   time of the turn being loaded (nextTurn() stamps G.timestamp right
+   as each new turn begins, and that's what gets pushed). Carrying it
+   into G here lets startTurnTimer() catch up instantly on rejoin —
+   e.g. after a call/reload eats a minute — instead of quietly handing
+   the AFK seat's opponent another full 43-45s wait on top of however
+   long the turn had already been running before the reload happened. */
+timestamp:(typeof gData.timestamp==='number')?gData.timestamp:Date.now()
 };
 Object.keys(_tokEls).forEach(k=>_removeTokEl(k));
 _cacheValid=false;
@@ -2279,13 +2287,23 @@ applyBoardRotation();
 setSyncStatus("ok");
 refreshUI();
 renderTokens();
+/* [FIX] _gameLoaded used to flip true only after updateTurnBanner() ran
+   below — but startTurnTimer() itself bails with `if(...||!_gameLoaded||...)
+   return;`. So on this very first call, right when a rejoin lands on the
+   AFK friend's turn, the primary 43s visual timer silently never started
+   at all, and _lastTimerTurn got set anyway (updateTurnBanner sets it
+   unconditionally), so nothing later re-triggered it either — only the
+   backup 45s timer (which has no _gameLoaded check) was left carrying
+   the turn. Flipping this before updateTurnBanner() means the primary
+   timer's G.timestamp catch-up (see startTurnTimer) actually gets to run
+   on the very first call instead of silently no-op'ing. */
+_gameLoaded=true;
 updateTurnBanner();
 const _myColorNames={[BLUE]:"Blue",[PINK]:"Pink",[YELLOW]:"Yellow",[GREEN]:"Green"};
 const _teamSuffix=window._teamMode?" — Team Mode 🤝":"";
 showToast("Game started!You are "+(_myColorNames[window._colorAssign[MY_SEAT]]||"")+_teamSuffix);
 saveSession();
 SFX.play('gamestart');
-_gameLoaded=true;
 try{
 if(ROOM_CODE&&typeof window._vaultSaveRoom==='function'){
 const pNames=PLAYERS.filter(p=>p&&p.active).map(p=>p.seat===MY_SEAT?(MY_NAME||'Me'):(p.label||`P${p.seat}`));
@@ -5155,7 +5173,21 @@ function startTurnTimer(seat){
 stopTurnTimer();
 if(G.over||!_gameLoaded||!PLAYERS[seat]?.active)return;
 _timerSeat=seat;
-_timerStart=Date.now();
+/* [FIX] used to always be Date.now() — correct for a turn this same
+   client just started locally (nextTurn stamps G.timestamp at that same
+   instant, so the two agree), but on rejoin-after-reload G.timestamp
+   (loaded from the server's record of when this turn began, see
+   loadAndStartGame) can already be well in the past — e.g. a phone call
+   eats a minute, the tab gets reloaded, and the friend's turn had
+   already timed out before we ever rejoined. Anchoring here means that
+   gets caught up on immediately below instead of quietly granting
+   another full 43s wait on top of the one that already elapsed. */
+_timerStart=(typeof G.timestamp==='number'&&G.timestamp>0)?G.timestamp:Date.now();
+if((Date.now()-_timerStart)/1000>=TURN_TIMER_SEC){
+_dbgLog('TIMER_EXPIRE_CATCHUP',{seat,elapsedSec:+((Date.now()-_timerStart)/1000).toFixed(1)});
+setTimeout(()=>{if(_timerSeat===seat)_onTurnTimerExpired(seat);},0);
+return;
+}
 const color=getDisplayColorForSeat(seat);
 const bar=_domCache.tbar[seat]||document.getElementById(`tbar-${seat}`);
 if(bar){
@@ -5462,11 +5494,17 @@ _turnTimeoutTimer=setTimeout(()=>{if(!G.over&&PLAYERS[G.turn]?.isBot)_doBotTurn(
 return;
 }
 if(!amIElderPlayer()||!ROOM_CODE)return;
+/* [FIX] same catch-up reasoning as startTurnTimer: blindly waiting a
+   fresh TURN_TIMEOUT_MS here ignored however long the turn had already
+   been running (e.g. across a rejoin-after-reload), doubling the wait
+   on top of what the primary timer already accounts for. */
+const _elapsedMs=Date.now()-((typeof G.timestamp==='number'&&G.timestamp>0)?G.timestamp:Date.now());
+const _remainingMs=Math.max(0,TURN_TIMEOUT_MS-_elapsedMs);
 _turnTimeoutTimer=setTimeout(()=>{
 if(G.over||G.turn===MY_SEAT)return;
 if(PLAYERS[G.turn]?.isBot)return;
 _onTurnTimerExpired(G.turn);
-},TURN_TIMEOUT_MS);
+},_remainingMs);
 }
 function onHumanRoll(){
 if(G.rolled||G.over||G_PAUSED||_rolling||_animating)return;
@@ -6043,6 +6081,7 @@ pushGameState({action:"skip",dice:v,reason:"moveError",auto:true},pid).catch(()=
 function nextTurn(same,wasSix){
 _dbgLog('DICE_NEXTTURN_START',{fromSeat:G.turn,same:!!same,wasSix:!!wasSix,diceValBefore:G.diceVal});
 G.rolled=false;_rolling=false;G.diceVal=null;G.waiting=false;
+G.timestamp=Date.now();
 if(!same){
 G.sixes=0;
 const layout=SEAT_LAYOUT_ACTIVE;
