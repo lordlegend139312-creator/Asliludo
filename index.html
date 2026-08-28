@@ -5,7 +5,7 @@
 /* ===== [DBG] TEMP DIAGNOSTIC LOGGING — standalone, runs first, isolated from rest of app (remove after done) ===== */
 (function(){
 try{
-window._DBG_ENABLED=true;
+window._DBG_ENABLED=false;
 if(!window._DBG_ENABLED){
   /* [DBG] disabled — set window._DBG_ENABLED=true before this script to re-enable full logging+UI.
      _dbgLog is kept as a no-op so scattered calls elsewhere in the app don't throw. */
@@ -992,6 +992,26 @@ row.innerHTML=`
 ${isSelected?'<div style="color:#F5C518;font-size:1.2rem;flex-shrink:0;">✓</div>':'<div style="color:rgba(255,255,255,.18);font-size:1.1rem;flex-shrink:0;">›</div>'}
 `;
 row.addEventListener('click',()=>{
+_showThemeDetail(t);
+});
+container.appendChild(row);
+});
+document.getElementById('theme-list-view').style.display='flex';
+document.getElementById('theme-preview-view').style.display='none';
+document.getElementById('modal-board-theme').classList.add('show');
+}
+function _showThemeDetail(t){
+document.getElementById('theme-list-view').style.display='none';
+const pv=document.getElementById('theme-preview-view');
+pv.style.display='flex';
+document.getElementById('theme-preview-big').innerHTML=_makeThemePreviewSVG(t);
+document.getElementById('theme-preview-name').textContent=t.emoji+' '+t.name;
+document.getElementById('theme-preview-desc').textContent=t.desc;
+document.getElementById('btn-theme-preview-back').onclick=()=>{
+pv.style.display='none';
+document.getElementById('theme-list-view').style.display='flex';
+};
+document.getElementById('btn-theme-preview-select').onclick=()=>{
 setAndApplyTheme(t.id);
 if(document.getElementById('game-wrap').style.display!=='none'){
 buildBoard();
@@ -1000,10 +1020,7 @@ applyBoardRotation();
 }
 document.getElementById('modal-board-theme').classList.remove('show');
 showToast(t.emoji+' '+t.name+' applied!');
-});
-container.appendChild(row);
-});
-document.getElementById('modal-board-theme').classList.add('show');
+};
 }
 function _makeThemePreviewSVG(t){
 const[c0,c1,c2,c3]=t.colors;
@@ -3280,7 +3297,7 @@ if(_voteCnt)_voteCnt.style.display='none';
 const _autoLbl=document.getElementById(`offauto-${seat}`);
 if(_autoLbl){
 _autoLbl.style.display='block';
-_autoLbl.textContent=isMine?'TAP TO TURN OFF BOT MODE':'Auto-playing';
+_autoLbl.textContent=isMine?'STOP AUTO-PLAY':'Auto-playing';
 }
 const _botDice=document.getElementById(`botdice-${seat}`);
 if(_botDice)_botDice.style.display='block';
@@ -6978,7 +6995,24 @@ setTimeout(()=>{crown.style.filter=_dbgOn?'drop-shadow(0 0 30px #FFD700)brightne
 },{passive:false});
 });
 })();</script>
-<div class="modal-overlay" id="modal-board-theme"><div class="modal-box" style="width:330px;max-width:95vw;"><div class="modal-title">🎨 Board Style</div><div class="modal-sub">Choose your board design</div><div id="theme-options" style="display:flex;flex-direction:column;gap:10px;width:100%;margin-top:4px;"></div><button class="modal-btn secondary" id="btn-theme-cancel">Cancel</button></div>
+<div class="modal-overlay" id="modal-board-theme"><div class="modal-box" style="width:330px;max-width:95vw;">
+<div id="theme-list-view" style="display:flex;flex-direction:column;align-items:center;gap:10px;width:100%;">
+<div class="modal-title">🎨 Board Style</div><div class="modal-sub">Choose your board design</div>
+<div id="theme-options" style="display:flex;flex-direction:column;gap:10px;width:100%;margin-top:4px;"></div>
+<button class="modal-btn secondary" id="btn-theme-cancel">Cancel</button>
+</div>
+<div id="theme-preview-view" style="display:none;flex-direction:column;align-items:center;gap:14px;width:100%;">
+<div id="theme-preview-big" style="width:190px;height:190px;border-radius:16px;overflow:hidden;border:2px solid rgba(245,197,24,.4);box-shadow:0 8px 32px rgba(0,0,0,.6);"></div>
+<div style="text-align:center;">
+<div id="theme-preview-name" style="color:#f0f0ff;font-size:1.15rem;font-weight:800;font-family:'Rajdhani',sans-serif;letter-spacing:.5px;"></div>
+<div id="theme-preview-desc" style="color:rgba(240,240,255,.5);font-size:.78rem;font-family:'Nunito',sans-serif;margin-top:4px;"></div>
+</div>
+<div style="display:flex;gap:10px;width:100%;">
+<button class="modal-btn secondary" id="btn-theme-preview-back" style="flex:1;">◀ Back</button>
+<button class="modal-btn" id="btn-theme-preview-select" style="flex:1;">✓ Select</button>
+</div>
+</div>
+</div>
 </div>
 <div class="modal-overlay" id="modal-shield-style"><div class="modal-box" style="width:340px;max-width:96vw;padding:20px 16px;gap:10px;"><div class="modal-title">🛡️ Shield Style</div><div class="modal-sub" id="shield-modal-sub">Choose Normal and Super shields — they must be different</div><div style="display:flex;gap:8px;width:100%;margin-bottom:4px;"><button id="shield-tab-normal" style="flex:1;padding:8px;border-radius:10px;border:2px solid #00AEEF;background:rgba(0,174,239,.15);color:#00AEEF;font-family:'Rajdhani',sans-serif;font-weight:800;font-size:.85rem;cursor:pointer;letter-spacing:.5px;">🔵 Normal</button><button id="shield-tab-super" style="flex:1;padding:8px;border-radius:10px;border:2px solid rgba(255,255,255,.15);background:transparent;color:rgba(255,255,255,.5);font-family:'Rajdhani',sans-serif;font-weight:800;font-size:.85rem;cursor:pointer;letter-spacing:.5px;">🟡 Super</button></div><div id="shield-options" style="display:flex;flex-direction:column;gap:8px;width:100%;max-height:55vh;overflow-y:auto;padding-right:2px;"></div><button class="modal-btn secondary" id="btn-shield-cancel" style="margin-top:4px;">Done</button></div>
 </div>
