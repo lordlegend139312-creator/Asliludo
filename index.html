@@ -996,31 +996,48 @@ _showThemeDetail(t);
 });
 container.appendChild(row);
 });
-document.getElementById('theme-list-view').style.display='flex';
-document.getElementById('theme-preview-view').style.display='none';
 document.getElementById('modal-board-theme').classList.add('show');
 }
+let _previewingTheme=null;
+let _themePreviewBackup=null;
 function _showThemeDetail(t){
-document.getElementById('theme-list-view').style.display='none';
-const pv=document.getElementById('theme-preview-view');
-pv.style.display='flex';
-document.getElementById('theme-preview-big').innerHTML=_makeThemePreviewSVG(t);
-document.getElementById('theme-preview-name').textContent=t.emoji+' '+t.name;
-document.getElementById('theme-preview-desc').textContent=t.desc;
-document.getElementById('btn-theme-preview-back').onclick=()=>{
-pv.style.display='none';
-document.getElementById('theme-list-view').style.display='flex';
-};
-document.getElementById('btn-theme-preview-select').onclick=()=>{
-setAndApplyTheme(t.id);
-if(document.getElementById('game-wrap').style.display!=='none'){
-buildBoard();
-buildPlayers();
-applyBoardRotation();
-}
 document.getElementById('modal-board-theme').classList.remove('show');
-showToast(t.emoji+' '+t.name+' applied!');
-};
+_openThemeRealPreview(t);
+}
+function _openThemeRealPreview(t){
+_previewingTheme=t;
+_themePreviewBackup={themeId:_boardThemeId,players:PLAYERS,mySeat:MY_SEAT};
+_boardThemeId=t.id;
+if(!PLAYERS||!PLAYERS[0]||!PLAYERS[1]||!PLAYERS[2]||!PLAYERS[3]){
+PLAYERS={0:{active:true},1:{active:true},2:{active:true},3:{active:true}};
+}
+MY_SEAT=0;
+_applyThemeCSS();
+const bw=document.getElementById('board-wrap');
+const slot=document.getElementById('theme-real-preview-slot');
+slot.appendChild(bw);
+bw.style.transform='rotate(0deg)';
+const tl=document.getElementById('tokens-layer');
+if(tl)tl.innerHTML='';
+buildBoard();
+document.getElementById('theme-real-preview-name').textContent=t.emoji+' '+t.name;
+document.getElementById('theme-real-preview-desc').textContent=t.desc;
+document.getElementById('modal-theme-real-preview').classList.add('show');
+}
+function _closeThemeRealPreview(){
+const bw=document.getElementById('board-wrap');
+const gw=document.getElementById('game-wrap');
+const botRow=document.getElementById('bot-row');
+gw.insertBefore(bw,botRow);
+document.getElementById('modal-theme-real-preview').classList.remove('show');
+if(_themePreviewBackup){
+_boardThemeId=_themePreviewBackup.themeId;
+PLAYERS=_themePreviewBackup.players;
+MY_SEAT=_themePreviewBackup.mySeat;
+_applyThemeCSS();
+}
+_previewingTheme=null;
+_themePreviewBackup=null;
 }
 function _makeThemePreviewSVG(t){
 const[c0,c1,c2,c3]=t.colors;
@@ -6815,6 +6832,16 @@ bindBtn("btn-customization",()=>document.getElementById("modal-customization").c
 bindBtn("btn-customization-close",()=>document.getElementById("modal-customization").classList.remove("show"));
 bindBtn("btn-board-theme",()=>{document.getElementById("modal-customization").classList.remove("show");_showThemeModal();});
 bindBtn("btn-theme-cancel",()=>document.getElementById("modal-board-theme").classList.remove("show"));
+bindBtn("btn-theme-preview-back",()=>{_closeThemeRealPreview();_showThemeModal();});
+bindBtn("btn-theme-preview-select",()=>{
+const t=_previewingTheme;
+_closeThemeRealPreview();
+if(t){
+setAndApplyTheme(t.id);
+if(document.getElementById('game-wrap').style.display!=='none'){buildBoard();buildPlayers();applyBoardRotation();}
+showToast(t.emoji+' '+t.name+' applied!');
+}
+});
 bindBtn("btn-shield-style",()=>{document.getElementById("modal-customization").classList.remove("show");_showShieldModal();});
 bindBtn("btn-shield-cancel",()=>document.getElementById("modal-shield-style").classList.remove("show"));
 bindBtn("btn-token-style",()=>{document.getElementById("modal-customization").classList.remove("show");_showTokenModal();});
@@ -7001,17 +7028,17 @@ setTimeout(()=>{crown.style.filter=_dbgOn?'drop-shadow(0 0 30px #FFD700)brightne
 <div id="theme-options" style="display:flex;flex-direction:column;gap:10px;width:100%;margin-top:4px;"></div>
 <button class="modal-btn secondary" id="btn-theme-cancel">Cancel</button>
 </div>
-<div id="theme-preview-view" style="display:none;flex-direction:column;align-items:center;gap:14px;width:100%;">
-<div id="theme-preview-big" style="width:190px;height:190px;border-radius:16px;overflow:hidden;border:2px solid rgba(245,197,24,.4);box-shadow:0 8px 32px rgba(0,0,0,.6);"></div>
-<div style="text-align:center;">
-<div id="theme-preview-name" style="color:#f0f0ff;font-size:1.15rem;font-weight:800;font-family:'Rajdhani',sans-serif;letter-spacing:.5px;"></div>
-<div id="theme-preview-desc" style="color:rgba(240,240,255,.5);font-size:.78rem;font-family:'Nunito',sans-serif;margin-top:4px;"></div>
 </div>
-<div style="display:flex;gap:10px;width:100%;">
+</div>
+<div class="modal-overlay" id="modal-theme-real-preview" style="z-index:700;flex-direction:column;padding:14px 12px calc(14px + env(safe-area-inset-bottom,0px));gap:8px;">
+<div style="text-align:center;flex-shrink:0;">
+<div id="theme-real-preview-name" style="color:#f0f0ff;font-size:1.1rem;font-weight:800;font-family:'Rajdhani',sans-serif;letter-spacing:.5px;"></div>
+<div id="theme-real-preview-desc" style="color:rgba(240,240,255,.5);font-size:.76rem;font-family:'Nunito',sans-serif;margin-top:2px;"></div>
+</div>
+<div id="theme-real-preview-slot" style="display:flex;align-items:center;justify-content:center;flex:1;width:100%;min-height:0;"></div>
+<div style="display:flex;gap:10px;width:100%;max-width:330px;flex-shrink:0;">
 <button class="modal-btn secondary" id="btn-theme-preview-back" style="flex:1;">◀ Back</button>
 <button class="modal-btn" id="btn-theme-preview-select" style="flex:1;">✓ Select</button>
-</div>
-</div>
 </div>
 </div>
 <div class="modal-overlay" id="modal-shield-style"><div class="modal-box" style="width:340px;max-width:96vw;padding:20px 16px;gap:10px;"><div class="modal-title">🛡️ Shield Style</div><div class="modal-sub" id="shield-modal-sub">Choose Normal and Super shields — they must be different</div><div style="display:flex;gap:8px;width:100%;margin-bottom:4px;"><button id="shield-tab-normal" style="flex:1;padding:8px;border-radius:10px;border:2px solid #00AEEF;background:rgba(0,174,239,.15);color:#00AEEF;font-family:'Rajdhani',sans-serif;font-weight:800;font-size:.85rem;cursor:pointer;letter-spacing:.5px;">🔵 Normal</button><button id="shield-tab-super" style="flex:1;padding:8px;border-radius:10px;border:2px solid rgba(255,255,255,.15);background:transparent;color:rgba(255,255,255,.5);font-family:'Rajdhani',sans-serif;font-weight:800;font-size:.85rem;cursor:pointer;letter-spacing:.5px;">🟡 Super</button></div><div id="shield-options" style="display:flex;flex-direction:column;gap:8px;width:100%;max-height:55vh;overflow-y:auto;padding-right:2px;"></div><button class="modal-btn secondary" id="btn-shield-cancel" style="margin-top:4px;">Done</button></div>
