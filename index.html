@@ -1500,8 +1500,9 @@ if(bw)bw.style.transform=`rotate(${deg}deg)`;
 _tokenRotationDeg=-deg;
 _cacheValid=false;
 for(const k in _slotPxCache)delete _slotPxCache[k];
+const _lcExtra=getBoardTheme().id==='neon'?45:0;
 document.querySelectorAll(".lc-inner").forEach(el=>{
-el.style.transform=`rotate(${-deg}deg)`;
+el.style.transform=`rotate(${_lcExtra-deg}deg)`;
 });
 document.querySelectorAll(".lc>svg").forEach(el=>{
 const parentLc=el.parentElement;
