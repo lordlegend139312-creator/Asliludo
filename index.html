@@ -861,28 +861,6 @@ boardBorder:"#0d0d1a",
 boardPad:"#0d0d1a",
 colors:["#ff2d78","#ffe600","#00ff88","#00cfff"],
 },
-royal:{
-id:"royal",
-name:"Royal Gold",
-emoji:"👑",
-desc:"Elegant dark wood&gold",
-def:"#2c1f0e",
-boardBg:"#1a0f05",
-boardBorder:"#3d2a10",
-boardPad:"#1a0f05",
-colors:["#e84060","#f5c518","#5dba6a","#4eb8d6"],
-},
-marble:{
-id:"marble",
-name:"White Marble",
-emoji:"🏛️",
-desc:"Clean marble&pastel tones",
-def:"#e8e0d8",
-boardBg:"#c8bfb4",
-boardBorder:"#a89a8e",
-boardPad:"#c8bfb4",
-colors:["#e05470","#e8b84b","#4caf72","#4a90d9"],
-},
 plain:{
 id:"plain",
 name:"Plain Board",
@@ -906,7 +884,7 @@ boardPad:"#3d2b1f",
 colors:["#FF2D78","#FFD600","#00C853","#00AEEF"],
 },
 };
-let _boardThemeId=(()=>{try{return localStorage.getItem('ludo_theme')||'plain';}catch(e){return 'plain';}})();
+let _boardThemeId=(()=>{try{return localStorage.getItem('ludo_theme')||'classic';}catch(e){return 'classic';}})();
 function getBoardTheme(){return BOARD_THEMES[_boardThemeId]||BOARD_THEMES.classic;}
 function setAndApplyTheme(id){
 _boardThemeId=id;
@@ -929,15 +907,10 @@ background:${t.boardBorder}!important;
 `;
 if(t.id==='neon'){
 css+=`
-#board{background:#080810!important;gap:1px;box-shadow:0 0 30px rgba(0,200,255,.15),0 8px 48px rgba(0,0,0,.9)!important;}
+#board{background:#080810!important;gap:1px;box-shadow:0 0 30px rgba(160,120,255,.2),0 8px 48px rgba(0,0,0,.9)!important;}
 body{background:#060612!important;}
 .lc{outline:none;}
 #board-wrap{filter:drop-shadow(0 0 12px rgba(0,180,255,.12));}
-`;
-}else if(t.id==='marble'){
-css+=`
-#board{background:#b0a090!important;box-shadow:0 4px 32px rgba(0,0,0,.3)!important;}
-body{background:linear-gradient(145deg,#2a2a2a,#1a1a1a)!important;}
 `;
 }else if(t.id==='plain'){
 css+=`
@@ -946,12 +919,6 @@ body{background:#1a1a2e!important;}
 #board-wrap{filter:none;}
 .lc{box-shadow:none!important;}
 .star-svg{filter:drop-shadow(0 0 1.5px rgba(150,150,150,0.4))!important;}
-`;
-}else if(t.id==='royal'){
-css+=`
-#board{background:#3d2810!important;box-shadow:0 0 0 2px rgba(200,150,40,.2),0 8px 48px rgba(0,0,0,.9)!important;}
-body{background:#0e0a04!important;}
-#board-wrap{filter:drop-shadow(0 0 14px rgba(180,120,20,.18));}
 `;
 }else if(t.id==='darkwood'){
 css+=`
@@ -3596,10 +3563,21 @@ d.dataset.homeSeat=homeSeat;
 if(_isDarkwood){
 d.innerHTML=`<div style="width:100%;height:100%;background:${dc};border-radius:${br};display:flex;align-items:center;justify-content:center;">
 <div class="lc-inner" style="width:74%;height:74%;background:rgba(0,0,0,0.25);border-radius:8px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:10%;padding:10%;box-sizing:border-box;">
-<div data-slot="${vr},${vc},0" style="border-radius:50%;background:rgba(255,255,255,0.85);box-shadow:0 2px 4px rgba(0,0,0,0.4);"></div>
-<div data-slot="${vr},${vc},1" style="border-radius:50%;background:rgba(255,255,255,0.85);box-shadow:0 2px 4px rgba(0,0,0,0.4);"></div>
-<div data-slot="${vr},${vc},2" style="border-radius:50%;background:rgba(255,255,255,0.85);box-shadow:0 2px 4px rgba(0,0,0,0.4);"></div>
-<div data-slot="${vr},${vc},3" style="border-radius:50%;background:rgba(255,255,255,0.85);box-shadow:0 2px 4px rgba(0,0,0,0.4);"></div>
+<div data-slot="${vr},${vc},0" style="border-radius:50%;background:#e8dcc8;box-shadow:0 2px 4px rgba(0,0,0,0.4);"></div>
+<div data-slot="${vr},${vc},1" style="border-radius:50%;background:#e8dcc8;box-shadow:0 2px 4px rgba(0,0,0,0.4);"></div>
+<div data-slot="${vr},${vc},2" style="border-radius:50%;background:#e8dcc8;box-shadow:0 2px 4px rgba(0,0,0,0.4);"></div>
+<div data-slot="${vr},${vc},3" style="border-radius:50%;background:#e8dcc8;box-shadow:0 2px 4px rgba(0,0,0,0.4);"></div>
+</div>
+</div>`;
+}else if(_themeId==='neon'){
+const circleColor=isActive?dc:"#cccccc";
+const circleBorder=isActive?darken(dc,15):"#aaaaaa";
+d.innerHTML=`<div style="width:100%;height:100%;background:radial-gradient(circle at 30% 25%,${lighten(dc,25)},${dc} 65%,${darken(dc,10)});border-radius:${br};display:flex;align-items:center;justify-content:center;overflow:hidden;${isActive?'':'opacity:0.45;'}">
+<div class="lc-inner" style="width:70%;height:70%;background:linear-gradient(135deg,rgba(255,255,255,.97),rgba(255,255,255,.8));transform:rotate(45deg);border-radius:10px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:9%;padding:11%;box-sizing:border-box;box-shadow:0 0 16px rgba(255,255,255,.6),inset 0 0 8px rgba(0,0,0,.08);">
+<div data-slot="${vr},${vc},0" style="border-radius:3px;background:linear-gradient(135deg,${lighten(dc,45)},${circleColor});border:2px solid ${circleBorder};box-shadow:0 0 6px ${circleColor};"></div>
+<div data-slot="${vr},${vc},1" style="border-radius:3px;background:linear-gradient(135deg,${lighten(dc,45)},${circleColor});border:2px solid ${circleBorder};box-shadow:0 0 6px ${circleColor};"></div>
+<div data-slot="${vr},${vc},2" style="border-radius:3px;background:linear-gradient(135deg,${lighten(dc,45)},${circleColor});border:2px solid ${circleBorder};box-shadow:0 0 6px ${circleColor};"></div>
+<div data-slot="${vr},${vc},3" style="border-radius:3px;background:linear-gradient(135deg,${lighten(dc,45)},${circleColor});border:2px solid ${circleBorder};box-shadow:0 0 6px ${circleColor};"></div>
 </div>
 </div>`;
 }else{
@@ -3627,7 +3605,7 @@ if(inHomeSeat(r,c)!==null)continue;
 if(inCenter(r,c)){
 if(r===6&&c===6){
 const d=document.createElement("div");
-d.style.cssText=`grid-column:7/span 3;grid-row:7/span 3;overflow:hidden;`;
+d.style.cssText=`grid-column:7/span 3;grid-row:7/span 3;overflow:hidden;${_themeId==='neon'?'position:relative;':''}`;
 const cTop=getDisplayColorForSeat(1);
 const cRight=getDisplayColorForSeat(2);
 const cBot=getDisplayColorForSeat(3);
@@ -3646,6 +3624,14 @@ d.innerHTML=`<svg viewBox="0 0 90 90" style="width:100%;height:100%;display:bloc
 <polygon points="45,45 90,90 0,90" fill="url(#dw_br)"/>
 <polygon points="45,45 0,90 0,0" fill="url(#dw_pr)"/>
 </svg>`;
+}else if(_themeId==='neon'){
+d.innerHTML=`<svg viewBox="0 0 90 90" style="width:100%;height:100%;display:block;" preserveAspectRatio="none">
+<polygon points="45,45 0,0 90,0" fill="${cTop}"/>
+<polygon points="45,45 90,0 90,90" fill="${cRight}"/>
+<polygon points="45,45 90,90 0,90" fill="${cBot}"/>
+<polygon points="45,45 0,90 0,0" fill="${cLeft}"/>
+</svg>
+<div style="position:absolute;inset:0;background:radial-gradient(circle at 30% 30%,rgba(180,120,255,.4),transparent 60%),radial-gradient(circle at 70% 70%,rgba(0,255,200,.32),transparent 60%),radial-gradient(circle at 70% 30%,rgba(255,90,190,.28),transparent 55%);mix-blend-mode:screen;pointer-events:none;"></div>`;
 }else{
 d.innerHTML=`<svg viewBox="0 0 90 90" style="width:100%;height:100%;display:block;" preserveAspectRatio="none">
 <polygon points="45,45 0,0 90,0" fill="${cTop}"/>
@@ -3671,12 +3657,20 @@ d.innerHTML=`<svg viewBox="0 0 24 24" style="width:82%;height:82%;" fill="none">
 stroke="${darken(dc)}" stroke-width="1.8" fill="${darken(dc)}" stroke-linejoin="round"/>
 </svg>`;
 }else if(GREY_STARS.has(k)){
+if(_themeId==='neon'){
+d.style.background=`linear-gradient(135deg,rgba(120,80,255,.14),rgba(0,255,200,.08) 50%,rgba(255,60,150,.1)),${DEF}`;
+d.innerHTML=`<svg viewBox="0 0 24 24" style="width:88%;height:88%;filter:drop-shadow(0 0 4px rgba(160,120,255,.85)) drop-shadow(0 0 8px rgba(0,255,200,.5));" fill="none">
+<polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"
+stroke="white" stroke-width="1.8" fill="transparent" stroke-linejoin="round"/>
+</svg>`;
+}else{
 d.style.background=DEF;
 const _starStroke=(_isPlainTheme?"#aaaaaa":(_themeId==='darkwood'?"#6b4423":"white"));
 d.innerHTML=`<svg viewBox="0 0 24 24" class="star-svg" fill="none">
 <polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"
 stroke="${_starStroke}" stroke-width="1.8" fill="transparent" stroke-linejoin="round"/>
 </svg>`;
+}
 }else if(CORNER_SEAT[k]!==undefined){
 const dc=getDisplayColorForSeat(CORNER_SEAT[k]);d.style.background=dc;
 d.dataset.cornerSeat=CORNER_SEAT[k];
@@ -3691,7 +3685,12 @@ const arSeat=ARROWS[k].seat;
 const dc=getDisplayColorForSeat(arSeat);d.dataset.arrowSeat=arSeat;
 d.innerHTML=`<svg viewBox="0 0 24 24" style="width:82%;height:82%;"><path d="${arDir[ARROWS[k].dir]}" fill="${dc}"/></svg>`;
 }else if(PATH.has(k)){
+if(_themeId==='neon'){
+d.style.background=`linear-gradient(135deg,rgba(120,80,255,.12),rgba(0,255,200,.07) 50%,rgba(255,60,150,.09)),${DEF}`;
+d.style.border="1px solid rgba(200,160,255,.16)";
+}else{
 d.style.background=DEF;
+}
 }else{
 d.style.background=BOARD_BG;
 }
