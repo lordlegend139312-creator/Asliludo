@@ -4897,7 +4897,7 @@ const grp=groups[rcKey]||[tok];
 const idx=grp.findIndex(t=>t.pid===tok.pid&&t.tid===tok.tid);
 const n=grp.length;
 stackCount=n;
-if(G.turn===MY_SEAT&&MY_SEAT!=null){
+if(G.turn===MY_SEAT&&MY_SEAT!=null&&G.rolled&&G.diceVal!=null){
 const mineCount=grp.filter(t=>t.pid===MY_SEAT).length;
 const otherCount=n-mineCount;
 if(mineCount>0&&otherCount>0){
