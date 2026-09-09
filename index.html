@@ -1585,7 +1585,7 @@ el.appendChild(mark);
 });
 }
 async function _showBlast(cellKey,pid,tid){
-SFX.play&&SFX.play('capture');
+SFX.play&&SFX.play('bomb');
 navigator.vibrate&&navigator.vibrate(60);
 const key=(pid!=null&&tid!=null)?`${pid}-${tid}`:null;
 const tEls=key?_tokEls[key]:null;
