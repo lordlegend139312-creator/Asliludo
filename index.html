@@ -6090,7 +6090,12 @@ _cacheValid=true;
 // real getBoundingClientRect() measurements (⚠️OVERLAP_ONLINE false
 // positives, seen as exactly half the intended gap).
 // Fix: measure an actual rendered .lc cell directly.
-const _lc=document.querySelector("#board .lc");
+// [FIX-2] The FIRST ".lc" in DOM order is actually a 6x6 home-corner
+// block (grid-column:span 6), not a real 1x1 track cell — this made cp
+// ~6x too large and blew up every token's rendered size. Normal track
+// cells set dataset.r/dataset.c; home-corner blocks don't. Target one
+// of those specifically.
+const _lc=document.querySelector("#board .lc[data-r]");
 if(_lc){
 const _r=_lc.getBoundingClientRect();
 if(_r.width>0)_cpx=_r.width;
