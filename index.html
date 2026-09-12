@@ -444,7 +444,7 @@ console.error('ANON_SIGNIN_FAILED',{code:err.code,message:err.message});
 _setAuthReady();
 });
 /* ---------- Google Profile System (Kills/Wins/Losses — survives browser data clear) ---------- */
-let MY_PROFILE=null;
+let MY_PROFILE=window.MY_PROFILE=null;
 let _statsRoomLogged=null;
 /* [FIX] Replaced Firebase's own popup/redirect Google sign-in with Google
    Identity Services (GSI) directly. Both signInWithPopup and
@@ -619,7 +619,7 @@ try{await ref.update({name:profile.name||user.displayName||'Player',photoURL:use
 profile.name=profile.name||user.displayName||'Player';
 profile.photoURL=user.photoURL||profile.photoURL;
 }
-MY_PROFILE={uid,name:profile.name,photoURL:profile.photoURL,kills:profile.kills||0,wins:profile.wins||0,losses:profile.losses||0};
+MY_PROFILE=window.MY_PROFILE={uid,name:profile.name,photoURL:profile.photoURL,kills:profile.kills||0,wins:profile.wins||0,losses:profile.losses||0};
 try{localStorage.setItem('ludo_had_google','1');}catch(e){}
 _applyProfileToUI();
 try{
@@ -676,7 +676,7 @@ if(uid){try{db.ref('players/'+uid).off('value');}catch(e){}}
 await auth.signOut();
 }catch(e){}
 try{localStorage.removeItem('ludo_had_google');}catch(e){}
-MY_PROFILE=null;
+MY_PROFILE=window.MY_PROFILE=null;
 _applyProfileToUI();
 document.getElementById('modal-profile').classList.remove('show');
 try{await auth.signInAnonymously();}catch(e){}
@@ -6079,8 +6079,22 @@ renderTokens();
 function _refreshCache(){
 if(_cacheValid)return;
 _cacheValid=true;
-const b=document.getElementById("board");
-if(b){const s=parseFloat(getComputedStyle(b).getPropertyValue("--cell"));if(s>0)_cpx=s;}
+// [FIX] --cell is an unregistered CSS custom property holding the literal
+// string "min(5.8vw,4.8dvh,40px)". getComputedStyle() never resolves
+// custom properties into a computed px value (browsers don't evaluate
+// min()/vw/dvh for arbitrary --vars), so parseFloat() on it always
+// returned NaN and this silently fell through to an approximate,
+// device-dependent guess (Math.min(innerWidth*0.058, innerHeight*0.054, 40))
+// that could drift from the real rendered grid cell size — this was the
+// root cause of the stack-offset math (built on cellPx()) not matching
+// real getBoundingClientRect() measurements (⚠️OVERLAP_ONLINE false
+// positives, seen as exactly half the intended gap).
+// Fix: measure an actual rendered .lc cell directly.
+const _lc=document.querySelector("#board .lc");
+if(_lc){
+const _r=_lc.getBoundingClientRect();
+if(_r.width>0)_cpx=_r.width;
+}
 if(!_cpx)_cpx=Math.min(window.innerWidth*0.058,window.innerHeight*0.054,40);
 }
 function cellPx(){return _cpx||Math.min(window.innerWidth*0.058,window.innerHeight*0.054,40);}
@@ -6180,7 +6194,15 @@ const BASE_W=Math.round(cp*1.15);
 const sizeScale=n=>n<=1?1:n<=2?0.78:n<=4?0.65:n<=6?0.55:0.46;
 const stackOffset=(n,idx,cp)=>{
 if(n<=1)return{dx:0,dy:0};
-const gap=cp*0.22;
+// [FIX] Gap must scale with the token's actual rendered footprint
+// (BASE_W*sizeScale(n)), not a fixed fraction of cell size — otherwise
+// tokens overlap heavily once sizeScale shrinks them for bigger stacks.
+// gap = full token width + a small fixed breathing space, so tokens sit
+// edge-to-edge with an even visible gap between each pair.
+// (idx-(n-1)/2) keeps the whole row's centroid at 0, so it's still
+// perfectly centered in the cell regardless of n.
+const tokW=BASE_W*sizeScale(n);
+const gap=tokW+cp*0.05;
 return{dx:(idx-(n-1)/2)*gap,dy:0};
 };
 const alive=new Set();
@@ -7061,6 +7083,7 @@ pushGameState({action:"roll",dice:v,selectable,auto:_wasAutoRoll});
 if(pid===MY_SEAT){G.timestamp=Date.now();startTurnTimer(pid);}
 }
 async function onTokClick(pid,tid){
+if(_placingPower)return;
 if(window._pnpMode&&window._setMY_SEAT){
 window._setMY_SEAT(G.turn);
 }
@@ -8775,10 +8798,10 @@ if(joinInput)joinInput.value=saved;
 if(typeof window.checkRejoin==='function')window.checkRejoin();
 if(typeof window._checkGoogleRedirectReturn==='function'){
 window._checkGoogleRedirectReturn().then(function(){
-setTimeout(function(){if(!MY_PROFILE&&typeof window._initGoogleOneTap==='function')window._initGoogleOneTap();},2500);
+setTimeout(function(){if(!window.MY_PROFILE&&typeof window._initGoogleOneTap==='function')window._initGoogleOneTap();},2500);
 });
 }else{
-setTimeout(function(){if(!MY_PROFILE&&typeof window._initGoogleOneTap==='function')window._initGoogleOneTap();},2500);
+setTimeout(function(){if(!window.MY_PROFILE&&typeof window._initGoogleOneTap==='function')window._initGoogleOneTap();},2500);
 }
 });
 }).catch(function(){
