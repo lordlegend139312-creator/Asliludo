@@ -2150,6 +2150,7 @@ return false;
 function startReverseTargeting(){
 if(!G.inventory||!G.inventory[MY_SEAT]||!(G.inventory[MY_SEAT].reverse>0)){showToast("You don't have a Reverse to use");return;}
 if(G.turn!==MY_SEAT||!G.rolled||G.diceVal==null){showToast("Roll the dice before using this power.");return;}
+if(_animating){showToast("Wait for the current move to finish");return;}
 window.closeShop();
 cancelPlacement();
 _placingPower='reverse';
@@ -2178,6 +2179,7 @@ else{_dbgLog('POWER_REVERSE_NO_ELIGIBLE_TOKEN',{pid:MY_SEAT,dice:v});showToast("
 window.startReverseTargeting=startReverseTargeting;
 async function applyReverse(pid,tid){
 if(_placingPower!=='reverse')return;
+if(_animating){cancelPlacement();showToast("Wait for the current move to finish");return;}
 if(!G.inventory[MY_SEAT]||!(G.inventory[MY_SEAT].reverse>0)){cancelPlacement();return;}
 const tok=tokOf(pid,tid);
 if(!tok){cancelPlacement();return;}
@@ -6968,8 +6970,21 @@ navigator.vibrate&&navigator.vibrate(28);
 SFX.play('dice');
 animDice(pid,v,()=>{clearTimeout(rollSafety);_rolling=false;afterRoll(pid,v);});
 }
-function shouldAutoMove(mv,v){
+function _hasUsableReversePower(pid,v){
+if(!G.inventory||!G.inventory[pid]||!(G.inventory[pid].reverse>0))return false;
+if(v==null)return false;
+return G.tokens.some(t=>{
+if(t.pid!==pid)return false;
+if(t.step<2||t.step>STEP_MAIN_END)return false;
+const targetStep=t.step-v;
+if(targetStep<1)return false;
+if(_pathBlockedByShield(t.pid,t.tid,t.step,targetStep))return false;
+return true;
+});
+}
+function shouldAutoMove(mv,v,pid){
 if(mv.length===0)return false;
+if(pid===MY_SEAT&&_hasUsableReversePower(pid,v)){_dbgLog('AUTOMOVE_SKIPPED_REVERSE_AVAILABLE',{pid,dice:v});return false;}
 if(mv.length===1)return true;
 const destCells=mv.map(t=>{
 const tpid=t.pid!==undefined?t.pid:(mv[0].pid!==undefined?mv[0].pid:MY_SEAT);
@@ -7035,7 +7050,7 @@ pushGameState({action:"skip",dice:v,reason:"noMove",auto:_wasAutoRoll});
 },300);
 return;
 }
-if(shouldAutoMove(mv,v)){
+if(shouldAutoMove(mv,v,pid)){
 _dbgLog('DICE_AUTOMOVE_TRIGGERED',{pid,dice:v,onlyLegalMoveTidsOrSameDest:mv.map(t=>({pid:t.pid,tid:t.tid,step:t.step})),reason:mv.length===1?'single_legal_move':'all_candidates_same_destination'});
 pushGameState({action:"roll",dice:v,selectable:[],auto:_wasAutoRoll});
 const moveTid=mv[0].tid;
@@ -7402,6 +7417,7 @@ setTimeout(()=>cell.classList.remove('star-land-glow'),750);
 }
 async function doMove(pid,tid,v){
 _dbgLog('DICE_DOMOVE_START',{pid,tid,v,gDiceValBefore:G.diceVal,gRolledBefore:G.rolled,wasAutoMove:_pendingAutoMove});
+if(_placingPower)cancelPlacement();
 const _wasAutoMove=_pendingAutoMove;
 _pendingAutoMove=false;
 _animating=true;
