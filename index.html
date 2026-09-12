@@ -6101,6 +6101,22 @@ const _r=_lc.getBoundingClientRect();
 if(_r.width>0)_cpx=_r.width;
 }
 if(!_cpx)_cpx=Math.min(window.innerWidth*0.058,window.innerHeight*0.054,40);
+// [DBG] trace every real cache (re)compute — should only fire on first
+// render + resize events, not every frame. If cpx ever comes out large,
+// this row shows exactly which element (or the fallback) produced it.
+const _bwDbg=document.getElementById('board-wrap');
+_dbgLog('CELLPX_REFRESH',{
+foundLC:!!_lc,
+lcRectW:_lc?+_lc.getBoundingClientRect().width.toFixed(2):null,
+lcDataset:_lc?`${_lc.dataset.r},${_lc.dataset.c}`:null,
+usedFallback:!_lc||!(_lc.getBoundingClientRect().width>0),
+cpx:+_cpx.toFixed(2),
+innerW:window.innerWidth,
+innerH:window.innerHeight,
+dpr:window.devicePixelRatio,
+bwTransform:_bwDbg?getComputedStyle(_bwDbg).transform:null,
+visState:document.visibilityState
+});
 }
 function cellPx(){return _cpx||Math.min(window.innerWidth*0.058,window.innerHeight*0.054,40);}
 const GAP=1,PAD=5;
@@ -6196,6 +6212,18 @@ if(_dups.length)_dbgLog('ONLINE_DUPLICATE_TOKENS_FOUND',_dups);
 }
 }
 const BASE_W=Math.round(cp*1.15);
+// [DBG] cross-check the CACHED cp against a fresh, uncached measurement
+// of the same cell, right at the moment tokens are actually sized. Only
+// logs on real drift (>2px) so this stays silent during normal play —
+// if the oversized-token bug happens again, this row will show the
+// cached cp vs the true live cell width at that exact instant.
+{
+const _liveLC=document.querySelector("#board .lc[data-r]");
+const _liveW=_liveLC?_liveLC.getBoundingClientRect().width:null;
+if(_liveW&&Math.abs(_liveW-cp)>2){
+_dbgLog('⚠️CELLPX_STALE_CACHE',{cachedCp:+cp.toFixed(2),liveCellW:+_liveW.toFixed(2),BASE_W,cacheValid:_cacheValid,innerW:window.innerWidth,innerH:window.innerHeight,dpr:window.devicePixelRatio});
+}
+}
 const sizeScale=n=>n<=1?1:n<=2?0.78:n<=4?0.65:n<=6?0.55:0.46;
 const stackOffset=(n,idx,cp)=>{
 if(n<=1)return{dx:0,dy:0};
