@@ -3311,6 +3311,14 @@ renderTokens();
    on the very first call instead of silently no-op'ing. */
 _gameLoaded=true;
 updateTurnBanner();
+/* [FIX] belt-and-suspenders for the ResizeObserver above: if this load
+   happened while the tab was backgrounded/inactive, the very first
+   getBoundingClientRect() read inside _refreshCache() can land before
+   the browser has committed real layout, locking in an oversized/wrong
+   cellPx that only self-corrected before via a manual rejoin. One
+   invalidate+re-render ~250ms after load costs nothing during normal
+   play but catches that late-settling layout case automatically. */
+setTimeout(_invalidateCellPxCache,250);
 const _myColorNames={[BLUE]:"Blue",[PINK]:"Pink",[YELLOW]:"Yellow",[GREEN]:"Green"};
 const _teamSuffix=window._teamMode?" — Team Mode 🤝":"";
 showToast("Game started!You are "+(_myColorNames[window._colorAssign[MY_SEAT]]||"")+_teamSuffix);
@@ -6071,11 +6079,28 @@ dot.addEventListener('transitionend',_onEnd,{once:true});
 }
 let _cpx=0,_cacheValid=false;
 let _trailSkip=0;
-window.addEventListener('resize',()=>{
+function _invalidateCellPxCache(){
 _cpx=0;_cacheValid=false;
 Object.keys(_slotPxCache).forEach(k=>delete _slotPxCache[k]);
 renderTokens();
-},{passive:true});
+}
+window.addEventListener('resize',_invalidateCellPxCache,{passive:true});
+/* [FIX] window 'resize' alone doesn't cover every case that can leave
+   cellPx() cached with a wrong value from the very first render — e.g.
+   a tab that was backgrounded (Brave app switched away, screen off,
+   etc.) during loadAndStartGame() can have buildBoard() run before the
+   browser has actually settled real layout, so the first
+   getBoundingClientRect() read locks in a bad _cpx that only a real
+   'resize' event would ever have invalidated. A ResizeObserver on the
+   board itself catches any layout-size change of the grid regardless
+   of whether the window as a whole fired a resize event, so a late
+   layout settle self-corrects without needing a manual rejoin. */
+try{
+const _roBoard=document.getElementById('board');
+if(_roBoard&&typeof ResizeObserver!=='undefined'){
+new ResizeObserver(_invalidateCellPxCache).observe(_roBoard);
+}
+}catch(e){}
 function _refreshCache(){
 if(_cacheValid)return;
 _cacheValid=true;
