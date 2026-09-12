@@ -1614,14 +1614,15 @@ if(!G.inventory)G.inventory=_defaultInventory();
 if(!G.purchased)G.purchased={0:{},1:{},2:{},3:{}};
 if(!G.inventory[pid])G.inventory[pid]={};
 if(!G.purchased[pid])G.purchased[pid]={};
-if(def.once&&G.purchased[pid][key])return false;
+if(def.once&&G.purchased[pid][key]){_dbgLog('POWER_BUY_BLOCKED_ONCE_ONLY',{pid,key});return false;}
 const _cost=_powerCost(key);
-if((G.points[pid]||0)<_cost)return false;
+if((G.points[pid]||0)<_cost){_dbgLog('POWER_BUY_BLOCKED_INSUFFICIENT_POINTS',{pid,key,cost:_cost,pointsHave:G.points[pid]||0});return false;}
 G.points[pid]=+((G.points[pid]||0)-_cost).toFixed(2);
 G.inventory[pid][key]=(G.inventory[pid][key]||0)+1;
 if(def.once)G.purchased[pid][key]=true;
 G.lastPurchase={pid,key,ts:Date.now()};
 _lastShownPurchaseTs=G.lastPurchase.ts;
+_dbgLog('POWER_BOUGHT',{pid,key,cost:_cost,pointsLeft:G.points[pid],invCountNow:G.inventory[pid][key]});
 return true;
 }
 function _cellDiv(cellKey){
@@ -2002,21 +2003,22 @@ el.classList.add('freeze-eligible');
 el._freezeClick=()=>applyFreeze(tpid,ttid);
 el.addEventListener('click',el._freezeClick);
 });
-if(_eligibleCount>0){showToast("Tap an opponent's token to freeze it");return;}
+if(_eligibleCount>0){_dbgLog('POWER_FREEZE_TARGETING_START',{pid:MY_SEAT,eligibleCount:_eligibleCount,onBoardCount:_onBoardCount});showToast("Tap an opponent's token to freeze it");return;}
 cancelPlacement();
-if(_onBoardCount===0)showToast("Can't use Freeze — no opponent token is on the board right now (they're either at home or already finished)");
-else if(_notSafeCount===0)showToast("Can't use Freeze — every opponent token in range is on a safe cell or the home stretch");
-else if(_notFrozenCount===0)showToast("Can't use Freeze — every eligible opponent token is already frozen");
-else showToast("Can't use Freeze — the only eligible opponent token is protected by an Aegis shield");
+if(_onBoardCount===0){_dbgLog('POWER_FREEZE_NO_ELIGIBLE',{pid:MY_SEAT,reason:'no_opponent_on_board'});showToast("Can't use Freeze — no opponent token is on the board right now (they're either at home or already finished)");}
+else if(_notSafeCount===0){_dbgLog('POWER_FREEZE_NO_ELIGIBLE',{pid:MY_SEAT,reason:'all_on_safe_or_stretch'});showToast("Can't use Freeze — every opponent token in range is on a safe cell or the home stretch");}
+else if(_notFrozenCount===0){_dbgLog('POWER_FREEZE_NO_ELIGIBLE',{pid:MY_SEAT,reason:'all_already_frozen'});showToast("Can't use Freeze — every eligible opponent token is already frozen");}
+else{_dbgLog('POWER_FREEZE_NO_ELIGIBLE',{pid:MY_SEAT,reason:'only_target_is_aegis_shielded'});showToast("Can't use Freeze — the only eligible opponent token is protected by an Aegis shield");}
 }
 window.startFreezeTargeting=startFreezeTargeting;
 function applyFreeze(pid,tid){
 if(_placingPower!=='freeze')return;
 if(!G.inventory[MY_SEAT]||!(G.inventory[MY_SEAT].freeze>0)){cancelPlacement();return;}
-if(G.aegisShields&&G.aegisShields.some(sh=>sh.pid===pid&&sh.tid===tid)){cancelPlacement();showToast("That token is Aegis-shielded — it can't be frozen");return;}
+if(G.aegisShields&&G.aegisShields.some(sh=>sh.pid===pid&&sh.tid===tid)){_dbgLog('POWER_FREEZE_BLOCKED_AEGIS',{targetPid:pid,targetTid:tid});cancelPlacement();showToast("That token is Aegis-shielded — it can't be frozen");return;}
 G.inventory[MY_SEAT].freeze-=1;
 if(!G.frozenTokens)G.frozenTokens=[];
 G.frozenTokens.push({pid,tid,casterPid:MY_SEAT});
+_dbgLog('POWER_FREEZE_APPLIED',{casterPid:MY_SEAT,targetPid:pid,targetTid:tid,invLeft:G.inventory[MY_SEAT].freeze});
 cancelPlacement();
 _renderFrozenVisuals();
 SFX.play&&SFX.play('freeze');
@@ -2079,11 +2081,11 @@ el.classList.add('aegis-eligible');
 el._aegisClick=()=>applyAegis(tpid,ttid);
 el.addEventListener('click',el._aegisClick);
 });
-if(_eligibleCount>0){showToast("Tap your own token to shield it");return;}
+if(_eligibleCount>0){_dbgLog('POWER_AEGIS_TARGETING_START',{pid:MY_SEAT,eligibleCount:_eligibleCount,onBoardCount:_onBoardCount});showToast("Tap your own token to shield it");return;}
 cancelPlacement();
-if(_onBoardCount===0)showToast("Can't use Aegis — none of your tokens are on the board right now (they're either at home or already finished)");
-else if(_notShieldedCount===0)showToast("Can't use Aegis — every token you have on the board is already shielded");
-else showToast("Can't use Aegis — the only eligible token shares its cell with an enemy Aegis");
+if(_onBoardCount===0){_dbgLog('POWER_AEGIS_NO_ELIGIBLE',{pid:MY_SEAT,reason:'no_own_token_on_board'});showToast("Can't use Aegis — none of your tokens are on the board right now (they're either at home or already finished)");}
+else if(_notShieldedCount===0){_dbgLog('POWER_AEGIS_NO_ELIGIBLE',{pid:MY_SEAT,reason:'all_already_shielded'});showToast("Can't use Aegis — every token you have on the board is already shielded");}
+else{_dbgLog('POWER_AEGIS_NO_ELIGIBLE',{pid:MY_SEAT,reason:'only_target_shares_cell_with_enemy_aegis'});showToast("Can't use Aegis — the only eligible token shares its cell with an enemy Aegis");}
 }
 window.startAegisTargeting=startAegisTargeting;
 function _pathBlockedByShield(pid,tid,fromStep,toStep){
@@ -2104,7 +2106,7 @@ const src=getCell(sh.pid,stok.step);
 if(!src)return false;
 return `${src[0]}-${src[1]}`===ck;
 });
-if(shieldedEnemyHere&&isDestination)return true;
+if(shieldedEnemyHere&&isDestination){_dbgLog('SHIELD_BLOCK',{pid,tid,cellKey:ck,reason:'cannot_land_on_aegis_shielded_enemy'});return true;}
 const oppColorCounts={};
 G.tokens.forEach(o=>{
 if(o.pid===pid||o.step===0||o.step>=STEP_DONE)return;
@@ -2136,10 +2138,10 @@ return src&&`${src[0]}-${src[1]}`===ck;
 const _moverHasAegis=(G.aegisShields||[]).some(sh=>sh.pid===pid&&sh.tid===tid);
 if(maxOppStack>=2){
 if(_moverHasAegis){
-if(isDestination&&_aegisInStackHere)return true;
+if(isDestination&&_aegisInStackHere){_dbgLog('SHIELD_BLOCK',{pid,tid,cellKey:ck,reason:'aegis_mover_cannot_land_on_enemy_aegis_stack',maxOppStack});return true;}
 }else{
-if(maxOppStack>=3)return true;
-if(isDestination)return true;
+if(maxOppStack>=3){_dbgLog('SHIELD_BLOCK',{pid,tid,cellKey:ck,reason:'super_shield_3plus_full_block',maxOppStack});return true;}
+if(isDestination){_dbgLog('SHIELD_BLOCK',{pid,tid,cellKey:ck,reason:'normal_shield_cannot_land',maxOppStack});return true;}
 }
 }
 }
@@ -2171,7 +2173,7 @@ el._reverseClick=()=>applyReverse(tpid,ttid);
 el.addEventListener('click',el._reverseClick);
 });
 if(anyEligible)showToast("Tap a token to move it backward");
-else{showToast("No token can be reversed with this roll");cancelPlacement();}
+else{_dbgLog('POWER_REVERSE_NO_ELIGIBLE_TOKEN',{pid:MY_SEAT,dice:v});showToast("No token can be reversed with this roll");cancelPlacement();}
 }
 window.startReverseTargeting=startReverseTargeting;
 async function applyReverse(pid,tid){
@@ -2185,6 +2187,7 @@ const targetStep=tok.step-v;
 if(targetStep<1){cancelPlacement();return;}
 if(_pathBlockedByShield(pid,tid,tok.step,targetStep)){cancelPlacement();return;}
 G.inventory[MY_SEAT].reverse-=1;
+_dbgLog('POWER_REVERSE_APPLIED',{pid,tid,fromStep:tok.step,toStep:targetStep,dice:v,invLeft:G.inventory[MY_SEAT].reverse});
 cancelPlacement();
 _animating=true;
 const fromRC=getCell(tok.pid,tok.step);
@@ -2219,6 +2222,7 @@ if(capturedPids.has(enemy.pid))continue;
 const samePlayerOnCell=enemiesHere.filter(e=>e.pid===enemy.pid);
 if(samePlayerOnCell.length>=2)continue;
 const _enemyStepAtCapture=enemy.step;
+_dbgLog('CAPTURE_VIA_REVERSE',{cellKey:ck,movingPid:tok.pid,movingTid:tok.tid,victimPid:enemy.pid,victimTid:enemy.tid,victimStepAtCapture:_enemyStepAtCapture});
 _rbNotifyCut(enemy.pid);
 await sendHomeFast(enemy);
 capturedPids.add(enemy.pid);
@@ -2261,7 +2265,7 @@ if(!stok)return false;
 const src=getCell(sh.pid,stok.step);
 return src&&`${src[0]}-${src[1]}`===_ack;
 });
-if(_enemyAegisHere){cancelPlacement();showToast("Can't shield — an enemy Aegis token shares this cell");return;}
+if(_enemyAegisHere){_dbgLog('POWER_AEGIS_BLOCKED_ENEMY_AEGIS_ON_CELL',{targetPid:pid,targetTid:tid,cellKey:_ack});cancelPlacement();showToast("Can't shield — an enemy Aegis token shares this cell");return;}
 }
 }
 G.inventory[MY_SEAT].aegis-=1;
@@ -2273,6 +2277,7 @@ const before=G.frozenTokens.length;
 G.frozenTokens=G.frozenTokens.filter(f=>!(f.pid===pid&&f.tid===tid));
 if(G.frozenTokens.length<before)_wasFrozen=true;
 }
+_dbgLog('POWER_AEGIS_APPLIED',{casterPid:MY_SEAT,targetPid:pid,targetTid:tid,unfroze:_wasFrozen,invLeft:G.inventory[MY_SEAT].aegis});
 cancelPlacement();
 _renderAegisVisuals();
 _renderFrozenVisuals();
@@ -2313,6 +2318,7 @@ G.inventory[MY_SEAT].luckyNumber-=1;
 if(!G.pMeta)G.pMeta=_defaultPMeta();
 if(!G.pMeta[MY_SEAT])G.pMeta[MY_SEAT]={ks:0,lr:0,sr:0,lv:null,rf:null,luckyActive:false};
 G.pMeta[MY_SEAT].luckyActive=true;
+_dbgLog('POWER_LUCKYNUMBER_ARMED',{pid:MY_SEAT,invLeft:G.inventory[MY_SEAT].luckyNumber});
 window.closeShop();
 pushGameState({});
 showToast("Lucky Number armed — boosts your next roll!");
@@ -2323,6 +2329,14 @@ if(!G.inventory||!G.inventory[MY_SEAT]||!(G.inventory[MY_SEAT].reroll>0)){showTo
 if(!_rerollWindowActive||G.turn!==MY_SEAT||!G.rolled||G.diceVal==null){showToast("You can only re-roll within the 15s window after your roll");return;}
 _cancelRerollWindow();
 stopTurnTimer();
+_dbgLog('POWER_REROLL_USED',{pid:MY_SEAT,discardedDice:G.diceVal,sixesStreakBeforeReset:G.sixes||0,invLeftBefore:G.inventory[MY_SEAT].reroll});
+/* [FIX] G.sixes tracks consecutive sixes for the "3 sixes in a row = forfeit
+   turn" rule. A discarded (rerolled) six was never actually "kept" by the
+   player, so it must not count toward that streak — otherwise 2 natural/
+   rerolled sixes followed by a 3rd six from Re-roll wrongly forfeits the
+   turn (reported bug: reroll → 6, reroll again → 6, then turn auto-skipped
+   as if 3 sixes were rolled in a row). */
+G.sixes=0;
 G.inventory[MY_SEAT].reroll-=1;
 window.closeShop();
 G.rolled=false;
@@ -2353,11 +2367,11 @@ _eligibleCount++;
 el.classList.add('ambush-eligible');
 el.onclick=()=>placeTrap(ck);
 });
-if(_eligibleCount>0){showToast("Tap a cell to place your Ambush");return;}
+if(_eligibleCount>0){_dbgLog('POWER_AMBUSH_TARGETING_START',{pid:MY_SEAT,eligibleCount:_eligibleCount});showToast("Tap a cell to place your Ambush");return;}
 cancelPlacement();
-if(_notSafeStretchCount===0)showToast("Can't place an Ambush — every cell on the board is a safe cell or part of a home stretch");
-else if(_notOccupiedCount===0)showToast("Can't place an Ambush — every open cell already has a token on it");
-else showToast("Can't place an Ambush — every open cell already has a trap on it");
+if(_notSafeStretchCount===0){_dbgLog('POWER_AMBUSH_NO_ELIGIBLE',{pid:MY_SEAT,reason:'all_safe_or_stretch'});showToast("Can't place an Ambush — every cell on the board is a safe cell or part of a home stretch");}
+else if(_notOccupiedCount===0){_dbgLog('POWER_AMBUSH_NO_ELIGIBLE',{pid:MY_SEAT,reason:'all_occupied'});showToast("Can't place an Ambush — every open cell already has a token on it");}
+else{_dbgLog('POWER_AMBUSH_NO_ELIGIBLE',{pid:MY_SEAT,reason:'all_have_traps'});showToast("Can't place an Ambush — every open cell already has a trap on it");}
 }
 window.startAmbushPlacement=startAmbushPlacement;
 function placeTrap(cellKey){
@@ -2366,6 +2380,7 @@ if(!G.inventory[MY_SEAT]||!(G.inventory[MY_SEAT].ambush>0)){cancelPlacement();re
 G.inventory[MY_SEAT].ambush-=1;
 if(!G.traps)G.traps=[];
 G.traps.push({cellKey,ownerPid:MY_SEAT});
+_dbgLog('POWER_AMBUSH_PLACED',{ownerPid:MY_SEAT,cellKey,invLeft:G.inventory[MY_SEAT].ambush,totalTrapsOnBoard:G.traps.length});
 cancelPlacement();
 _renderMyTraps();
 const _casterP=PLAYERS[MY_SEAT];
@@ -2386,10 +2401,12 @@ G.lastAmbushTrigger={cellKey,victimPid:tok.pid,victimTid:tok.tid,ts:Date.now()};
 _lastShownAmbushTs=G.lastAmbushTrigger.ts;
 const _trapCellEl=_cellDiv(cellKey);
 if(_trapCellEl){const _mk=_trapCellEl.querySelector(".ambush-mark");if(_mk)_mk.remove();}
+_dbgLog('POWER_AMBUSH_TRIGGERED',{cellKey,ownerPid:trap.ownerPid,victimPid:tok.pid,victimTid:tok.tid,victimStep:tok.step,selfTrigger:trap.ownerPid===tok.pid});
 await _showBlast(cellKey,tok.pid,tok.tid);
 const _victimP=PLAYERS[tok.pid];
 const _isAegisProtected=G.aegisShields&&G.aegisShields.some(sh=>sh.pid===tok.pid&&sh.tid===tok.tid);
 if(_isAegisProtected){
+_dbgLog('POWER_AMBUSH_BLOCKED_BY_AEGIS',{cellKey,ownerPid:trap.ownerPid,victimPid:tok.pid,victimTid:tok.tid});
 _renderMyTraps();
 showToast(`🛡️💥 ${(_victimP&&_victimP.label)||"A token"}'s Aegis absorbed the Ambush blast!`);
 return true;
@@ -2420,6 +2437,7 @@ return oc&&`${oc[0]}-${oc[1]}`===ck;
 if(enemiesHere.length!==1)continue;
 const lone=enemiesHere[0];
 if(G.aegisShields.some(s2=>s2.pid===lone.pid&&s2.tid===lone.tid))continue;
+_dbgLog('POWER_AEGIS_AUTO_KILL',{aegisPid:sh.pid,aegisTid:sh.tid,cellKey:ck,victimPid:lone.pid,victimTid:lone.tid});
 await _showBlast(ck,lone.pid,lone.tid);
 if(lone.step===STEP_MAIN_END)addPoints(sh.pid,POINTS.killBeforeStretch);else addPoints(sh.pid,POINTS.kill);
 addPoints(sh.pid,POINTS.powerKill);
@@ -2458,6 +2476,7 @@ cellTokens.forEach(o=>{if(o.pid!==tok.pid)enemyCounts[o.pid]=(enemyCounts[o.pid]
 const shieldOwnerPid=Object.keys(enemyCounts).find(p=>enemyCounts[p]>=2);
 if(shieldOwnerPid==null)return;
 const stepAtDeath=tok.step;
+_dbgLog('POWER_AEGIS_EXPIRED_TOKEN_KILLED',{pid,tid,stepAtDeath,cellKey:ck,shieldOwnerPid});
 tok.everKilled=true;tok.step=0;
 if(G.frozenTokens&&G.frozenTokens.length)G.frozenTokens=G.frozenTokens.filter(f=>!(f.pid===tok.pid&&f.tid===tok.tid));
 addPoints(Number(shieldOwnerPid),POINTS.kill);
@@ -2471,7 +2490,9 @@ showToast(G.lastPowerUse.text);
 function addPoints(pid,amount){
 if(!G.specialMode||pid==null||amount==null)return;
 if(!G.points)G.points={0:0,1:0,2:0,3:0};
+const _before=G.points[pid]||0;
 G.points[pid]=+((G.points[pid]||0)+amount).toFixed(2);
+_dbgLog('POINTS_ADD',{pid,amount,before:_before,after:G.points[pid]});
 }
 let ROOM_CODE=null;
 let _lastVaultLobbySave=0;
@@ -3201,6 +3222,7 @@ const gData=gSnap.val()||{};
 console.log('[LOAD-DEBUG]',{turn:gData.turn,tokensCount:(gData.tokens||[]).length,hasProgress:(gData.tokens||[]).some(t=>t&&t.step>0)});
 SEAT_LAYOUT_ACTIVE=gData.seatLayout||SEAT_LAYOUTS[NUM_PLAYERS]||[0,1,2,3];
 window._teamMode=(NUM_PLAYERS===4)&&(gData.teamMode===true);
+_dbgLog('TEAM_MODE_SET',{teamMode:window._teamMode,numPlayers:NUM_PLAYERS,source:'onlineGameLoad'});
 window._colorAssign=gData.colorAssign||DEFAULT_COLOR_ASSIGN;
 window._teamAssign=gData.teamAssign||_deriveTeamAssign(window._colorAssign);
 PLAYERS=[];
@@ -3341,6 +3363,7 @@ if(data.action==="move"&&_rawDice==null&&_lastSeenDice[data.actionBy]!=null){
 data={...data,dice:_lastSeenDice[data.actionBy],diceVal:_lastSeenDice[data.actionBy]};
 }
 if(_syncAnimPlaying||_animating){
+_dbgLog('SYNC_RECEIVE_QUEUED',{actionBy:data.actionBy,action:data.action,dice:data.dice??data.diceVal,reason:_syncAnimPlaying?'anim_playing':'local_animating'});
 if(data.action==="move"){
 const ts=data.timestamp;
 const seat=data.actionBy;
@@ -3385,12 +3408,14 @@ else{_syncAnimPending.push(data);_syncPendingRebuildIndex();}
 }
 return;
 }
+_dbgLog('SYNC_RECEIVE_APPLY_IMMEDIATE',{actionBy:data.actionBy,action:data.action,dice:data.dice??data.diceVal});
 _applySyncGameState(data);
 }
 let _syncAnimPlaying=false;
 let _lastRollAnimBy=-1;
 function _applySyncGameState(data){
 setSyncStatus("ok");
+_dbgLog('SYNC_APPLY_STATE',{actionBy:data.actionBy,action:data.action,incomingTurn:data.turn,incomingDice:data.diceVal,incomingSixes:data.sixes,localSixesBefore:G.sixes,localDiceBefore:G.diceVal,incomingPoints:data.points,incomingInventoryForActor:data.inventory&&data.actionBy!=null?data.inventory[data.actionBy]:undefined});
 if(data.seatLayout){
 const changed=JSON.stringify(data.seatLayout)!==JSON.stringify(SEAT_LAYOUT_ACTIVE);
 SEAT_LAYOUT_ACTIVE=data.seatLayout;
@@ -3721,11 +3746,13 @@ timestamp:(window._cpuMode||window._pnpMode?Date.now():firebase.database.ServerV
 ...extra,
 ...(extra.action==='roll'?{rollTs:Date.now()}:{})
 };
+_dbgLog('SYNC_PUSH',{action:extra.action,reason:extra.reason,turn:payload.turn,dice:payload.diceVal,sixes:payload.sixes,pointsSnapshot:payload.points,inventorySnapshot:payload.inventory,trapsCount:(payload.traps||[]).length,aegisCount:(payload.aegisShields||[]).length,frozenCount:(payload.frozenTokens||[]).length});
 if(!gameRef){setSyncStatus("ok");return Promise.resolve();}
 return gameRef.update(payload).then(()=>{
 setSyncStatus("ok");
 }).catch(e=>{
 setSyncStatus("err");
+_dbgLog('SYNC_PUSH_FAILED',{action:extra.action,message:e&&e.message,code:e&&e.code});
 showToast("Sync error-reconnecting...");
 });
 }
@@ -3733,11 +3760,12 @@ function saveSession(){
 if(window._cpuMode){return;}
 if(!ROOM_CODE||MY_SEAT===null||!MY_NAME){return;}
 const data={code:ROOM_CODE,seat:MY_SEAT,name:MY_NAME};
-try{localStorage.setItem('ludo_session',JSON.stringify(data));}catch(e){}
+try{localStorage.setItem('ludo_session',JSON.stringify(data));_dbgLog('SESSION_SAVED',data);}catch(e){}
 }
 function clearSession(){
 try{
 localStorage.removeItem('ludo_session');
+_dbgLog('SESSION_CLEARED',{});
 }catch(e){}
 }
 function loadSession(){
@@ -3758,6 +3786,7 @@ card.style.display='none';
 window.tryRejoin=async function(){
 const s=loadSession();
 if(!s){clearSession();return;}
+_dbgLog('REJOIN_ATTEMPT_START',{code:s.code,seat:s.seat,name:s.name});
 /* [FIX] if the previous session ended abruptly (tab backgrounded/killed
    mid-game instead of going through leaveToLobby/leaveRoom), old
    gameRef/chat/presence listeners from before can still be attached.
@@ -3783,7 +3812,7 @@ roomBase.child('abandonedAt').once('value').catch(()=>null),
 roomBase.child('lastActiveAt').once('value').catch(()=>null),
 roomBase.child('createdAt').once('value').catch(()=>null)
 ]);
-if(!statusSnap||!statusSnap.exists()){showToast('Room no longer exists');clearSession();document.getElementById('rejoin-card').style.display='none';return;}
+if(!statusSnap||!statusSnap.exists()){_dbgLog('REJOIN_FAILED',{code:s.code,reason:'room_no_longer_exists'});showToast('Room no longer exists');clearSession();document.getElementById('rejoin-card').style.display='none';return;}
 const rData={
 status:statusSnap.val(),
 host:hostSnap&&hostSnap.val(),
@@ -3792,8 +3821,10 @@ abandonedAt:abandonedAtSnap&&abandonedAtSnap.val(),
 lastActiveAt:lastActiveAtSnap&&lastActiveAtSnap.val(),
 createdAt:createdAtSnap&&createdAtSnap.val()
 };
+_dbgLog('REJOIN_ROOM_STATE_FETCHED',{code:s.code,status:rData.status,host:rData.host,abandonedAt:rData.abandonedAt,lastActiveAt:rData.lastActiveAt});
 if(rData.status==='waiting'&&rData.createdAt&&(Date.now()-rData.createdAt)>=15*60*1000){
 try{await db.ref(`rooms/${s.code}`).remove();}catch(e){}
+_dbgLog('REJOIN_FAILED',{code:s.code,reason:'waiting_room_expired_15min'});
 showToast('Room expired — not started within 15 min');
 clearSession();
 document.getElementById('rejoin-card').style.display='none';
@@ -3817,17 +3848,17 @@ return;
 }
 const gameSnap=await db.ref(`rooms/${s.code}/game/over`).once('value').catch(()=>null);
 const gameOver=gameSnap&&gameSnap.val()===true;
-if(gameOver){showToast('That game has already ended');clearSession();document.getElementById('rejoin-card').style.display='none';return;}
+if(gameOver){_dbgLog('REJOIN_FAILED',{code:s.code,reason:'game_already_over'});showToast('That game has already ended');clearSession();document.getElementById('rejoin-card').style.display='none';return;}
 if(rData.abandonedAt){
 const elapsed=Date.now()-rData.abandonedAt;
-if(elapsed>=15*60*1000){showToast('Room expired — everyone left');clearSession();document.getElementById('rejoin-card').style.display='none';return;}
+if(elapsed>=15*60*1000){_dbgLog('REJOIN_FAILED',{code:s.code,reason:'room_abandoned_15min',elapsed});showToast('Room expired — everyone left');clearSession();document.getElementById('rejoin-card').style.display='none';return;}
 }
 if(!rData.abandonedAt&&rData.lastActiveAt){
 const elapsed=Date.now()-rData.lastActiveAt;
-if(elapsed>=15*60*1000){showToast('Room expired — inactive for 15 min');clearSession();document.getElementById('rejoin-card').style.display='none';return;}
+if(elapsed>=15*60*1000){_dbgLog('REJOIN_FAILED',{code:s.code,reason:'inactive_15min',elapsed});showToast('Room expired — inactive for 15 min');clearSession();document.getElementById('rejoin-card').style.display='none';return;}
 }
 const playerSnap=await db.ref(`rooms/${s.code}/players/${s.seat}`).once('value').catch(()=>null);
-if(!playerSnap||!playerSnap.exists()){showToast('Seat no longer available');clearSession();return;}
+if(!playerSnap||!playerSnap.exists()){_dbgLog('REJOIN_FAILED',{code:s.code,seat:s.seat,reason:'seat_no_longer_available'});showToast('Seat no longer available');clearSession();return;}
 MY_SEAT=s.seat;IS_HOST=(rData.host===s.seat);
 NUM_PLAYERS=rData.numPlayers||4;
 ROOM_CODE=s.code;
@@ -3838,6 +3869,7 @@ _bindPresence(s.code,s.seat);
 _gameStarted=true;
 _gameStartLock=true;
 closeModals();
+_dbgLog('REJOIN_SUCCESS_LOADING_GAME',{code:s.code,seat:s.seat,isHost:IS_HOST});
 showToast('🔄 Rejoining...');
 /* [FIX] load the authoritative game state FIRST, then attach the live
    gameRef listener via listenRoom(). Doing it in the old order (listener
@@ -3990,6 +4022,7 @@ function _maybeStartRerollWindow(pid,v,hasMove){
 if(pid!==MY_SEAT||PLAYERS[pid]?.isBot)return false;
 if(!G.inventory||!G.inventory[pid]||!(G.inventory[pid].reroll>0))return false;
 _rerollWindowActive=true;
+_dbgLog('REROLL_WINDOW_STARTED',{pid,dice:v,hasMove});
 _renderRerollBox();
 clearTimeout(_rerollWindowTimer);
 _rerollWindowTimer=setTimeout(()=>{
@@ -3997,6 +4030,7 @@ if(!_rerollWindowActive)return;
 _rerollWindowActive=false;
 _rerollBoxSuppressed=true;
 _renderRerollBox();
+_dbgLog('REROLL_WINDOW_EXPIRED',{pid,dice:v,hadMove:hasMove,turnSkipped:!hasMove&&G.turn===pid});
 if(!hasMove&&G.turn===pid){
 G.rolled=false;G.waiting=false;G.diceVal=null;
 addPoints(pid,POINTS.noLegalMove);
@@ -4298,7 +4332,7 @@ const seat=Number(k);
 const ts=val[k];
 if(_botOffSeen[seat]===ts)return;
 _botOffSeen[seat]=ts;
-if(PLAYERS[seat]?.isBot)_deactivateBot(seat);
+if(PLAYERS[seat]?.isBot){_dbgLog('BOT_OFF_SIGNAL_RECEIVED',{seat,ts});_deactivateBot(seat);}
 });
 };
 ref.on('value',cb);
@@ -4329,7 +4363,7 @@ const votes=Object.keys(_botVotes[seat]||{}).length;
 const activePlayers=SEAT_LAYOUT_ACTIVE.filter(s=>PLAYERS[s]?.active&&s!==seat);
 const needed=Math.ceil(activePlayers.length*2/3)||1;
 if(votes>=needed&&votes>0){
-if(!PLAYERS[seat]?.isBot)_activateBot(seat);
+if(!PLAYERS[seat]?.isBot){_dbgLog('VOTE_THRESHOLD_MET_ACTIVATING_BOT',{seat,votes,needed,activePlayersCount:activePlayers.length});_activateBot(seat);}
 return;
 }
 /* [FIX] this used to bail out early with `if(PLAYERS[seat]?.isBot)return;`
@@ -4342,6 +4376,7 @@ return;
    and the seat is (still) marked bot, undo it so state always matches
    the synced data. */
 if(PLAYERS[seat]?.isBot){
+_dbgLog('VOTE_BELOW_THRESHOLD_UNDOING_BOT',{seat,votes,needed});
 _deactivateBot(seat);
 return;
 }
@@ -4393,6 +4428,7 @@ _deactivateBot(seat);
 window.turnOffMyBot=async function(seat){
 if(MY_SEAT===null||seat!==MY_SEAT)return;
 if(!PLAYERS[seat]?.isBot)return;
+_dbgLog('TURN_OFF_MY_BOT_CLICKED',{seat});
 navigator.vibrate&&navigator.vibrate(18);
 _deactivateBot(seat);
 if(ROOM_CODE){
@@ -4406,6 +4442,7 @@ if(!PLAYERS[seat])return;
 const wasInactive=!PLAYERS[seat].active;
 PLAYERS[seat].isBot=true;
 PLAYERS[seat].active=true;
+_dbgLog('BOT_ACTIVATED',{seat,wasInactive,amIElder:amIElderPlayer(),gTurn:G.turn,gRolled:G.rolled});
 if(wasInactive){
 buildPlayers();
 PLAYERS.forEach(p=>{if(p.active)renderSeatVisuals(p.id);});
@@ -4458,6 +4495,7 @@ setTimeout(_updateAbandonTimestamp,500);
 function _deactivateBot(seat){
 if(!PLAYERS[seat]?.isBot)return;
 PLAYERS[seat].isBot=false;
+_dbgLog('BOT_DEACTIVATED',{seat,reclaimedBySelf:seat===MY_SEAT,amIElder:amIElderPlayer(),gTurn:G.turn});
 const lbl=document.getElementById(`lbl-${seat}`);
 if(lbl){const bl=lbl.querySelector('.bot-label');if(bl)bl.remove();}
 const offBadge=document.getElementById(`offbadge-${seat}`);
@@ -4612,7 +4650,7 @@ const tokOf=(pid,tid)=>G.tokens.find(t=>t.pid===pid&&t.tid===tid);
 const toksOf=(pid)=>G.tokens.filter(t=>t.pid===pid);
 function movable(pid,dv){
 return toksOf(pid).filter(t=>{
-if(G.frozenTokens&&G.frozenTokens.some(f=>f.pid===pid&&f.tid===t.tid))return false;
+if(G.frozenTokens&&G.frozenTokens.some(f=>f.pid===pid&&f.tid===t.tid)){_dbgLog('MOVABLE_BLOCKED_FROZEN',{pid,tid:t.tid,dv});return false;}
 if(t.step===0)return dv===6;
 if(t.step>=STEP_DONE)return false;
 if(t.step>=STEP_STRETCH_START){
@@ -4638,7 +4676,7 @@ const src=getCell(sh.pid,stok.step);
 if(!src)return false;
 return `${src[0]}-${src[1]}`===ck;
 });
-if(shieldedEnemyHere&&isDestination)return false;
+if(shieldedEnemyHere&&isDestination){_dbgLog('MOVABLE_BLOCKED_SHIELD',{pid,tid:t.tid,dv,cellKey:ck,reason:'cannot_land_on_aegis_shielded_enemy'});return false;}
 const oppColorCounts={};
 G.tokens.forEach(o=>{
 if(o.pid===pid||o.step===0||o.step>=STEP_DONE)return;
@@ -4676,10 +4714,10 @@ return src&&`${src[0]}-${src[1]}`===ck;
 const _moverHasAegis=(G.aegisShields||[]).some(sh=>sh.pid===pid&&sh.tid===t.tid);
 if(maxOppStack>=2){
 if(_moverHasAegis){
-if(isDestination&&_aegisInStackHere)return false;
+if(isDestination&&_aegisInStackHere){_dbgLog('MOVABLE_BLOCKED_SHIELD',{pid,tid:t.tid,dv,cellKey:ck,reason:'aegis_mover_cannot_land_on_enemy_aegis_stack',maxOppStack});return false;}
 }else{
-if(maxOppStack>=3)return false;
-if(isDestination)return false;
+if(maxOppStack>=3){_dbgLog('MOVABLE_BLOCKED_SHIELD',{pid,tid:t.tid,dv,cellKey:ck,reason:'super_shield_3plus_full_block',maxOppStack});return false;}
+if(isDestination){_dbgLog('MOVABLE_BLOCKED_SHIELD',{pid,tid:t.tid,dv,cellKey:ck,reason:'normal_shield_cannot_land',maxOppStack});return false;}
 }
 }
 }
@@ -4714,6 +4752,13 @@ if(!_teamControlActive(pid))return own;
 const mateId=getTeammate(pid);
 if(mateId<0||!PLAYERS[mateId]?.active)return own;
 const mateTokens=movable(mateId,dv);
+if(mateTokens.length){
+const _sig=`${pid}|${mateId}|${dv}`;
+if(_sig!==window._dbgLastTeamCtrlSig){
+window._dbgLastTeamCtrlSig=_sig;
+_dbgLog('TEAM_CONTROL_ACTIVE_MERGE',{pid,mateId,dv,ownMovable:own.map(t=>t.tid),mateMovable:mateTokens.map(t=>t.tid)});
+}
+}
 return[...own,...mateTokens];
 }
 function buildBoard(){
@@ -5172,6 +5217,7 @@ ${useBtn}
 }
 window.openShop=function(){
 if(!G.specialMode){showToast("Shop is only available in Special Mode");return;}
+_dbgLog('SHOP_OPENED',{pid:MY_SEAT,points:(G.points&&G.points[MY_SEAT])||0});
 document.getElementById("modal-shop").classList.add("show");
 renderShop();
 };
@@ -5185,6 +5231,7 @@ renderShop();
 _renderRerollBox();
 showToast(`✅ Bought ${POWER_DEFS[key].name}`);
 }else{
+_dbgLog('SHOP_BUY_CLICK_FAILED',{pid:MY_SEAT,key,points:(G.points&&G.points[MY_SEAT])||0,cost:_powerCost(key)});
 showToast("Can't buy that right now");
 }
 };
@@ -5806,17 +5853,17 @@ grid.appendChild(row);
 });
 }
 function smartRng(pid){
-if(forceDice[pid]!=null){const forced=forceDice[pid];forceDice[pid]=null;if(ROOM_CODE)db.ref(`rooms/${ROOM_CODE}/forceDice/${pid}`).set(null);if(document.getElementById('smart-dice-panel').style.display!=='none')_renderSmartDicePanel();return forced;}
+if(forceDice[pid]!=null){const forced=forceDice[pid];forceDice[pid]=null;if(ROOM_CODE)db.ref(`rooms/${ROOM_CODE}/forceDice/${pid}`).set(null);if(document.getElementById('smart-dice-panel').style.display!=='none')_renderSmartDicePanel();_dbgLog('DICE_SOURCE_FORCED_TESTING_PANEL',{pid,forcedValue:forced});return forced;}
 const blockSix=(G.sixes||0)>=2;
-if(!smartDice.targetPids.has(pid)){const rbVal=rubberbandRng(pid);let val=(rbVal!==null)?rbVal:rng();if(blockSix){let a=0;while(val===6&&a<20){val=rng();a++;}}return val;}
+if(!smartDice.targetPids.has(pid)){const rbVal=rubberbandRng(pid);let val=(rbVal!==null)?rbVal:rng();const _rawVal=val;if(blockSix){let a=0;while(val===6&&a<20){val=rng();a++;}if(val===6)_dbgLog('DICE_BLOCKSIX_FAILED_20_TRIES',{pid,rawVal:_rawVal,finalVal:val});}_dbgLog('DICE_SOURCE_RUBBERBAND',{pid,source:rbVal!==null?'rubberband':'random_rng',rawVal:_rawVal,finalVal:val,blockSixActive:blockSix});return val;}
 const enemyCkSet=new Set();
 G.tokens.forEach(o=>{if(o.pid===pid||o.step===0||o.step>=STEP_DONE)return;if(!PLAYERS[o.pid].active)return;const rc=getCell(o.pid,o.step);if(rc)enemyCkSet.add(`${rc[0]}-${rc[1]}`);});
-for(let v=1;v<=6;v++){if(blockSix&&v===6)continue;const mv=movable(pid,v);if(mv.some(t=>(t.step===0?1:t.step+v)>=STEP_DONE))return v;}
-for(let v=1;v<=6;v++){if(blockSix&&v===6)continue;const mv=movable(pid,v);for(const tok of mv){const toStep=tok.step===0?1:tok.step+v;if(toStep>STEP_MAIN_END)continue;const rc=getCell(pid,toStep);if(!rc)continue;const ck=`${rc[0]}-${rc[1]}`;if(!SAFE.has(ck)&&enemyCkSet.has(ck))return v;}}
+for(let v=1;v<=6;v++){if(blockSix&&v===6)continue;const mv=movable(pid,v);if(mv.some(t=>(t.step===0?1:t.step+v)>=STEP_DONE)){_dbgLog('DICE_SOURCE_SMART_FINISH',{pid,val:v,blockSixActive:blockSix});return v;}}
+for(let v=1;v<=6;v++){if(blockSix&&v===6)continue;const mv=movable(pid,v);for(const tok of mv){const toStep=tok.step===0?1:tok.step+v;if(toStep>STEP_MAIN_END)continue;const rc=getCell(pid,toStep);if(!rc)continue;const ck=`${rc[0]}-${rc[1]}`;if(!SAFE.has(ck)&&enemyCkSet.has(ck)){_dbgLog('DICE_SOURCE_SMART_CAPTURE',{pid,val:v,blockSixActive:blockSix});return v;}}}
 let bestVal=null,bestToStep=-1;
 for(let v=1;v<=6;v++){if(blockSix&&v===6)continue;const mv=movable(pid,v);if(!mv.length)continue;for(const tok of mv){const toStep=tok.step===0?1:tok.step+v;if(toStep>bestToStep){bestToStep=toStep;bestVal=v;}}}
-if(bestVal!==null)return bestVal;
-let fb=rng();if(blockSix){let a=0;while(fb===6&&a<20){fb=rng();a++;}}return fb;
+if(bestVal!==null){_dbgLog('DICE_SOURCE_SMART_BEST_PROGRESS',{pid,val:bestVal,blockSixActive:blockSix});return bestVal;}
+let fb=rng();const _rawFb=fb;if(blockSix){let a=0;while(fb===6&&a<20){fb=rng();a++;}}_dbgLog('DICE_SOURCE_FALLBACK_RANDOM',{pid,rawVal:_rawFb,finalVal:fb,blockSixActive:blockSix});return fb;
 }
 function eio(t){return t<.5?4*t*t*t:(t-1)*(2*t-2)*(2*t-2)+1;}
 function lerp(a,b,t){return a+(b-a)*t;}
@@ -6638,6 +6685,7 @@ _dbgLog('TIMER_EXPIRE_COUNT_INC',{seat,newCount:_timerExpireCount[seat]});
 _dbgLog('ELDER_CHECK_AT_EXPIRY',{seat,MY_SEAT,amIElder:amIElderPlayer(),onlineSeats:[..._onlineSeats],visibleSeats:[..._visibleSeats]});
 if(seat===MY_SEAT&&!G.rolled){
 if(_rolling||_animating)return;
+_dbgLog('TIMER_EXPIRE_FORCE_AUTOROLL',{seat,rerollWindowActiveAtForce:_rerollWindowActive});
 _pendingAutoRoll=true;
 doRoll(seat);
 return;
@@ -6647,6 +6695,7 @@ if(_animating||_rolling)return;
 if(G.turn!==MY_SEAT||!G.rolled||!G.waiting)return;
 const savedDice=G.diceVal;
 const mv=teamMovable(seat,savedDice);
+_dbgLog('TIMER_EXPIRE_FORCE_MOVE_OR_SKIP',{seat,savedDice,hasLegalMove:mv.length>0});
 if(mv.length>0){
 G.waiting=false;
 G.rolled=false;
@@ -6808,10 +6857,13 @@ return;
 pushGameState({action:"roll",dice:v,selectable:mv.map(t=>t.tid),auto:true},seat);
 let best=mv[0];
 let bestScore=-Infinity;
+const _scoreBoard=[];
 for(const tok of mv){
 const s=_aiScoreMove(seat,tok,v);
+_scoreBoard.push({tid:tok.tid,step:tok.step,score:+s.toFixed(1)});
 if(s>bestScore){bestScore=s;best=tok;}
 }
+_dbgLog('BOTTURN_SCORES',{seat,dice:v,candidates:_scoreBoard,chosenTid:best.tid,chosenScore:+bestScore.toFixed(1)});
 await new Promise(res=>setTimeout(res,80+Math.random()*80));
 if(G.over||G.turn!==seat){G.rolled=false;G.diceVal=null;_dbgLog('BOTTURN_BAIL',{seat,reason:'stale_after_pick'});return;}
 if(!PLAYERS[seat]?.isBot&&!forceAfk){_dbgLog('BOTTURN_BAIL',{seat,reason:'reclaimed_after_pick'});return;}
@@ -6878,7 +6930,8 @@ if(G.turn!==MY_SEAT)return;
 doRoll(G.turn);
 }
 function doRoll(pid){
-if(_rolling)return;
+if(_rolling){_dbgLog('DICE_ROLL_BLOCKED_ALREADY_ROLLING',{pid});return;}
+_dbgLog('DICE_ROLL_START',{pid,sixesStreakBefore:G.sixes||0,forcedPending:forceDice&&forceDice[pid]!=null,luckyActivePending:!!(G.pMeta&&G.pMeta[pid]&&G.pMeta[pid].luckyActive)});
 _cancelRerollWindow();
 _rolling=true;
 const rollSafety=setTimeout(()=>{_rolling=false;},DICE_DUR_MS+300);
@@ -6891,18 +6944,21 @@ if(bestNum!=null){
 const blockSix=(G.sixes||0)>=2;
 v=_weightedRollWithBoost(bestNum);
 if(blockSix){let a=0;while(v===6&&a<20){v=_weightedRollWithBoost(bestNum);a++;}if(v===6)v=bestNum;}
+_dbgLog('POWER_LUCKYNUMBER_ROLL',{pid,bestNum,blockSixActive:blockSix,resultDice:v});
 }else{
 v=smartRng(pid);
+_dbgLog('POWER_LUCKYNUMBER_NO_BEST_NUM',{pid,fallbackDice:v});
 if(pid===MY_SEAT)showToast("Lucky Number couldn't help this roll — no favorable move available");
 }
 G.pMeta[pid].luckyActive=false;
 }else{
 v=smartRng(pid);
+_dbgLog('DICE_ROLLED_NORMAL',{pid,dice:v,sixesStreakBeforeThisRoll:G.sixes||0,blockSixWasActive:(G.sixes||0)>=2});
 }
 if(G.specialMode&&G.pMeta&&G.pMeta[pid]){
 const m=G.pMeta[pid];
-if(v<3){m.lr=(m.lr||0)+1;if(m.lr===3){addPoints(pid,POINTS.lowRollStreak);m.lr=0;}}else{m.lr=0;}
-if(m.lv===v){m.sr=(m.sr||0)+1;if(m.sr===3){addPoints(pid,POINTS.sameRollStreak);m.sr=0;}}else{m.sr=1;}
+if(v<3){m.lr=(m.lr||0)+1;if(m.lr===3){_dbgLog('POINTS_LOW_ROLL_STREAK_3',{pid});addPoints(pid,POINTS.lowRollStreak);m.lr=0;}}else{m.lr=0;}
+if(m.lv===v){m.sr=(m.sr||0)+1;if(m.sr===3){_dbgLog('POINTS_SAME_ROLL_STREAK_3',{pid,v});addPoints(pid,POINTS.sameRollStreak);m.sr=0;}}else{m.sr=1;}
 m.lv=v;
 }
 G.rolled=true;
@@ -6946,9 +7002,12 @@ return true;
 function afterRoll(pid,v){
 const _wasAutoRoll=_pendingAutoRoll;
 _pendingAutoRoll=false;
+_dbgLog('DICE_AFTERROLL_ENTRY',{pid,dice:v,sixesStreakBeforeThisRoll:G.sixes||0,wasAutoRoll:_wasAutoRoll});
 if(v===6){
 G.sixes=(G.sixes||0)+1;
+_dbgLog('EXTRA_CHANCE_SIX',{pid,sixesInRow:G.sixes});
 if(G.sixes>=3){
+_dbgLog('THREE_SIXES_TURN_FORFEIT',{pid,note:'if this followed a Re-roll usage without a sixes reset, that is the known reroll-streak bug — check for POWER_REROLL_USED entries just before this'});
 G.sixes=0;G.rolled=false;G.diceVal=null;G.waiting=false;_rolling=false;
 renderTokens();
 setTimeout(()=>{
@@ -6957,9 +7016,10 @@ pushGameState({action:"skip",dice:v,reason:"3sixes",auto:_wasAutoRoll});
 },300);
 return;
 }
-}else{G.sixes=0;}
+}else{if(G.sixes)_dbgLog('SIXES_STREAK_RESET',{pid,reason:'non_six_roll',dice:v,wasSixes:G.sixes});G.sixes=0;}
 const mv=teamMovable(pid,v);
 if(mv.length===0){
+_dbgLog('NO_LEGAL_MOVE',{pid,v});
 if(_maybeStartRerollWindow(pid,v,false)){
 stopTurnTimer();
 G.rolled=true;G.waiting=false;G.diceVal=v;
@@ -6976,6 +7036,7 @@ pushGameState({action:"skip",dice:v,reason:"noMove",auto:_wasAutoRoll});
 return;
 }
 if(shouldAutoMove(mv,v)){
+_dbgLog('DICE_AUTOMOVE_TRIGGERED',{pid,dice:v,onlyLegalMoveTidsOrSameDest:mv.map(t=>({pid:t.pid,tid:t.tid,step:t.step})),reason:mv.length===1?'single_legal_move':'all_candidates_same_destination'});
 pushGameState({action:"roll",dice:v,selectable:[],auto:_wasAutoRoll});
 const moveTid=mv[0].tid;
 const movePid=mv[0].pid;
@@ -7181,11 +7242,13 @@ setTimeout(()=>{if(oEls.wrap)oEls.wrap.style.transition="";},JUMP_MS+10);
 });
 if(!_homeStretchFired&&curStep===STEP_STRETCH_START){
 _homeStretchFired=true;
+_dbgLog('TOKEN_STRETCH_ENTRY',{pid:tok.pid,tid:tok.tid,curStep});
 addPoints(tok.pid,POINTS.stretchEntry);
 }
 const cellKey=`${rc[0]}-${rc[1]}`;
 const isStarCell=GREY_STARS.has(cellKey)||COLOR_STARS.has(cellKey);
 if(i===steps-1&&isStarCell){
+_dbgLog('TOKEN_STAR_LAND',{pid:tok.pid,tid:tok.tid,cellKey});
 addPoints(tok.pid,POINTS.starLand);
 setTimeout(()=>{flashStarCell(rc[0],rc[1]);},JUMP_MS+20);
 setTimeout(()=>{SFX.play('star');},JUMP_MS+30);
@@ -7234,6 +7297,7 @@ if(tok.step>=STEP_DONE){SFX.play('done');await rafDelay(120);}
 }
 async function sendHomeFast(tok,skipPop){
 const seat=tok.pid;
+_dbgLog('TOKEN_SENT_HOME',{pid:tok.pid,tid:tok.tid,stepBefore:tok.step,viaTrap:!!skipPop});
 const homeCorner=getHomeCornerBySeat(seat);
 if(!homeCorner)return;
 const[hr,hc]=homeCorner;
@@ -7364,7 +7428,7 @@ if(o.pid===movingPid||o.step===0||o.step>=STEP_DONE)return false;
 const oc=getCell(o.pid,o.step);
 return oc&&`${oc[0]}-${oc[1]}`===cellKey;
 });
-if(ownOnCell.length>=2)return;
+if(ownOnCell.length>=2){_dbgLog('STACK_BLOCK_OWN_FULL',{cellKey,movingPid,movingTid,ownOnCellCount:ownOnCell.length});return;}
 if(enemiesOnCell.length>=1){
 const capturePromises=[];
 for(const enemy of enemiesOnCell){
@@ -7372,6 +7436,7 @@ if(capturedPids.has(enemy.pid))continue;
 const samePlayerOnCell=enemiesOnCell.filter(e=>e.pid===enemy.pid);
 if(samePlayerOnCell.length>=2)continue;
 const _enemyStepAtCapture=enemy.step;
+_dbgLog('CAPTURE',{cellKey,movingPid,movingTid,victimPid:enemy.pid,victimTid:enemy.tid,victimStepAtCapture:_enemyStepAtCapture,isSpawnKill:isSpawn,wasRevenge:!!(G.pMeta&&G.pMeta[movingPid]&&G.pMeta[movingPid].rf===enemy.pid)});
 _rbNotifyCut(enemy.pid);
 capturePromises.push(sendHomeFast(enemy));
 capturedPids.add(enemy.pid);
@@ -7387,7 +7452,7 @@ G.pMeta[movingPid].rf=null;
 }
 if(G.pMeta&&G.pMeta[movingPid]){
 G.pMeta[movingPid].ks=(G.pMeta[movingPid].ks||0)+1;
-if(G.pMeta[movingPid].ks===3){addPoints(movingPid,POINTS.killStreak);G.pMeta[movingPid].ks=0;}
+if(G.pMeta[movingPid].ks===3){_dbgLog('POINTS_KILL_STREAK_3',{movingPid});addPoints(movingPid,POINTS.killStreak);G.pMeta[movingPid].ks=0;}
 }
 if(G.pMeta&&G.pMeta[enemy.pid])G.pMeta[enemy.pid].rf=movingPid;
 }
@@ -7421,19 +7486,22 @@ await animateMove(tok,v);
 bonus=diceWasSix;
 }
 if(tok.step>=STEP_DONE){
+_dbgLog('TOKEN_STEP_DONE',{pid,tid,everKilled:!!tok.everKilled});
 renderTokens();await rafDelay(100);
 addPoints(pid,POINTS.stepDone);
 if(!tok.everKilled)addPoints(pid,POINTS.flawlessRun);
 if(toksOf(pid).every(t=>t.step>=STEP_DONE)){
-if(!G.placements.includes(pid)){G.placements.push(pid);stampRank(pid);}
+if(!G.placements.includes(pid)){G.placements.push(pid);stampRank(pid);_dbgLog('PLAYER_FINISHED_ALL_TOKENS',{pid,rank:G.placements.indexOf(pid)+1});}
 renderTokens();
 const remaining=PLAYERS.filter(p=>p.active&&!G.placements.includes(p.id));
 if(remaining.length<=1){
 if(remaining.length===1&&!G.placements.includes(remaining[0].id)){
 G.placements.push(remaining[0].id);
 stampRank(remaining[0].id);
+_dbgLog('PLAYER_FINISHED_ALL_TOKENS',{pid:remaining[0].id,rank:G.placements.indexOf(remaining[0].id)+1,reason:'last_remaining_auto_placed'});
 }
 G.over=true;
+_dbgLog('GAME_OVER',{finalPlacements:G.placements.slice()});
 _animating=false;
 _replayPendingDroppedTokens();
 await pushGameState({lastAction:"win"});
@@ -7459,6 +7527,7 @@ if(!SAFE.has(cellKey)){const _trapped=await checkTrapTrigger(cellKey,pid,tok.tid
 }
 if(captured)bonus=true;
 if(G.pMeta&&G.pMeta[pid]&&!captured)G.pMeta[pid].ks=0;
+_dbgLog('DOMOVE_END',{pid,tid,v,diceWasSix,captured,bonusExtraChance:bonus,finalStep:tok.step});
 renderTokens();await rafDelay(60);
 _animating=false;
 _replayPendingDroppedTokens();
@@ -7511,20 +7580,25 @@ G.rolled=false;_rolling=false;G.diceVal=null;G.waiting=false;
 G.timestamp=Date.now();
 if(!same){
 G.sixes=0;
-if(G.pMeta&&G.pMeta[G.turn]){G.pMeta[G.turn].rf=null;G.pMeta[G.turn].spawnBonus=false;}
+if(G.pMeta&&G.pMeta[G.turn]){
+if(G.pMeta[G.turn].rf!=null||G.pMeta[G.turn].spawnBonus){_dbgLog('TURN_RESET_PMETA',{pid:G.turn,revengeFlagCleared:G.pMeta[G.turn].rf,spawnBonusCleared:G.pMeta[G.turn].spawnBonus});}
+G.pMeta[G.turn].rf=null;G.pMeta[G.turn].spawnBonus=false;
+}
 if(G.frozenTokens&&G.frozenTokens.length){
+const _clearing=G.frozenTokens.filter(f=>f.pid===G.turn);
+if(_clearing.length)_dbgLog('TURN_RESET_FREEZE_CLEARED',{pid:G.turn,tokens:_clearing.map(f=>f.tid)});
 G.frozenTokens=G.frozenTokens.filter(f=>f.pid!==G.turn);
 _renderFrozenVisuals();
 }
 if(G.aegisShields&&G.aegisShields.length){
 let _aegisChanged=false;
 const _justExpiredAegis=[];
-G.aegisShields.forEach(sh=>{if(sh.pid===G.turn){sh.remaining-=1;_aegisChanged=true;if(sh.remaining<=0)_justExpiredAegis.push({pid:sh.pid,tid:sh.tid});}});
+G.aegisShields.forEach(sh=>{if(sh.pid===G.turn){sh.remaining-=1;_aegisChanged=true;_dbgLog('POWER_AEGIS_TURN_TICK',{pid:sh.pid,tid:sh.tid,remainingAfter:sh.remaining});if(sh.remaining<=0)_justExpiredAegis.push({pid:sh.pid,tid:sh.tid});}});
 if(_aegisChanged){
 G.aegisShields=G.aegisShields.filter(sh=>sh.remaining>0);
 _renderAegisVisuals();
 }
-if(_justExpiredAegis.length)_killExpiredAegisTokens(_justExpiredAegis);
+if(_justExpiredAegis.length){_dbgLog('POWER_AEGIS_EXPIRED',{tokens:_justExpiredAegis});_killExpiredAegisTokens(_justExpiredAegis);}
 }
 const layout=SEAT_LAYOUT_ACTIVE;
 const curIdx=layout.indexOf(G.turn);
