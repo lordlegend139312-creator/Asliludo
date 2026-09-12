@@ -444,7 +444,7 @@ console.error('ANON_SIGNIN_FAILED',{code:err.code,message:err.message});
 _setAuthReady();
 });
 /* ---------- Google Profile System (Kills/Wins/Losses — survives browser data clear) ---------- */
-let MY_PROFILE=window.MY_PROFILE=null;
+let MY_PROFILE=null;
 let _statsRoomLogged=null;
 /* [FIX] Replaced Firebase's own popup/redirect Google sign-in with Google
    Identity Services (GSI) directly. Both signInWithPopup and
@@ -619,7 +619,7 @@ try{await ref.update({name:profile.name||user.displayName||'Player',photoURL:use
 profile.name=profile.name||user.displayName||'Player';
 profile.photoURL=user.photoURL||profile.photoURL;
 }
-MY_PROFILE=window.MY_PROFILE={uid,name:profile.name,photoURL:profile.photoURL,kills:profile.kills||0,wins:profile.wins||0,losses:profile.losses||0};
+MY_PROFILE={uid,name:profile.name,photoURL:profile.photoURL,kills:profile.kills||0,wins:profile.wins||0,losses:profile.losses||0};
 try{localStorage.setItem('ludo_had_google','1');}catch(e){}
 _applyProfileToUI();
 try{
@@ -676,7 +676,7 @@ if(uid){try{db.ref('players/'+uid).off('value');}catch(e){}}
 await auth.signOut();
 }catch(e){}
 try{localStorage.removeItem('ludo_had_google');}catch(e){}
-MY_PROFILE=window.MY_PROFILE=null;
+MY_PROFILE=null;
 _applyProfileToUI();
 document.getElementById('modal-profile').classList.remove('show');
 try{await auth.signInAnonymously();}catch(e){}
@@ -7061,7 +7061,6 @@ pushGameState({action:"roll",dice:v,selectable,auto:_wasAutoRoll});
 if(pid===MY_SEAT){G.timestamp=Date.now();startTurnTimer(pid);}
 }
 async function onTokClick(pid,tid){
-if(_placingPower)return;
 if(window._pnpMode&&window._setMY_SEAT){
 window._setMY_SEAT(G.turn);
 }
@@ -8776,10 +8775,10 @@ if(joinInput)joinInput.value=saved;
 if(typeof window.checkRejoin==='function')window.checkRejoin();
 if(typeof window._checkGoogleRedirectReturn==='function'){
 window._checkGoogleRedirectReturn().then(function(){
-setTimeout(function(){if(!window.MY_PROFILE&&typeof window._initGoogleOneTap==='function')window._initGoogleOneTap();},2500);
+setTimeout(function(){if(!MY_PROFILE&&typeof window._initGoogleOneTap==='function')window._initGoogleOneTap();},2500);
 });
 }else{
-setTimeout(function(){if(!window.MY_PROFILE&&typeof window._initGoogleOneTap==='function')window._initGoogleOneTap();},2500);
+setTimeout(function(){if(!MY_PROFILE&&typeof window._initGoogleOneTap==='function')window._initGoogleOneTap();},2500);
 }
 });
 }).catch(function(){
