@@ -3311,14 +3311,6 @@ renderTokens();
    on the very first call instead of silently no-op'ing. */
 _gameLoaded=true;
 updateTurnBanner();
-/* [FIX] belt-and-suspenders for the ResizeObserver above: if this load
-   happened while the tab was backgrounded/inactive, the very first
-   getBoundingClientRect() read inside _refreshCache() can land before
-   the browser has committed real layout, locking in an oversized/wrong
-   cellPx that only self-corrected before via a manual rejoin. One
-   invalidate+re-render ~250ms after load costs nothing during normal
-   play but catches that late-settling layout case automatically. */
-setTimeout(_invalidateCellPxCache,250);
 const _myColorNames={[BLUE]:"Blue",[PINK]:"Pink",[YELLOW]:"Yellow",[GREEN]:"Green"};
 const _teamSuffix=window._teamMode?" — Team Mode 🤝":"";
 showToast("Game started!You are "+(_myColorNames[window._colorAssign[MY_SEAT]]||"")+_teamSuffix);
@@ -6079,69 +6071,17 @@ dot.addEventListener('transitionend',_onEnd,{once:true});
 }
 let _cpx=0,_cacheValid=false;
 let _trailSkip=0;
-function _invalidateCellPxCache(){
+window.addEventListener('resize',()=>{
 _cpx=0;_cacheValid=false;
 Object.keys(_slotPxCache).forEach(k=>delete _slotPxCache[k]);
 renderTokens();
-}
-window.addEventListener('resize',_invalidateCellPxCache,{passive:true});
-/* [FIX] window 'resize' alone doesn't cover every case that can leave
-   cellPx() cached with a wrong value from the very first render — e.g.
-   a tab that was backgrounded (Brave app switched away, screen off,
-   etc.) during loadAndStartGame() can have buildBoard() run before the
-   browser has actually settled real layout, so the first
-   getBoundingClientRect() read locks in a bad _cpx that only a real
-   'resize' event would ever have invalidated. A ResizeObserver on the
-   board itself catches any layout-size change of the grid regardless
-   of whether the window as a whole fired a resize event, so a late
-   layout settle self-corrects without needing a manual rejoin. */
-try{
-const _roBoard=document.getElementById('board');
-if(_roBoard&&typeof ResizeObserver!=='undefined'){
-new ResizeObserver(_invalidateCellPxCache).observe(_roBoard);
-}
-}catch(e){}
+},{passive:true});
 function _refreshCache(){
 if(_cacheValid)return;
 _cacheValid=true;
-// [FIX] --cell is an unregistered CSS custom property holding the literal
-// string "min(5.8vw,4.8dvh,40px)". getComputedStyle() never resolves
-// custom properties into a computed px value (browsers don't evaluate
-// min()/vw/dvh for arbitrary --vars), so parseFloat() on it always
-// returned NaN and this silently fell through to an approximate,
-// device-dependent guess (Math.min(innerWidth*0.058, innerHeight*0.054, 40))
-// that could drift from the real rendered grid cell size — this was the
-// root cause of the stack-offset math (built on cellPx()) not matching
-// real getBoundingClientRect() measurements (⚠️OVERLAP_ONLINE false
-// positives, seen as exactly half the intended gap).
-// Fix: measure an actual rendered .lc cell directly.
-// [FIX-2] The FIRST ".lc" in DOM order is actually a 6x6 home-corner
-// block (grid-column:span 6), not a real 1x1 track cell — this made cp
-// ~6x too large and blew up every token's rendered size. Normal track
-// cells set dataset.r/dataset.c; home-corner blocks don't. Target one
-// of those specifically.
-const _lc=document.querySelector("#board .lc[data-r]");
-if(_lc){
-const _r=_lc.getBoundingClientRect();
-if(_r.width>0)_cpx=_r.width;
-}
+const b=document.getElementById("board");
+if(b){const s=parseFloat(getComputedStyle(b).getPropertyValue("--cell"));if(s>0)_cpx=s;}
 if(!_cpx)_cpx=Math.min(window.innerWidth*0.058,window.innerHeight*0.054,40);
-// [DBG] trace every real cache (re)compute — should only fire on first
-// render + resize events, not every frame. If cpx ever comes out large,
-// this row shows exactly which element (or the fallback) produced it.
-const _bwDbg=document.getElementById('board-wrap');
-_dbgLog('CELLPX_REFRESH',{
-foundLC:!!_lc,
-lcRectW:_lc?+_lc.getBoundingClientRect().width.toFixed(2):null,
-lcDataset:_lc?`${_lc.dataset.r},${_lc.dataset.c}`:null,
-usedFallback:!_lc||!(_lc.getBoundingClientRect().width>0),
-cpx:+_cpx.toFixed(2),
-innerW:window.innerWidth,
-innerH:window.innerHeight,
-dpr:window.devicePixelRatio,
-bwTransform:_bwDbg?getComputedStyle(_bwDbg).transform:null,
-visState:document.visibilityState
-});
 }
 function cellPx(){return _cpx||Math.min(window.innerWidth*0.058,window.innerHeight*0.054,40);}
 const GAP=1,PAD=5;
@@ -6237,30 +6177,10 @@ if(_dups.length)_dbgLog('ONLINE_DUPLICATE_TOKENS_FOUND',_dups);
 }
 }
 const BASE_W=Math.round(cp*1.15);
-// [DBG] cross-check the CACHED cp against a fresh, uncached measurement
-// of the same cell, right at the moment tokens are actually sized. Only
-// logs on real drift (>2px) so this stays silent during normal play —
-// if the oversized-token bug happens again, this row will show the
-// cached cp vs the true live cell width at that exact instant.
-{
-const _liveLC=document.querySelector("#board .lc[data-r]");
-const _liveW=_liveLC?_liveLC.getBoundingClientRect().width:null;
-if(_liveW&&Math.abs(_liveW-cp)>2){
-_dbgLog('⚠️CELLPX_STALE_CACHE',{cachedCp:+cp.toFixed(2),liveCellW:+_liveW.toFixed(2),BASE_W,cacheValid:_cacheValid,innerW:window.innerWidth,innerH:window.innerHeight,dpr:window.devicePixelRatio});
-}
-}
 const sizeScale=n=>n<=1?1:n<=2?0.78:n<=4?0.65:n<=6?0.55:0.46;
 const stackOffset=(n,idx,cp)=>{
 if(n<=1)return{dx:0,dy:0};
-// [FIX] Gap must scale with the token's actual rendered footprint
-// (BASE_W*sizeScale(n)), not a fixed fraction of cell size — otherwise
-// tokens overlap heavily once sizeScale shrinks them for bigger stacks.
-// gap = full token width + a small fixed breathing space, so tokens sit
-// edge-to-edge with an even visible gap between each pair.
-// (idx-(n-1)/2) keeps the whole row's centroid at 0, so it's still
-// perfectly centered in the cell regardless of n.
-const tokW=BASE_W*sizeScale(n);
-const gap=tokW+cp*0.05;
+const gap=cp*0.22;
 return{dx:(idx-(n-1)/2)*gap,dy:0};
 };
 const alive=new Set();
