@@ -6034,6 +6034,10 @@ layer.appendChild(wrap);
 layer.appendChild(frost);
 layer.appendChild(shield);
 _tokEls[key]={wrap,shadow,ring,frost,fzPunch,fzShake,shield,movHandler:null};
+const _mo=new MutationObserver(()=>{
+_spacingLog('SPACING_MUTATION',{key,tr:wrap.style.transform,stack:(new Error().stack||'').split('\n').slice(1,5).join(' | ')});
+});
+_mo.observe(wrap,{attributes:true,attributeFilter:['style']});
 }
 return _tokEls[key];
 }
