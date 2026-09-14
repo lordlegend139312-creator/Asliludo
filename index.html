@@ -2654,7 +2654,7 @@ const cur=G.tokens.find(t=>t.pid===ip.pid&&t.tid===ip.tid);
 if(!cur)return;
 Object.assign(cur,ip);
 });
-_dbgLog('ONLINE_REPLAY_PENDING_TOKENS',{batchesDropped:queue.length,appliedFrom:'latest_only',tokens:latest.map(t=>({pid:t.pid,tid:t.tid,step:t.step}))});
+_spacingLog('SPACING_REPLAY_APPLIED',{batchesDropped:queue.length,appliedFrom:'latest_only',tokensSig:latest.map(t=>`${t.pid}-${t.tid}:${t.step}`).join(',')});
 renderTokens();
 }
 let _gameLoaded=false;
@@ -3709,11 +3709,13 @@ G.sixes=data.sixes||0;
 _applyPlacements(data.placements);
 if(data.tokens){
 if(!_animating){
+_spacingLog('SPACING_FB_TOKENS_APPLIED',{animating:false,tokensSig:data.tokens.map(t=>`${t.pid}-${t.tid}:${t.step}`).join(',')});
 G.tokens=JSON.parse(JSON.stringify(data.tokens));
 }else{
 const _multiRecv={};
 data.tokens.forEach(t=>{if(t.step>0&&t.step<STEP_DONE){const k=`s${t.step}`;(_multiRecv[k]=_multiRecv[k]||[]).push(`${t.pid}-${t.tid}`);}});
 const _hasStack=Object.values(_multiRecv).some(a=>a.length>=2);
+_spacingLog('SPACING_FB_TOKENS_DROPPED',{animating:true,hasStack:_hasStack,tokensSig:data.tokens.map(t=>`${t.pid}-${t.tid}:${t.step}`).join(',')});
 if(_hasStack)_dbgLog('ONLINE_FB_TOKENS_SKIPPED_ANIMATING',{reason:'local _animating=true, remote tokens update dropped, queued for replay',incomingStacks:_multiRecv});
 _pendingDroppedTokensQueue.push(JSON.parse(JSON.stringify(data.tokens)));
 }
@@ -5998,6 +6000,8 @@ return `<div style="width:${size}px;height:${size}px;display:flex;align-items:ce
 }
 const _tokEls={};
 const _shieldSvgCache=new Map();
+let _spacingSeq=0;
+function _spacingLog(evt,data){_spacingSeq++;_dbgLog(evt,Object.assign({seq:_spacingSeq,ts:+performance.now().toFixed(1)},data));}
 function _ensureTokEl(tok,color){
 const key=`${tok.pid}-${tok.tid}`;
 const layer=document.getElementById("tokens-layer");
@@ -6148,6 +6152,7 @@ if(gen===_renderGeneration)_doRenderTokens();
 function _doRenderTokens(){
 _refreshCache();
 const cp=cellPx();
+_spacingLog('SPACING_RENDER_TICK',{cp:+cp.toFixed(2),deg:getBoardRotation(),tokenRotDeg:_tokenRotationDeg,tokensCount:G.tokens.length,animating:_animating});
 const movSet=new Set();
 if(G.waiting&&!G.over&&G.turn===MY_SEAT&&G.rolled&&G.diceVal!=null){
 teamMovable(MY_SEAT,G.diceVal).forEach(t=>movSet.add(`${t.pid}-${t.tid}`));
@@ -6226,17 +6231,7 @@ const grp=groups[rcKey]||[tok];
 const idx=grp.findIndex(t=>t.pid===tok.pid&&t.tid===tok.tid);
 const n=grp.length;
 stackCount=n;
-if(G.turn===MY_SEAT&&MY_SEAT!=null&&G.rolled&&G.diceVal!=null){
-const mineCount=grp.filter(t=>t.pid===MY_SEAT).length;
-const otherCount=n-mineCount;
-if(mineCount>0&&otherCount>0){
-scale=tok.pid===MY_SEAT?sizeScale(mineCount):sizeScale(otherCount);
-}else{
 scale=sizeScale(n);
-}
-}else{
-scale=sizeScale(n);
-}
 const off=stackOffset(n,idx,cp);
 const xy=rcToXY(rc[0],rc[1]);
 const rxy=xy;
@@ -6284,7 +6279,9 @@ const _errX=(_verifyTipX-px).toFixed(2),_errY=(_verifyTipY-py).toFixed(2);
 if(stackCount>=2&&(Math.abs(_errX)>0.1||Math.abs(_errY)>0.1))_dbgLog('ONLINE_TIP_GEOM_ERR',{pid:tok.pid,tid:tok.tid,deg:getBoardRotation(),tokenRotDeg:_tr,errX:+_errX,errY:+_errY,px:+px.toFixed(1),py:+py.toFixed(1)});
 if(!wrap.dataset.animating){
 const _newTr=`translate(${_ctx}px,${_cty}px)rotate(${_tr}deg)${scaleTransform}`;
-if(wrap._lastStaticTr!==_newTr){wrap._lastStaticTr=_newTr;wrap.style.transform=_newTr;}
+const _skippedCache=wrap._lastStaticTr===_newTr;
+if(stackCount>=2)_spacingLog('SPACING_WRITE',{writer:'static_render',pid:tok.pid,tid:tok.tid,step:tok.step,n:stackCount,scale:visualScale,px:+px.toFixed(1),py:+py.toFixed(1),ctx:+_ctx.toFixed(1),cty:+_cty.toFixed(1),deg:getBoardRotation(),tokenRotDeg:_tr,skippedCache:_skippedCache,tr:_newTr});
+if(!_skippedCache){wrap._lastStaticTr=_newTr;wrap.style.transform=_newTr;}
 if(els.frost){
 if(els.frost._lastW!==rW){els.frost._lastW=rW;els.frost.style.width=`${rW}px`;els.frost.style.height=`${rH}px`;}
 if(els.frost._lastOrigin!==wrap.style.transformOrigin){els.frost._lastOrigin=wrap.style.transformOrigin;els.frost.style.transformOrigin=wrap.style.transformOrigin;}
@@ -6464,11 +6461,16 @@ if(!e||!e.wrap)return null;
 const r=e.wrap.getBoundingClientRect();
 return{id:`${t.pid}-${t.tid}`,cx:r.left+r.width/2,cy:r.top+r.height/2,w:r.width,h:r.height};
 }).filter(Boolean);
+const _gap=cp*0.22;
+const _expectedGap=grp.length>=2?_gap:0;
 for(let i=0;i<rects.length;i++)for(let j=i+1;j<rects.length;j++){
 const a=rects[i],b=rects[j];
 const dist=Math.hypot(a.cx-b.cx,a.cy-b.cy);
 const threshold=Math.min(a.w,a.h,b.w,b.h)*0.35;
-_dbgLog(dist<threshold?'⚠️OVERLAP_ONLINE':'stack_dist_online',{rcKey,a:a.id,b:b.id,dist:+dist.toFixed(1),threshold:+threshold.toFixed(1),deg:getBoardRotation(),tokenRotDeg:_tokenRotationDeg});
+const idxGap=Math.abs(grp.findIndex(t=>`${t.pid}-${t.tid}`===a.id)-grp.findIndex(t=>`${t.pid}-${t.tid}`===b.id));
+const expectedDist=_expectedGap*idxGap;
+const mismatch=Math.abs(dist-expectedDist)>Math.max(3,expectedDist*0.25);
+_dbgLog(dist<threshold?'⚠️OVERLAP_ONLINE':(mismatch?'⚠️SPACING_MISMATCH_ONLINE':'stack_dist_online'),{rcKey,a:a.id,b:b.id,n:grp.length,dist:+dist.toFixed(1),expectedDist:+expectedDist.toFixed(1),threshold:+threshold.toFixed(1),deg:getBoardRotation(),tokenRotDeg:_tokenRotationDeg});
 }
 });
 }catch(e){_dbgLog('overlap_check_error_online',String(e));}
@@ -7243,7 +7245,9 @@ const dy=_rawDx*Math.sin(_oRad)+_rawDy*Math.cos(_oRad);
 const _oTipDX=oTipFromCenter*Math.sin(_oRad);
 const _oTipDY=oTipFromCenter*Math.cos(_oRad);
 oEls.wrap.style.transition=`transform ${JUMP_MS}ms cubic-bezier(0.22,1,0.36,1)`;
-oEls.wrap.style.transform=`translate(${oxy.x+dx-_rW0/2+_oTipDX}px,${oxy.y+dy-oHH-_oTipDY}px)rotate(${_tokenRotationDeg}deg)${scaleStr}`;
+const _mwTr=`translate(${oxy.x+dx-_rW0/2+_oTipDX}px,${oxy.y+dy-oHH-_oTipDY}px)rotate(${_tokenRotationDeg}deg)${scaleStr}`;
+_spacingLog('SPACING_WRITE',{writer:'companion_makeway',pid:other.pid,tid:other.tid,step:other.step,n,idx,scale:sc,dx:+dx.toFixed(1),dy:+dy.toFixed(1),deg:getBoardRotation(),tokenRotDeg:_tokenRotationDeg,tr:_mwTr});
+oEls.wrap.style.transform=_mwTr;
 oEls.wrap.style.transformOrigin=`${_rW0/2}px ${oHH}px`;
 /* [FIX] this "make way" transform is written directly and bypasses the
    _lastStaticTr dirty-check cache used by _doRenderTokens(). If we don't
@@ -7371,7 +7375,9 @@ const destX=bp2.x-_sHFrW/2+tipFromCenter2*Math.sin(_cRad2);
 const destY=bp2.y-rHH2-tipFromCenter2*Math.cos(_cRad2);
 els2.wrap.style.transformOrigin=`${_sHFrW/2}px ${rHH2}px`;
 els2.wrap.style.transition=`transform ${FAST_HOME_MS}ms cubic-bezier(0.15,0,0.3,1),opacity ${FAST_HOME_MS}ms`;
-els2.wrap.style.transform=`translate(${destX}px,${destY}px)rotate(${_tokenRotationDeg}deg)`;
+const _shTr=`translate(${destX}px,${destY}px)rotate(${_tokenRotationDeg}deg)`;
+_spacingLog('SPACING_WRITE',{writer:'sendhome',pid:tok.pid,tid:tok.tid,step:tok.step,deg:getBoardRotation(),tokenRotDeg:_tokenRotationDeg,tr:_shTr});
+els2.wrap.style.transform=_shTr;
 els2.wrap._lastStaticTr=null;
 if(els2.shadow){
 const sw=BASE_W*0.60,sh=BASE_W*0.16;
