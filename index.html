@@ -5,7 +5,24 @@
 /* ===== [DBG] TEMP DIAGNOSTIC LOGGING — standalone, runs first, isolated from rest of app (remove after done) ===== */
 (function(){
 try{
-window._DBG_ENABLED=false;
+window._DBG_ENABLED=true;
+/* [DBG] only keep tags relevant to the reverse-power / dice-move bugs
+   being chased right now, so the log doesn't fill up with unrelated
+   noise (chat, presence, votes, etc). Add more tags here if needed. */
+window._DBG_TAG_WHITELIST=[
+  'DICE_ROLL_START','DICE_ROLL_BLOCKED_ALREADY_ROLLING','DICE_ROLLED_NORMAL','DICE_ROLLED_SELF',
+  'DICE_AFTERROLL_ENTRY','DICE_AUTOMOVE_TRIGGERED','DICE_DOMOVE_START','DOMOVE_END',
+  'DICE_NEXTTURN_START','DICE_NEXTTURN_END','NO_LEGAL_MOVE','EXTRA_CHANCE_SIX','SIXES_STREAK_RESET',
+  'THREE_SIXES_TURN_FORFEIT','MOVABLE_BLOCKED_FROZEN','MOVABLE_BLOCKED_SHIELD','SHIELD_BLOCK',
+  'AUTOMOVE_SKIPPED_REVERSE_AVAILABLE','POWER_REVERSE_APPLIED','POWER_REVERSE_MISSING_TOKEN_EL',
+  'POWER_REVERSE_NO_ELIGIBLE_TOKEN','CAPTURE_VIA_REVERSE','REROLL_WINDOW_STARTED',
+  'REROLL_WINDOW_EXPIRED','POWER_REROLL_USED','TOKEN_STEP_DONE',
+  'TIMER_EXPIRE_FORCE_AUTOROLL','TIMER_EXPIRE_FORCE_MOVE_OR_SKIP',
+  'SYNC_PUSH','SYNC_PUSH_FAILED','SYNC_RECEIVE_APPLY_IMMEDIATE','SYNC_RECEIVE_QUEUED','SYNC_APPLY_STATE',
+  'DB_CONNECTED_CHANGE','FORCE_RESYNC','ONLINE_FB_TOKENS_SKIPPED_ANIMATING','ONLINE_DUPLICATE_TOKENS_FOUND',
+  'STALE_WATCHDOG_TRIGGER','STALE_WATCHDOG_ACTING','STALE_WATCHDOG_CLAIM_FAILED',
+  'WINDOW_ERROR','PROMISE_REJECTION','CONSOLE_ERROR','CONSOLE_WARN'
+];
 if(!window._DBG_ENABLED){
   /* [DBG] disabled — set window._DBG_ENABLED=true before this script to re-enable full logging+UI.
      _dbgLog is kept as a no-op so scattered calls elsewhere in the app don't throw. */
@@ -26,6 +43,7 @@ window._dbgPersist=function(){
 };
 window._dbgLog=function(tag,data){
   try{
+    if(window._DBG_TAG_WHITELIST&&window._DBG_TAG_WHITELIST.indexOf(tag)===-1)return;
     let _rc=null,_seat=null,_who=null;
     try{_rc=(typeof window._getROOM_CODE==='function')?window._getROOM_CODE():null;}catch(e2){}
     try{_seat=(typeof window._getMySeat==='function')?window._getMySeat():null;}catch(e2){}
