@@ -813,9 +813,18 @@ const gData=gSnap&&gSnap.val();
    and force-reset G.rolled/G.waiting/G.diceVal, wiping my own
    in-progress turn. syncGameState() already has the correct guards
    for own-action / bot-elder / animation-queueing and routes to the
-   right roll/move/skip branch, so let it decide. */
+   right roll/move/skip branch, so let it decide.
+   [FIX] pass _forceApply=true here. Same seat played from two tabs:
+   an action made in tab A is written with actionBy===MY_SEAT (since
+   both tabs share the seat), so tab B's plain syncGameState(gData)
+   was silently ignoring it via that same actionBy===MY_SEAT guard —
+   tab B stayed stuck on stale state until a manual leave/rejoin. This
+   call site only runs after _resyncUnsafeNow() confirms nothing is
+   actually in-flight locally (no roll/animation/pending action), so
+   there's no own in-progress turn left to protect here — safe to
+   force the fetched server state in regardless of who actionBy is. */
 if(gData&&!_resyncUnsafeNow()&&_syncAnimPending.length===0&&(!G||!G.over)){
-syncGameState(gData);
+syncGameState(gData,true);
 }
 if(playersRef){
 const pSnap=await playersRef.once('value').catch(()=>null);
@@ -2158,19 +2167,17 @@ cancelPlacement();
 _placingPower='reverse';
 const v=G.diceVal;
 let anyEligible=false;
-Object.keys(_tokEls).forEach(key=>{
-const parts=key.split('-');
-const tpid=+parts[0],ttid=+parts[1];
-if(tpid!==MY_SEAT)return;
-const tok=tokOf(tpid,ttid);
-if(!tok)return;
+G.tokens.filter(t=>t.pid===MY_SEAT).forEach(tok=>{
+const tpid=tok.pid,ttid=tok.tid;
 if(tok.step<2||tok.step>STEP_MAIN_END)return;
 const targetStep=tok.step-v;
 if(targetStep<1)return;
-if(!_tokEls[key])return;
 if(_pathBlockedByShield(tpid,ttid,tok.step,targetStep))return;
 anyEligible=true;
-const el=_tokEls[key].wrap;
+const key=`${tpid}-${ttid}`;
+const els=_tokEls[key];
+if(!els){_dbgLog('POWER_REVERSE_MISSING_TOKEN_EL',{pid:tpid,tid:ttid});return;}
+const el=els.wrap;
 el.classList.add('reverse-eligible');
 el._reverseClick=()=>applyReverse(tpid,ttid);
 el.addEventListener('click',el._reverseClick);
@@ -3905,7 +3912,7 @@ clearTimeout(_turnTimeoutTimer);_turnTimeoutTimer=null;
 clearTimeout(_abandonCheckTimer);_abandonCheckTimer=null;
 _clearWaitingExpireTimer();
 _stopHeartbeat();
-_stopStaleTurnWatchdog();
+_stopStaleTurnWatchdog();_stopPeriodicResync();
 stopTurnTimer();
 _listeners.forEach(fn=>fn());
 _listeners=[];
@@ -3965,7 +3972,7 @@ clearTimeout(_turnTimeoutTimer);_turnTimeoutTimer=null;
 clearTimeout(_abandonCheckTimer);_abandonCheckTimer=null;
 _clearWaitingExpireTimer();
 _stopHeartbeat();
-_stopStaleTurnWatchdog();
+_stopStaleTurnWatchdog();_stopPeriodicResync();
 stopTurnTimer();
 clearSession();
 _listeners.forEach(fn=>fn());
@@ -3995,7 +4002,7 @@ clearTimeout(_turnTimeoutTimer);_turnTimeoutTimer=null;
 clearTimeout(_abandonCheckTimer);_abandonCheckTimer=null;
 _clearWaitingExpireTimer();
 _stopHeartbeat();
-_stopStaleTurnWatchdog();
+_stopStaleTurnWatchdog();_stopPeriodicResync();
 stopTurnTimer();
 _listeners.forEach(fn=>fn());
 _listeners=[];
@@ -4128,11 +4135,32 @@ const STALE_TURN_WATCHDOG_MS=100000;
 let _staleWatchdogInterval=null;
 function _startStaleTurnWatchdog(){
 if(!ROOM_CODE)return;
-_stopStaleTurnWatchdog();
+_stopStaleTurnWatchdog();_stopPeriodicResync();
 _staleWatchdogInterval=setInterval(_checkStaleTurnWatchdog,20000);
 }
 function _stopStaleTurnWatchdog(){
 if(_staleWatchdogInterval){clearInterval(_staleWatchdogInterval);_staleWatchdogInterval=null;}
+}
+/* [FIX] Safety-net periodic reconciliation, independent of visibilitychange.
+   The visibilitychange handler already force-resyncs on tab foreground
+   (>3s hidden), which covers the common "switched tabs, other tab shows
+   stale turn" case. But a background tab's Firebase listener can also go
+   silently stale WITHOUT a visibility transition being the trigger that
+   fixes it (e.g. the socket reconnects but the callback is delayed/dropped
+   by browser throttling while the tab stays hidden the whole time, or the
+   user never actually switches tabs but the connection still hiccups).
+   This runs _forceResyncGame on a fixed cadence regardless of visibility
+   state as a cheap safety net; _forceResyncGame itself already no-ops when
+   a local action is in flight (_resyncUnsafeNow), so this never stomps an
+   in-progress roll/move. */
+let _periodicResyncInterval=null;
+function _startPeriodicResync(){
+if(!ROOM_CODE)return;
+_stopPeriodicResync();
+_periodicResyncInterval=setInterval(()=>{_forceResyncGame('periodic');},15000);
+}
+function _stopPeriodicResync(){
+if(_periodicResyncInterval){clearInterval(_periodicResyncInterval);_periodicResyncInterval=null;}
 }
 /* [DBG] General health watchdog — runs every 3s, checks several invariants
    at once so any category of bug (stuck animation, corrupt token array,
@@ -6295,6 +6323,7 @@ G.tokens.forEach(tok=>{
 const isMovable=movSet.has(`${tok.pid}-${tok.tid}`);
 const key=`${tok.pid}-${tok.tid}`;
 let px,py,scale=1,stackCount=1;
+let _curStackSig=null;
 let color=getDisplayColorForSeat(tok.pid);
 if(tok.step===0){
 const[hr,hc]=getHomeCornerBySeat(tok.pid);
@@ -6333,6 +6362,7 @@ const n=grp.length;
 stackCount=n;
 scale=sizeScale(n);
 const off=stackOffset(n,idx,cp);
+_curStackSig=`${rcKey}|${n}`;
 const xy=rcToXY(rc[0],rc[1]);
 const rxy=xy;
 if(off.dx!==0||off.dy!==0){
@@ -6381,7 +6411,27 @@ if(!wrap.dataset.animating){
 const _newTr=`translate(${_ctx}px,${_cty}px)rotate(${_tr}deg)${scaleTransform}`;
 const _skippedCache=wrap._lastStaticTr===_newTr;
 if(stackCount>=2)_spacingLog('SPACING_WRITE',{writer:'static_render',pid:tok.pid,tid:tok.tid,step:tok.step,n:stackCount,scale:visualScale,px:+px.toFixed(1),py:+py.toFixed(1),ctx:+_ctx.toFixed(1),cty:+_cty.toFixed(1),deg:getBoardRotation(),tokenRotDeg:_tr,skippedCache:_skippedCache,tr:_newTr});
-if(!_skippedCache){wrap._lastStaticTr=_newTr;wrap.style.transform=_newTr;}
+if(!_skippedCache){
+/* [FIX] Smooth "restack" transition: when a token already sitting on a
+   cell (e.g. a star) gets a new stack-mate, n changes and every token
+   in that stack gets a new offset+scale here. Previously this branch
+   always hard-snapped straight to the new transform, so 3->4 tokens on
+   a star visibly jumped/rearranged instantly. Detect "same cell, stack
+   size changed since last render" via a stored rcKey|n signature and,
+   only in that case, animate the transform over a short eased
+   transition instead of an instant snap. A token's own move-in is
+   handled by the animating-flag branch above (not this one), so first
+   placement / normal movement is unaffected — no unwanted fly-in on
+   initial load or rejoin. */
+const _prevStackSig=wrap.dataset.stackSig||'';
+const _isRestack=!!(_curStackSig&&_prevStackSig&&_prevStackSig.split('|')[0]===_curStackSig.split('|')[0]&&_prevStackSig!==_curStackSig);
+if(_curStackSig)wrap.dataset.stackSig=_curStackSig;else delete wrap.dataset.stackSig;
+wrap._lastStaticTr=_newTr;
+wrap.style.transition=_isRestack?'transform 0.32s cubic-bezier(0.34,1.26,0.64,1)':'';
+if(_isRestack){clearTimeout(wrap._restackTO);wrap._restackTO=setTimeout(()=>{wrap.style.transition='';},340);}
+wrap.style.transform=_newTr;
+if(els.frost)els.frost.style.transition=wrap.style.transition;
+}
 if(els.frost){
 if(els.frost._lastW!==rW){els.frost._lastW=rW;els.frost.style.width=`${rW}px`;els.frost.style.height=`${rH}px`;}
 if(els.frost._lastOrigin!==wrap.style.transformOrigin){els.frost._lastOrigin=wrap.style.transformOrigin;els.frost.style.transformOrigin=wrap.style.transformOrigin;}
@@ -7816,7 +7866,7 @@ function endGame(){
 G.over=true;
 clearTimeout(_abandonCheckTimer);_abandonCheckTimer=null;
 _stopHeartbeat();
-_stopStaleTurnWatchdog();
+_stopStaleTurnWatchdog();_stopPeriodicResync();
 clearSession();
 if(ROOM_CODE&&roomRef&&!window._cpuMode&&!window._pnpMode){
 if(amIElderPlayer()){
@@ -8003,7 +8053,7 @@ showToast('🎮 Joining new room...');
 clearTimeout(_turnTimeoutTimer);_turnTimeoutTimer=null;
 clearTimeout(_abandonCheckTimer);_abandonCheckTimer=null;
 _stopHeartbeat();
-_stopStaleTurnWatchdog();
+_stopStaleTurnWatchdog();_stopPeriodicResync();
 _listeners.forEach(fn=>fn());_listeners=[];
 _gameStarted=false;_gameStartLock=false;_pendingSync=[];
 _rolling=false;_animating=false;_onlineSeats=new Set();_pendingDroppedTokensQueue=[];
@@ -8636,7 +8686,7 @@ listenTeamChat();
 listenReactions();
 listenPlayerPresence();
 _startHeartbeat();
-_startStaleTurnWatchdog();
+_startStaleTurnWatchdog();_startPeriodicResync();
 if(_pendingSync.length>0){
 const pending=_pendingSync.slice();
 _pendingSync=[];
