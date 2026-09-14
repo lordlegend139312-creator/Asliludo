@@ -3505,7 +3505,7 @@ showToast(`🛍️ ${_buyerName} bought ${_powerName}!`);
 }
 _applyPlacements(data.placements);
 if(G.over&&!document.getElementById("win").classList.contains("show")){
-if(data.tokens)G.tokens=JSON.parse(JSON.stringify(data.tokens));
+if(data.tokens){G.tokens=JSON.parse(JSON.stringify(data.tokens));_invalidateStackedTokenCache(G.tokens);}
 endGame();
 return;
 }
@@ -3567,6 +3567,7 @@ ip.step=cur.step;
 }
 });
 G.tokens=incoming;
+_invalidateStackedTokenCache(G.tokens);
 }else if(hasPendingMoves){
 }
 G.turn=data.turn;
@@ -3736,6 +3737,7 @@ if(data.tokens){
 if(!_animating){
 _spacingLog('SPACING_FB_TOKENS_APPLIED',{animating:false,tokensSig:data.tokens.map(t=>`${t.pid}-${t.tid}:${t.step}`).join(',')});
 G.tokens=JSON.parse(JSON.stringify(data.tokens));
+_invalidateStackedTokenCache(G.tokens);
 }else{
 const _multiRecv={};
 data.tokens.forEach(t=>{if(t.step>0&&t.step<STEP_DONE){const k=`s${t.step}`;(_multiRecv[k]=_multiRecv[k]||[]).push(`${t.pid}-${t.tid}`);}});
@@ -6277,6 +6279,34 @@ _renderScheduled=false;
 if(gen===_renderGeneration)_doRenderTokens();
 });
 }
+function _invalidateStackedTokenCache(tokensArr){
+/* [FIX] remote sync replaces G.tokens wholesale but never clears the
+   per-element _lastStaticTr dirty-check cache, unlike the local
+   move-animation path which force-invalidates it for stack-mates on
+   landing (see ONLINE_LAND_FORCE_INVALIDATE). Without this, a token
+   already sitting alone on a cell keeps its cached solo-position
+   transform when a synced opponent token joins it, and the two
+   overlap visually (looks like only 1 token). Group tokens by cell
+   and null out the cache for every cell with 2+ occupants so the
+   next render recomputes real stacked offsets for all of them. */
+try{
+const groups={};
+(tokensArr||[]).forEach(t=>{
+if(t.step<=0||t.step>=STEP_DONE)return;
+const rc=getRenderCell(t.pid,t.step);
+if(!rc)return;
+const k=`${rc[0]}-${rc[1]}`;
+(groups[k]=groups[k]||[]).push(t);
+});
+Object.values(groups).forEach(grp=>{
+if(grp.length<2)return;
+grp.forEach(t=>{
+const els=_tokEls[`${t.pid}-${t.tid}`];
+if(els&&els.wrap)els.wrap._lastStaticTr=null;
+});
+});
+}catch(e){}
+}
 function _doRenderTokens(){
 _refreshCache();
 const cp=cellPx();
@@ -7228,6 +7258,7 @@ pushGameState({action:"roll",dice:v,selectable,auto:_wasAutoRoll});
 if(pid===MY_SEAT){G.timestamp=Date.now();startTurnTimer(pid);}
 }
 async function onTokClick(pid,tid){
+if(_placingPower)return;
 if(window._pnpMode&&window._setMY_SEAT){
 window._setMY_SEAT(G.turn);
 }
