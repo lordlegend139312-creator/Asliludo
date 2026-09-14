@@ -11,11 +11,12 @@ window._DBG_ENABLED=true;
    noise (chat, presence, votes, etc). Add more tags here if needed. */
 window._DBG_TAG_WHITELIST=[
   'DICE_ROLL_START','DICE_ROLL_BLOCKED_ALREADY_ROLLING','DICE_ROLLED_NORMAL','DICE_ROLLED_SELF',
-  'DICE_AFTERROLL_ENTRY','DICE_AUTOMOVE_TRIGGERED','DICE_DOMOVE_START','DOMOVE_END',
+  'DICE_AFTERROLL_ENTRY','DICE_AUTOMOVE_TRIGGERED','DICE_DOMOVE_START','DOMOVE_END','DOMOVE_STEP_BEFORE',
+  'ANIMATEMOVE_STEP_DONE','DOMOVE_SPAWN_ENTRY',
   'DICE_NEXTTURN_START','DICE_NEXTTURN_END','NO_LEGAL_MOVE','EXTRA_CHANCE_SIX','SIXES_STREAK_RESET',
   'THREE_SIXES_TURN_FORFEIT','MOVABLE_BLOCKED_FROZEN','MOVABLE_BLOCKED_SHIELD','SHIELD_BLOCK',
   'AUTOMOVE_SKIPPED_REVERSE_AVAILABLE','POWER_REVERSE_APPLIED','POWER_REVERSE_MISSING_TOKEN_EL',
-  'POWER_REVERSE_NO_ELIGIBLE_TOKEN','CAPTURE_VIA_REVERSE','REROLL_WINDOW_STARTED',
+  'POWER_REVERSE_NO_ELIGIBLE_TOKEN','POWER_REVERSE_DICE_MISMATCH','CAPTURE_VIA_REVERSE','REROLL_WINDOW_STARTED',
   'REROLL_WINDOW_EXPIRED','POWER_REROLL_USED','TOKEN_STEP_DONE',
   'TIMER_EXPIRE_FORCE_AUTOROLL','TIMER_EXPIRE_FORCE_MOVE_OR_SKIP',
   'SYNC_PUSH','SYNC_PUSH_FAILED','SYNC_RECEIVE_APPLY_IMMEDIATE','SYNC_RECEIVE_QUEUED','SYNC_APPLY_STATE',
@@ -1877,6 +1878,7 @@ el.classList.remove('reverse-eligible');
 if(el._reverseClick){el.removeEventListener('click',el._reverseClick,true);el._reverseClick=null;}
 });
 _placingPower=null;
+_reverseLockedDice=null;
 }
 function _fzMaskUrl(svgMarkup){
 return `url("data:image/svg+xml;utf8,${encodeURIComponent(svgMarkup)}")`;
@@ -2184,6 +2186,7 @@ window.closeShop();
 cancelPlacement();
 _placingPower='reverse';
 const v=G.diceVal;
+_reverseLockedDice=v;
 let anyEligible=false;
 G.tokens.filter(t=>t.pid===MY_SEAT).forEach(tok=>{
 const tpid=tok.pid,ttid=tok.tid;
@@ -2197,20 +2200,21 @@ const els=_tokEls[key];
 if(!els){_dbgLog('POWER_REVERSE_MISSING_TOKEN_EL',{pid:tpid,tid:ttid});return;}
 const el=els.wrap;
 el.classList.add('reverse-eligible');
-el._reverseClick=(e)=>{if(e&&e.stopImmediatePropagation)e.stopImmediatePropagation();applyReverse(tpid,ttid);};
+el._reverseClick=(e)=>{if(e&&e.stopImmediatePropagation)e.stopImmediatePropagation();applyReverse(tpid,ttid,v);};
 el.addEventListener('click',el._reverseClick,true);
 });
 if(anyEligible)showToast("Tap a token to move it backward");
 else{_dbgLog('POWER_REVERSE_NO_ELIGIBLE_TOKEN',{pid:MY_SEAT,dice:v});showToast("No token can be reversed with this roll");cancelPlacement();}
 }
 window.startReverseTargeting=startReverseTargeting;
-async function applyReverse(pid,tid){
+async function applyReverse(pid,tid,lockedV){
 if(_placingPower!=='reverse')return;
 if(_animating){cancelPlacement();showToast("Wait for the current move to finish");return;}
 if(!G.inventory[MY_SEAT]||!(G.inventory[MY_SEAT].reverse>0)){cancelPlacement();return;}
 const tok=tokOf(pid,tid);
 if(!tok){cancelPlacement();return;}
 const v=G.diceVal;
+if(lockedV!=null&&v!==lockedV){_dbgLog('POWER_REVERSE_DICE_MISMATCH',{pid,tid,lockedV,currentDiceVal:v});cancelPlacement();showToast("Dice changed — reverse cancelled, try again");return;}
 if(v==null||tok.step<2||tok.step>STEP_MAIN_END){cancelPlacement();return;}
 const targetStep=tok.step-v;
 if(targetStep<1){cancelPlacement();return;}
@@ -2663,6 +2667,7 @@ let _lastShownPurchaseTs=0;
 let _lastShownAmbushTs=0;
 let _lastShownPowerUseTs=0;
 let _placingPower=null;
+let _reverseLockedDice=null;
 let _animating=false;
 let _pendingDroppedTokensQueue=[];
 function _replayPendingDroppedTokens(){
@@ -7410,6 +7415,7 @@ const oH=_rW0*_oHR,oTip=oH*_oTR;
 const oHH=oH/2;
 const oTipFromCenter=oTip-oHH;
 let curStep=tok.step;
+const _animOrigStep=tok.step;
 const finalStep=Math.min(tok.step+steps,STEP_DONE);
 let _homeStretchFired=false;
 let endXY={x:0,y:0};
@@ -7520,6 +7526,7 @@ els.wrap.style.zIndex="";
 delete els.wrap.dataset.animating;
 els.wrap._lastStaticTr=null;
 tok.step=finalStep;
+_dbgLog('ANIMATEMOVE_STEP_DONE',{pid:tok.pid,tid:tok.tid,requestedSteps:steps,stepBefore:_animOrigStep,curStepFromLoop:curStep,finalStepAssigned:tok.step});
 {
 const _landRC=getRenderCell(tok.pid,tok.step);
 if(_landRC){
@@ -7654,6 +7661,7 @@ _animating=true;
 try{
 const tok=tokOf(pid,tid);
 if(!tok){_animating=false;return;}
+_dbgLog('DOMOVE_STEP_BEFORE',{pid,tid,v,stepBefore:tok.step});
 const allowed=movable(pid,v);
 if(!allowed.find(t=>t.tid===tid)){_animating=false;return;}
 if(tok.step>=STEP_STRETCH_START&&tok.step+v>STEP_DONE){_animating=false;return;}let bonus=false;
@@ -7709,6 +7717,7 @@ if(tok.step===0&&v===6){
 const[spawnHr,spawnHc]=getHomeCornerBySeat(tok.pid);
 const spawnStart=baseCirclePx(spawnHr,spawnHc,tok.tid);
 tok.step=1;bonus=diceWasSix;
+_dbgLog('DOMOVE_SPAWN_ENTRY',{pid:tok.pid,tid:tok.tid,v,stepAfter:tok.step});
 if(G.pMeta&&G.pMeta[tok.pid])G.pMeta[tok.pid].spawnBonus=true;
 renderTokens();
 const entryCell=getCell(pid,1);
