@@ -3432,9 +3432,25 @@ applyBoardRotation();
 G.over=data.over||false;
 G.sixes=data.sixes||0;
 G.specialMode=!!data.specialMode;
-if(data.points)G.points=data.points;
+if(data.points){
+/* [DBG] points/inventory apply with NO _animating guard — unlike
+   G.tokens (see SPACING_FB_TOKENS_APPLIED/DROPPED above), a Firebase
+   update carrying stale points/inventory can overwrite local state
+   mid-animation with no queue/replay protection. Log every apply so a
+   silent points/power rollback shows up in the same timeline as the
+   spacing diagnostics instead of needing a separate repro. */
+const _localPointsSig=G.points?Object.entries(G.points).map(([k,v])=>`${k}:${v}`).join(','):'';
+const _incomingPointsSig=Object.entries(data.points).map(([k,v])=>`${k}:${v}`).join(',');
+if(_localPointsSig!==_incomingPointsSig)_spacingLog('DIAG_POINTS_APPLIED',{animating:typeof _animating!=='undefined'?_animating:null,from:_localPointsSig,to:_incomingPointsSig});
+G.points=data.points;
+}
 if(data.pMeta)G.pMeta=data.pMeta;
-if(data.inventory)G.inventory=data.inventory;
+if(data.inventory){
+const _localInvSig=G.inventory?JSON.stringify(G.inventory):'';
+const _incomingInvSig=JSON.stringify(data.inventory);
+if(_localInvSig!==_incomingInvSig)_spacingLog('DIAG_INVENTORY_APPLIED',{animating:typeof _animating!=='undefined'?_animating:null,from:_localInvSig,to:_incomingInvSig});
+G.inventory=data.inventory;
+}
 if(data.purchased)G.purchased=data.purchased;
 /* [FIX] Firebase RTDB silently deletes a key when it's written as an
    empty array (`[]` serializes to an empty object, which Firebase
@@ -4116,6 +4132,84 @@ _staleWatchdogInterval=setInterval(_checkStaleTurnWatchdog,20000);
 function _stopStaleTurnWatchdog(){
 if(_staleWatchdogInterval){clearInterval(_staleWatchdogInterval);_staleWatchdogInterval=null;}
 }
+/* [DBG] General health watchdog — runs every 3s, checks several invariants
+   at once so any category of bug (stuck animation, corrupt token array,
+   detached DOM element, turn/state mismatch, orphaned power state) surfaces
+   in the SAME log stream as the spacing diagnostics, with the same seq/ts
+   timeline, instead of needing a separate targeted repro for each. */
+let _diagLastAnimTrue=0;
+let _diagLastTurn=null;
+let _diagInterval=null;
+let _diagPlacingPowerSince=0;
+let _diagLastSnapSig=null;
+let _diagNoElderSince=0;
+function _runDiagWatchdog(){
+const now=performance.now();
+if(typeof _animating!=='undefined'){
+if(_animating&&!_diagLastAnimTrue)_diagLastAnimTrue=now;
+if(!_animating)_diagLastAnimTrue=0;
+if(_diagLastAnimTrue&&(now-_diagLastAnimTrue)>6000){
+_spacingLog('DIAG_STUCK_ANIMATING',{stuckMs:Math.round(now-_diagLastAnimTrue)});
+}
+}
+if(typeof G!=='undefined'&&G.turn!==_diagLastTurn){
+_spacingLog('DIAG_TURN_CHANGED',{from:_diagLastTurn,to:G.turn,gRolled:G.rolled,gWaiting:G.waiting});
+_diagLastTurn=G.turn;
+}
+if(typeof G!=='undefined'&&Array.isArray(G.tokens)){
+const seen=new Map();
+G.tokens.forEach((t,i)=>{
+const k=`${t.pid}-${t.tid}`;
+if(seen.has(k))_spacingLog('DIAG_TOKEN_ARRAY_DUPLICATE',{key:k,indices:[seen.get(k),i]});
+seen.set(k,i);
+});
+if(typeof _tokEls!=='undefined'){
+const layer=document.getElementById('tokens-layer');
+Object.keys(_tokEls).forEach(k=>{
+const el=_tokEls[k];
+if(el&&el.wrap&&layer&&!layer.contains(el.wrap)){
+_spacingLog('DIAG_TOKEN_EL_DETACHED',{key:k});
+}
+});
+}
+}
+/* power-placement UI left open (reverse/freeze/etc targeting mode stuck
+   on screen with no way to complete it — e.g. after a disconnect mid-pick) */
+if(typeof _placingPower!=='undefined'&&_placingPower){
+if(!_diagPlacingPowerSince)_diagPlacingPowerSince=now;
+if((now-_diagPlacingPowerSince)>15000){
+_spacingLog('DIAG_STUCK_POWER_PLACEMENT',{power:_placingPower,stuckMs:Math.round(now-_diagPlacingPowerSince)});
+}
+}else{_diagPlacingPowerSince=0;}
+/* turn stuck on an eliminated/inactive seat — sync desync or elder-handoff bug */
+if(typeof G!=='undefined'&&typeof PLAYERS!=='undefined'&&G.turn!=null&&Array.isArray(PLAYERS)){
+const _cur=PLAYERS.find(p=>p.id===G.turn);
+if(_cur&&_cur.active===false)_spacingLog('DIAG_TURN_ON_INACTIVE_SEAT',{turn:G.turn});
+}
+/* no seat online at all to act as "elder" (handles AFK/bot turns) — if this
+   stays true, a stalled turn may never auto-resolve */
+if(typeof _onlineSeats!=='undefined'&&_onlineSeats instanceof Set){
+if(_onlineSeats.size===0){
+if(!_diagNoElderSince)_diagNoElderSince=now;
+if((now-_diagNoElderSince)>15000)_spacingLog('DIAG_NO_ONLINE_SEATS',{stuckMs:Math.round(now-_diagNoElderSince),turn:typeof G!=='undefined'?G.turn:null});
+}else{_diagNoElderSince=0;}
+}
+/* lightweight full-state snapshot every tick — cheap cross-check point for
+   any concept (points/inventory/turn/dice) that isn't individually hooked
+   above; diffed against the previous tick so only changes get logged */
+if(typeof G!=='undefined'){
+const _snapSig=JSON.stringify({turn:G.turn,rolled:G.rolled,waiting:G.waiting,diceVal:G.diceVal,sixes:G.sixes,points:G.points,inventory:G.inventory,over:G.over});
+if(_snapSig!==_diagLastSnapSig){
+_spacingLog('DIAG_STATE_SNAPSHOT',{turn:G.turn,rolled:G.rolled,waiting:G.waiting,diceVal:G.diceVal,sixes:G.sixes,points:G.points,over:G.over});
+_diagLastSnapSig=_snapSig;
+}
+}
+}
+function _startDiagWatchdog(){
+if(_diagInterval)return;
+_diagInterval=setInterval(_runDiagWatchdog,3000);
+}
+_startDiagWatchdog();
 /* [FIX] amIElderPlayer()'s safety net is entirely presence-based, but
    Firebase's onDisconnect() only detects an ABRUPT disconnect (network
    loss, app killed, phone died) after its own internal heartbeat timeout —
@@ -6035,7 +6129,7 @@ layer.appendChild(frost);
 layer.appendChild(shield);
 _tokEls[key]={wrap,shadow,ring,frost,fzPunch,fzShake,shield,movHandler:null};
 const _mo=new MutationObserver(()=>{
-_spacingLog('SPACING_MUTATION',{key,tr:wrap.style.transform,stack:(new Error().stack||'').split('\n').slice(1,5).join(' | ')});
+_spacingLog('SPACING_MUTATION',{key,tr:wrap.style.transform,zIndex:wrap.style.zIndex,display:wrap.style.display,opacity:wrap.style.opacity,animatingFlag:wrap.dataset.animating||null,stack:(new Error().stack||'').split('\n').slice(1,5).join(' | ')});
 });
 _mo.observe(wrap,{attributes:true,attributeFilter:['style']});
 }
@@ -7500,7 +7594,42 @@ const key=`${tok.pid}-${tok.tid}`;
 const els=_tokEls[key];
 const color=getDisplayColorForSeat(tok.pid);
 const _spawnColorName=['PINK','YELLOW','GREEN','BLUE'][tok.pid]||tok.pid;
-if(els)await jumpStep(els.wrap,els.shadow,spawnStart.x,spawnStart.y,entryXY.x,entryXY.y,_tokRW(BASE_W),color,cp,layer);
+if(els){
+/* [FIX] this spawn tween used to jump straight to the raw, unstacked
+   entryXY cell-center with no rotation — ignoring any tokens already
+   sitting on the entry cell and the board's per-seat rotation. That
+   landed a freshly-spawned token exactly on top of the "center" slot
+   of an existing stack (or off-axis for rotated seats) instead of its
+   own offset position, which _doRenderTokens() would then never
+   correct because its dirty-check cache already matched. Compute the
+   same stack-index/rotation-aware destination _doRenderTokens() uses
+   before tweening, so the spawn animation and the settled render
+   agree on where this token belongs. */
+const _entryRcKey=`${entryCell[0]}-${entryCell[1]}`;
+const _grp=G.tokens.filter(t=>{
+if(t.step<=0||t.step>=STEP_DONE)return false;
+const trc=getCell(t.pid,t.step);
+return trc&&`${trc[0]}-${trc[1]}`===_entryRcKey;
+});
+const _n=_grp.length;
+const _idx=Math.max(0,_grp.findIndex(t=>t.pid===tok.pid&&t.tid===tok.tid));
+const _sizeScale=nn=>nn<=1?1:nn<=2?0.78:nn<=4?0.65:nn<=6?0.55:0.46;
+const _gap=cp*0.22;
+const _rawDx=_n<=1?0:(_idx-(_n-1)/2)*_gap,_rawDy=0;
+const _oRad=_tokenRotationDeg*Math.PI/180;
+const _offDx=_rawDx*Math.cos(_oRad)-_rawDy*Math.sin(_oRad);
+const _offDy=_rawDx*Math.sin(_oRad)+_rawDy*Math.cos(_oRad);
+const _destPx=entryXY.x+_offDx,_destPy=entryXY.y+_offDy;
+const _rW0=_tokRW(BASE_W);
+const{hRatio:_eHR,tRatio:_eTR}=_tokGeometry();
+const _eH=_rW0*_eHR,_eTip=_eH*_eTR,_eHH=_eH/2;
+const _eTipFromCenter=_eTip-_eHH;
+const _eTipDX=_eTipFromCenter*Math.sin(_oRad),_eTipDY=_eTipFromCenter*Math.cos(_oRad);
+const _destTopLeftX=_destPx-_rW0/2+_eTipDX,_destTopLeftY=_destPy-_eHH-_eTipDY;
+_spacingLog('SPACING_WRITE',{writer:'spawn',pid:tok.pid,tid:tok.tid,step:tok.step,n:_n,idx:_idx,scale:_sizeScale(_n),deg:getBoardRotation(),tokenRotDeg:_tokenRotationDeg,tr:`translate(${_destTopLeftX}px,${_destTopLeftY}px)rotate(${_tokenRotationDeg}deg)`});
+await jumpStep(els.wrap,els.shadow,spawnStart.x,spawnStart.y,_destTopLeftX+_rW0/2,_destTopLeftY+_eHH,_rW0,color,cp,layer);
+els.wrap._lastStaticTr=null;
+}
 renderTokens();await rafDelay(20);
 const eck=`${entryCell[0]}-${entryCell[1]}`;
 if(!SAFE.has(eck)){const _trapped=await checkTrapTrigger(eck,pid,tok.tid);if(!_trapped)await checkAndPit(eck,pid,tok.tid,true);}
