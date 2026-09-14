@@ -6397,14 +6397,14 @@ const rHH=rH/2;
 wrap.style.transformOrigin=`${rW/2}px ${rHH}px`;
 const _tipFromCenter=tipOffset-rHH;
 const _rad=_tr*Math.PI/180;
-const _tipDX=_tipFromCenter*Math.sin(_rad);
-const _tipDY=_tipFromCenter*Math.cos(_rad);
+const _tipDX=_tipFromCenter*visualScale*Math.sin(_rad);
+const _tipDY=_tipFromCenter*visualScale*Math.cos(_rad);
 const _ctx=px-rW/2+_tipDX;
 const _cty=py-rHH-_tipDY;
 wrap.dataset.visualScale=visualScale;
 const _colorName2=['PINK','YELLOW','GREEN','BLUE'][tok.pid]||tok.pid;
-const _verifyTipX=_ctx+rW/2-_tipFromCenter*Math.sin(_rad);
-const _verifyTipY=_cty+rHH+_tipFromCenter*Math.cos(_rad);
+const _verifyTipX=_ctx+rW/2-_tipFromCenter*visualScale*Math.sin(_rad);
+const _verifyTipY=_cty+rHH+_tipFromCenter*visualScale*Math.cos(_rad);
 const _errX=(_verifyTipX-px).toFixed(2),_errY=(_verifyTipY-py).toFixed(2);
 if(stackCount>=2&&(Math.abs(_errX)>0.1||Math.abs(_errY)>0.1))_dbgLog('ONLINE_TIP_GEOM_ERR',{pid:tok.pid,tid:tok.tid,deg:getBoardRotation(),tokenRotDeg:_tr,errX:+_errX,errY:+_errY,px:+px.toFixed(1),py:+py.toFixed(1)});
 if(!wrap.dataset.animating){
