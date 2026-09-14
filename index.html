@@ -1856,7 +1856,7 @@ if(el._aegisClick){el.removeEventListener('click',el._aegisClick);el._aegisClick
 });
 document.querySelectorAll('.reverse-eligible').forEach(el=>{
 el.classList.remove('reverse-eligible');
-if(el._reverseClick){el.removeEventListener('click',el._reverseClick);el._reverseClick=null;}
+if(el._reverseClick){el.removeEventListener('click',el._reverseClick,true);el._reverseClick=null;}
 });
 _placingPower=null;
 }
@@ -2179,8 +2179,8 @@ const els=_tokEls[key];
 if(!els){_dbgLog('POWER_REVERSE_MISSING_TOKEN_EL',{pid:tpid,tid:ttid});return;}
 const el=els.wrap;
 el.classList.add('reverse-eligible');
-el._reverseClick=()=>applyReverse(tpid,ttid);
-el.addEventListener('click',el._reverseClick);
+el._reverseClick=(e)=>{if(e&&e.stopImmediatePropagation)e.stopImmediatePropagation();applyReverse(tpid,ttid);};
+el.addEventListener('click',el._reverseClick,true);
 });
 if(anyEligible)showToast("Tap a token to move it backward");
 else{_dbgLog('POWER_REVERSE_NO_ELIGIBLE_TOKEN',{pid:MY_SEAT,dice:v});showToast("No token can be reversed with this roll");cancelPlacement();}
@@ -7258,7 +7258,7 @@ pushGameState({action:"roll",dice:v,selectable,auto:_wasAutoRoll});
 if(pid===MY_SEAT){G.timestamp=Date.now();startTurnTimer(pid);}
 }
 async function onTokClick(pid,tid){
-if(_placingPower)return;
+if(_placingPower||_animating)return;
 if(window._pnpMode&&window._setMY_SEAT){
 window._setMY_SEAT(G.turn);
 }
