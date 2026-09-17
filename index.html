@@ -6348,7 +6348,7 @@ function _refreshCache(){
 if(_cacheValid)return;
 _cacheValid=true;
 let _cpxSrc='formula';
-const cellEl=document.querySelector('#board .lc');
+const cellEl=document.querySelector('#board .lc[data-r]');
 if(cellEl){
 const w=cellEl.getBoundingClientRect().width;
 if(w>0){_cpx=w;_cpxSrc='lc-measured';}
