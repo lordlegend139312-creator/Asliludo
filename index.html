@@ -6370,6 +6370,24 @@ function _refreshCache(){
 if(_cacheValid)return;
 _cacheValid=true;
 let _cpxSrc='formula';
+/* [FIX] --cell is viewport-relative (min(5.8vw,4.8dvh,40px)) so
+   getComputedStyle resolves it without needing any element to be
+   laid out — same answer every time, on every browser. Measuring an
+   actual .lc grid cell's getBoundingClientRect() instead was the
+   real cause of the Chrome-vs-Brave token size mismatch: grid track
+   sizing/rounding for that box can legitimately differ a few px
+   between engines, and whatever got measured first here was cached
+   for the whole session (only resize/visualViewport resize
+   invalidated it). CSS var is the reliable source now; lc-measured
+   is kept only as a fallback if the var read ever fails. */
+const b=document.getElementById("board");
+if(b){
+const raw=getComputedStyle(b).getPropertyValue("--cell");
+const s=parseFloat(raw);
+_dbgLog('CELLPX_CSSVAR_READ',{raw,parsed:s});
+if(s>0){_cpx=s;_cpxSrc='cssvar';}
+}
+if(!_cpx){
 const cellEl=document.querySelector('#board .lc[data-r]');
 if(cellEl){
 const w=cellEl.getBoundingClientRect().width;
@@ -6377,14 +6395,6 @@ if(w>0){_cpx=w;_cpxSrc='lc-measured';}
 else _dbgLog('CELLPX_LC_ZERO_WIDTH',{});
 }else{
 _dbgLog('CELLPX_LC_NOT_FOUND',{});
-}
-if(!_cpx){
-const b=document.getElementById("board");
-if(b){
-const raw=getComputedStyle(b).getPropertyValue("--cell");
-const s=parseFloat(raw);
-_dbgLog('CELLPX_CSSVAR_READ',{raw,parsed:s});
-if(s>0){_cpx=s;_cpxSrc='cssvar';}
 }
 }
 if(!_cpx){_cpx=Math.min(window.innerWidth*0.058,window.innerHeight*0.048,40);_cpxSrc='formula';}
