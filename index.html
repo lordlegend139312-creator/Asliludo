@@ -22,7 +22,9 @@ window._DBG_TAG_WHITELIST=[
   'SYNC_PUSH','SYNC_PUSH_FAILED','SYNC_RECEIVE_APPLY_IMMEDIATE','SYNC_RECEIVE_QUEUED','SYNC_APPLY_STATE',
   'DB_CONNECTED_CHANGE','FORCE_RESYNC','ONLINE_FB_TOKENS_SKIPPED_ANIMATING','ONLINE_DUPLICATE_TOKENS_FOUND',
   'STALE_WATCHDOG_TRIGGER','STALE_WATCHDOG_ACTING','STALE_WATCHDOG_CLAIM_FAILED',
-  'WINDOW_ERROR','PROMISE_REJECTION','CONSOLE_ERROR','CONSOLE_WARN'
+  'WINDOW_ERROR','PROMISE_REJECTION','CONSOLE_ERROR','CONSOLE_WARN',
+  'CELLPX_CACHE_INVALIDATED','CELLPX_LC_NOT_FOUND','CELLPX_LC_ZERO_WIDTH','CELLPX_CSSVAR_READ',
+  'CELLPX_RESOLVED','CELLPX_BOARD_SIZE_MISMATCH'
 ];
 if(!window._DBG_ENABLED){
   /* [DBG] disabled — set window._DBG_ENABLED=true before this script to re-enable full logging+UI.
@@ -2153,8 +2155,9 @@ els.wrap.classList.add('aegis-shielded');
 const ring=document.createElement('div');
 ring.className='aegis-ring-mark';
 ring.style.cssText='position:absolute;left:18.57%;top:18.46%;width:62.86%;height:14.36%;pointer-events:none;z-index:9;overflow:visible;';
-ring.innerHTML=`<svg viewBox="106 0 88 40" width="100%" height="100%" style="overflow:visible"><defs><linearGradient id="aegisHaloGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#fff6c8"/><stop offset="25%" stop-color="#ffd94a"/><stop offset="50%" stop-color="#b8791a"/><stop offset="75%" stop-color="#ffe07a"/><stop offset="100%" stop-color="#a86a15"/></linearGradient><filter id="aegisHaloBlur" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="3"/></filter></defs><g class="halo-g"><g opacity=".85" filter="url(#aegisHaloBlur)"><ellipse cx="150" cy="20" rx="44" ry="14" fill="none" stroke="#ffe27a" stroke-width="10"/></g><g><ellipse cx="150" cy="20" rx="44" ry="14" fill="none" stroke="url(#aegisHaloGrad)" stroke-width="7"/></g></g></svg>`;
-/* ^ identical markup to index-162's halo-g block (same gradient stops, same blur filter, same ellipse geometry) — kept id names so the rest of this function still works */
+const _haloGradId=`aegisHaloGrad-${key}`,_haloBlurId=`aegisHaloBlur-${key}`;
+ring.innerHTML=`<svg viewBox="106 0 88 40" width="100%" height="100%" style="overflow:visible"><defs><linearGradient id="${_haloGradId}" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#fff6c8"/><stop offset="25%" stop-color="#ffd94a"/><stop offset="50%" stop-color="#b8791a"/><stop offset="75%" stop-color="#ffe07a"/><stop offset="100%" stop-color="#a86a15"/></linearGradient><filter id="${_haloBlurId}" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="3"/></filter></defs><g class="halo-g"><g opacity=".85" filter="url(#${_haloBlurId})"><ellipse cx="150" cy="20" rx="44" ry="14" fill="none" stroke="#ffe27a" stroke-width="10"/></g><g><ellipse cx="150" cy="20" rx="44" ry="14" fill="none" stroke="url(#${_haloGradId})" stroke-width="7"/></g></g></svg>`;
+/* ^ identical markup to index-162's halo-g block (same gradient stops, same blur filter, same ellipse geometry) — ids suffixed with `key` (per pid-tid) so multiple simultaneous Aegis rings don't collide in the DOM */
 els.wrap.appendChild(ring);
 _aegisSparkleTimers[key]=setInterval(()=>{_spawnAegisHaloSparkle(ring);if(Math.random()<0.5)_spawnAegisHaloSparkle(ring);},150);
 });
@@ -6336,6 +6339,7 @@ dot.addEventListener('transitionend',_onEnd,{once:true});
 let _cpx=0,_cacheValid=false;
 let _trailSkip=0;
 window.addEventListener('resize',()=>{
+_dbgLog('CELLPX_CACHE_INVALIDATED',{reason:'resize',innerWidth:window.innerWidth,innerHeight:window.innerHeight});
 _cpx=0;_cacheValid=false;
 Object.keys(_slotPxCache).forEach(k=>delete _slotPxCache[k]);
 renderTokens();
@@ -6343,11 +6347,35 @@ renderTokens();
 function _refreshCache(){
 if(_cacheValid)return;
 _cacheValid=true;
-const b=document.getElementById("board");
-if(b){const s=parseFloat(getComputedStyle(b).getPropertyValue("--cell"));if(s>0)_cpx=s;}
-if(!_cpx)_cpx=Math.min(window.innerWidth*0.058,window.innerHeight*0.054,40);
+let _cpxSrc='formula';
+const cellEl=document.querySelector('#board .lc');
+if(cellEl){
+const w=cellEl.getBoundingClientRect().width;
+if(w>0){_cpx=w;_cpxSrc='lc-measured';}
+else _dbgLog('CELLPX_LC_ZERO_WIDTH',{});
+}else{
+_dbgLog('CELLPX_LC_NOT_FOUND',{});
 }
-function cellPx(){return _cpx||Math.min(window.innerWidth*0.058,window.innerHeight*0.054,40);}
+if(!_cpx){
+const b=document.getElementById("board");
+if(b){
+const raw=getComputedStyle(b).getPropertyValue("--cell");
+const s=parseFloat(raw);
+_dbgLog('CELLPX_CSSVAR_READ',{raw,parsed:s});
+if(s>0){_cpx=s;_cpxSrc='cssvar';}
+}
+}
+if(!_cpx){_cpx=Math.min(window.innerWidth*0.058,window.innerHeight*0.048,40);_cpxSrc='formula';}
+_dbgLog('CELLPX_RESOLVED',{cpx:+_cpx.toFixed(2),source:_cpxSrc,innerWidth:window.innerWidth,innerHeight:window.innerHeight,dpr:window.devicePixelRatio||1,isBrave:!!(navigator.brave),ua:navigator.userAgent.slice(0,70)});
+const b2=document.getElementById("board");
+if(b2){
+const br=b2.getBoundingClientRect();
+const expected=_cpx*15+1*14+5*2;
+const diff=Math.abs(br.width-expected);
+if(diff>1.5)_dbgLog('CELLPX_BOARD_SIZE_MISMATCH',{cpxUsed:+_cpx.toFixed(2),source:_cpxSrc,boardRectWidth:+br.width.toFixed(2),expectedWidth:+expected.toFixed(2),diff:+diff.toFixed(2)});
+}
+}
+function cellPx(){_refreshCache();return _cpx;}
 const GAP=1,PAD=5;
 function rcToXY(r,c){
 const cp=cellPx();
