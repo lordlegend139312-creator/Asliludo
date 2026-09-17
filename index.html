@@ -6342,13 +6342,18 @@ let _trailSkip=0;
 function _syncCellVar(){
 const b=document.getElementById('board');
 if(!b)return;
-const vv=window.visualViewport;
-const vw=window.innerWidth;
-const vh=(vv&&vv.height)?vv.height:window.innerHeight;
-const cell=Math.min(vw*0.058,vh*0.048,40);
-b.style.setProperty('--cell',cell.toFixed(2)+'px');
+/* [FIX] Previously this computed --cell in JS from window.innerWidth/
+   visualViewport.height and wrote it as an inline style, overriding the
+   CSS rule. visualViewport.height resolves inconsistently across
+   browsers (Chrome vs Brave vs WebView, toolbar/URL-bar handling), so
+   the same device could get a smaller cell (and smaller tokens, since
+   BASE_W derives from cellPx()) in one browser than another. CSS's own
+   `min(5.8vw,4.8dvh,40px)` on #board already handles this natively and
+   consistently via the dvh unit — so just let CSS own it and only
+   invalidate the JS-side measurement cache here. */
 _cpx=0;_cacheValid=false;
-_dbgLog('CELLVAR_SYNCED',{cell:+cell.toFixed(2),vw,vh,usedVisualViewport:!!(vv&&vv.height),isBrave:!!(navigator.brave)});
+const raw=getComputedStyle(b).getPropertyValue('--cell');
+_dbgLog('CELLVAR_SYNCED',{cell:+parseFloat(raw).toFixed(2),vw:window.innerWidth,vh:window.innerHeight,isBrave:!!(navigator.brave)});
 }
 _syncCellVar();
 window.addEventListener('resize',()=>{
