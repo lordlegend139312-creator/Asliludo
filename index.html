@@ -24,7 +24,7 @@ window._DBG_TAG_WHITELIST=[
   'STALE_WATCHDOG_TRIGGER','STALE_WATCHDOG_ACTING','STALE_WATCHDOG_CLAIM_FAILED',
   'WINDOW_ERROR','PROMISE_REJECTION','CONSOLE_ERROR','CONSOLE_WARN',
   'CELLPX_CACHE_INVALIDATED','CELLPX_LC_NOT_FOUND','CELLPX_LC_ZERO_WIDTH','CELLPX_CSSVAR_READ',
-  'CELLPX_RESOLVED','CELLPX_BOARD_SIZE_MISMATCH'
+  'CELLPX_RESOLVED','CELLPX_BOARD_SIZE_MISMATCH','CELLVAR_SYNCED'
 ];
 if(!window._DBG_ENABLED){
   /* [DBG] disabled — set window._DBG_ENABLED=true before this script to re-enable full logging+UI.
@@ -5017,6 +5017,7 @@ _dbgLog('TEAM_CONTROL_ACTIVE_MERGE',{pid,mateId,dv,ownMovable:own.map(t=>t.tid),
 return[...own,...mateTokens];
 }
 function buildBoard(){
+_syncCellVar();
 const DEF=_getThemeDEF(),BOARD_BG=_getThemeBoardBG();
 const _themeId=getBoardTheme().id;
 const _isPlainTheme=_themeId==="plain";
@@ -6338,9 +6339,25 @@ dot.addEventListener('transitionend',_onEnd,{once:true});
 }
 let _cpx=0,_cacheValid=false;
 let _trailSkip=0;
-window.addEventListener('resize',()=>{
-_dbgLog('CELLPX_CACHE_INVALIDATED',{reason:'resize',innerWidth:window.innerWidth,innerHeight:window.innerHeight});
+function _syncCellVar(){
+const b=document.getElementById('board');
+if(!b)return;
+const vv=window.visualViewport;
+const vw=window.innerWidth;
+const vh=(vv&&vv.height)?vv.height:window.innerHeight;
+const cell=Math.min(vw*0.058,vh*0.048,40);
+b.style.setProperty('--cell',cell.toFixed(2)+'px');
 _cpx=0;_cacheValid=false;
+_dbgLog('CELLVAR_SYNCED',{cell:+cell.toFixed(2),vw,vh,usedVisualViewport:!!(vv&&vv.height),isBrave:!!(navigator.brave)});
+}
+_syncCellVar();
+window.addEventListener('resize',()=>{
+_syncCellVar();
+Object.keys(_slotPxCache).forEach(k=>delete _slotPxCache[k]);
+renderTokens();
+},{passive:true});
+if(window.visualViewport)window.visualViewport.addEventListener('resize',()=>{
+_syncCellVar();
 Object.keys(_slotPxCache).forEach(k=>delete _slotPxCache[k]);
 renderTokens();
 },{passive:true});
