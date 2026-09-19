@@ -5,27 +5,45 @@
 /* ===== [DBG] TEMP DIAGNOSTIC LOGGING — standalone, runs first, isolated from rest of app (remove after done) ===== */
 (function(){
 try{
-window._DBG_ENABLED=false;
-/* [DBG] only keep tags relevant to the reverse-power / dice-move bugs
-   being chased right now, so the log doesn't fill up with unrelated
-   noise (chat, presence, votes, etc). Add more tags here if needed. */
+window._DBG_ENABLED=true;
+/* [DBG] Trimmed down to just what's needed to trace the recurring
+   "turn/dice stuck, dono taraf atak gaya" class of bugs (turn-timer
+   expiry, elder election, dice-not-responding, sync/rejoin) — NOT the
+   high-frequency per-step/per-render tags (SYNC_PUSH, ANIMATEMOVE_*,
+   CELLPX_*, DOMOVE_STEP_*, etc.), since those fire constantly during
+   normal play and would both flood the log (each entry also gets
+   persisted to localStorage + pushed to Firebase) and add real
+   overhead to every single move. Add more tags here only if a new bug
+   class needs tracing; remove tags once a given bug is confirmed fixed
+   and stays fixed. */
 window._DBG_TAG_WHITELIST=[
-  'DICE_ROLL_START','DICE_ROLL_BLOCKED_ALREADY_ROLLING','DICE_ROLLED_NORMAL','DICE_ROLLED_SELF',
-  'DICE_AFTERROLL_ENTRY','DICE_AUTOMOVE_TRIGGERED','DICE_DOMOVE_START','DOMOVE_END','DOMOVE_STEP_BEFORE',
-  'ANIMATEMOVE_STEP_DONE','DOMOVE_SPAWN_ENTRY',
-  'DICE_NEXTTURN_START','DICE_NEXTTURN_END','NO_LEGAL_MOVE','EXTRA_CHANCE_SIX','SIXES_STREAK_RESET',
-  'THREE_SIXES_TURN_FORFEIT','MOVABLE_BLOCKED_FROZEN','MOVABLE_BLOCKED_SHIELD','SHIELD_BLOCK',
-  'AUTOMOVE_SKIPPED_REVERSE_AVAILABLE','POWER_REVERSE_APPLIED','POWER_REVERSE_MISSING_TOKEN_EL',
-  'POWER_REVERSE_NO_ELIGIBLE_TOKEN','POWER_REVERSE_DICE_MISMATCH','CAPTURE_VIA_REVERSE','REROLL_WINDOW_STARTED',
-  'REROLL_WINDOW_EXPIRED','POWER_REROLL_USED','TOKEN_STEP_DONE',
-  'TIMER_EXPIRE_FORCE_AUTOROLL','TIMER_EXPIRE_FORCE_MOVE_OR_SKIP',
-  'SYNC_PUSH','SYNC_PUSH_FAILED','SYNC_RECEIVE_APPLY_IMMEDIATE','SYNC_RECEIVE_QUEUED','SYNC_APPLY_STATE',
-  'DB_CONNECTED_CHANGE','FORCE_RESYNC','ONLINE_FB_TOKENS_SKIPPED_ANIMATING','ONLINE_DUPLICATE_TOKENS_FOUND',
-  'STALE_WATCHDOG_TRIGGER','STALE_WATCHDOG_ACTING','STALE_WATCHDOG_CLAIM_FAILED',
+  /* errors — cheap (only fire when something actually goes wrong),
+     highest diagnostic value, catch-all safety net */
   'WINDOW_ERROR','PROMISE_REJECTION','CONSOLE_ERROR','CONSOLE_WARN',
-  'CELLPX_CACHE_INVALIDATED','CELLPX_LC_NOT_FOUND','CELLPX_LC_ZERO_WIDTH','CELLPX_CSSVAR_READ',
-  'CELLPX_RESOLVED','CELLPX_BOARD_SIZE_MISMATCH','CELLVAR_SYNCED',
-  'HOME_COLOR_PAINTED','TOKEN_COLOR_USED'
+  /* turn-timer / elder election — the "dono taraf stuck" deadlock class */
+  'TIMER_EXPIRE_CALLED','TIMER_EXPIRE_BAIL_STALE','TIMER_EXPIRE_BAIL_ROLLED',
+  'TIMER_EXPIRE_COUNT_INC','ELDER_CHECK_AT_EXPIRY','TIMER_EXPIRE_FORCE_AUTOROLL',
+  'TIMER_EXPIRE_FORCE_MOVE_OR_SKIP','BOTTURN_ELDER_ATTEMPT','ELDER_NOT_ME_RESYNC',
+  'STALE_WATCHDOG_TRIGGER','STALE_WATCHDOG_ACTING','STALE_WATCHDOG_CLAIM_FAILED',
+  /* dice not responding to taps */
+  'DICE_ROLL_START','DICE_ROLL_BLOCKED_ALREADY_ROLLING',
+  /* sync / disconnect / rejoin */
+  'SYNC_PUSH_FAILED','SYNC_RECEIVE_QUEUED','DB_CONNECTED_CHANGE','FORCE_RESYNC',
+  'SESSION_SAVED','SESSION_CLEARED',
+  /* rejoin flow — each fires once per rejoin attempt, not per-frame; the
+     REJOIN_FAILED entries carry a `reason` field, so this alone should
+     explain a "rejoin card hi nahi dikha" report next time it happens */
+  'REJOIN_ATTEMPT_START','REJOIN_FAILED','REJOIN_ROOM_STATE_FETCHED','REJOIN_SUCCESS_LOADING_GAME',
+  /* Lucky Number power — fires once per activate/roll, not per-frame;
+     watching for regressions on the dice-lag fix */
+  'POWER_LUCKYNUMBER_ACTIVATE_START','POWER_LUCKYNUMBER_ARMED','POWER_LUCKYNUMBER_ROLL','POWER_LUCKYNUMBER_NO_BEST_NUM',
+  /* Reverse power — fires once per use, not per-frame; watching for
+     regressions on the cell-by-cell walk-back fix */
+  'POWER_REVERSE_APPLIED','POWER_REVERSE_DICE_MISMATCH','POWER_REVERSE_MISSING_TOKEN_EL','POWER_REVERSE_NO_ELIGIBLE_TOKEN',
+  /* bot/AFK seat handover — fires only on state transitions (someone
+     going AFK / being voted to bot / reclaiming their seat), not
+     per-turn; watching for regressions on the elder-deadlock fix */
+  'BOT_ACTIVATED','BOT_DEACTIVATED','AFKSEATS_WRITE_OK','AFKSEATS_WRITE_FAILED'
 ];
 if(!window._DBG_ENABLED){
   /* [DBG] disabled — set window._DBG_ENABLED=true before this script to re-enable full logging+UI.
@@ -2661,13 +2679,25 @@ let IS_HOST=false;
 let _forcedElderSeat=null;
 let _cachedElderResult=null;
 let _cachedElderOnlineSet='';
-function amIElderPlayer(){
+function amIElderPlayer(excludeSeat){
 if(MY_SEAT===null)return false;
 if(!ROOM_CODE)return true;
 if(_forcedElderSeat!==null){
 return MY_SEAT===_forcedElderSeat;
 }
-const onlineKey=[..._onlineSeats].sort().join(',');
+/* [FIX] "timer poori khatam ho gayi, na bot chala na turn aaya — dono
+   taraf stuck": election never excluded the very seat whose turn is
+   currently timing out. If THAT seat's own tab was still technically
+   online+visible (glitched/frozen mid-interaction, not disconnected),
+   it kept winning "first online+visible seat" and crowning itself as
+   its own elder — while its own self-timeout branch elsewhere bails
+   out because it's the one that's actually stuck (_rolling/_animating
+   never cleared). Meanwhile every OTHER client correctly saw that seat
+   as still online+visible and deferred to it as elder, so nobody ever
+   stepped in. Callers driving a specific seat's expired-turn fallback
+   now pass that seat as excludeSeat so election skips straight past it
+   to the next real candidate instead of deadlocking on it. */
+const onlineKey=[..._onlineSeats].sort().join(',')+'|x'+(excludeSeat??'');
 if(_cachedElderOnlineSet===onlineKey&&_cachedElderResult!==null){
 return _cachedElderResult;
 }
@@ -2686,6 +2716,7 @@ _cachedElderOnlineSet=onlineKey;
    (foreground) for elder duty. Only fall back to the old "just online"
    rule if literally nobody active is currently visible. */
 for(const seat of SEAT_LAYOUT_ACTIVE){
+if(seat===excludeSeat)continue;
 if(!PLAYERS[seat]?.active)continue;
 if(_onlineSeats.has(seat)&&_visibleSeats.has(seat)){
 _cachedElderResult=(seat===MY_SEAT);
@@ -2693,13 +2724,14 @@ return _cachedElderResult;
 }
 }
 for(const seat of SEAT_LAYOUT_ACTIVE){
+if(seat===excludeSeat)continue;
 if(!PLAYERS[seat]?.active)continue;
 if(_onlineSeats.has(seat)){
 _cachedElderResult=(seat===MY_SEAT);
 return _cachedElderResult;
 }
 }
-const first=SEAT_LAYOUT_ACTIVE.find(s=>PLAYERS[s]?.active);
+const first=SEAT_LAYOUT_ACTIVE.find(s=>s!==excludeSeat&&PLAYERS[s]?.active);
 _cachedElderResult=(first===MY_SEAT);
 return _cachedElderResult;
 }
@@ -7087,7 +7119,7 @@ _timerExpireCount[seat]=(_timerExpireCount[seat]||0)+1;
 _dbgLog('TIMER_EXPIRE_COUNT_INC',{seat,newCount:_timerExpireCount[seat]});
 }
 }
-_dbgLog('ELDER_CHECK_AT_EXPIRY',{seat,MY_SEAT,amIElder:amIElderPlayer(),onlineSeats:[..._onlineSeats],visibleSeats:[..._visibleSeats]});
+_dbgLog('ELDER_CHECK_AT_EXPIRY',{seat,MY_SEAT,amIElder:amIElderPlayer(seat),onlineSeats:[..._onlineSeats],visibleSeats:[..._visibleSeats]});
 if(seat===MY_SEAT&&_placingPower){_dbgLog('TIMER_EXPIRE_CANCEL_PENDING_POWER',{seat,power:_placingPower});cancelPlacement();}
 if(seat===MY_SEAT&&!G.rolled){
 if(_rolling||_animating)return;
@@ -7117,11 +7149,11 @@ await pushGameState({action:"skip",dice:savedDice,reason:"noMove",auto:true});
 }
 return;
 }
-if(amIElderPlayer()&&PLAYERS[seat]?.isBot){
+if(amIElderPlayer(seat)&&PLAYERS[seat]?.isBot){
 _doBotTurn(seat);
 return;
 }
-if(amIElderPlayer()&&seat!==MY_SEAT){
+if(amIElderPlayer(seat)&&seat!==MY_SEAT){
 if(G.turn!==seat)return;
 /* [FIX] this awaited a plain _doBotTurn(seat) — but _doBotTurn's own
    internal guards (`if(!PLAYERS[seat]?.isBot)return;`, repeated after
@@ -7142,8 +7174,8 @@ if(ROOM_CODE)db.ref(`rooms/${ROOM_CODE}/afkSeats/${seat}`).set(true).then(()=>{_
 }
 return;
 }
-_dbgLog('ELDER_NOT_ME_RESYNC',{seat,MY_SEAT,amINotElder:!amIElderPlayer()});
-if(!amIElderPlayer()&&seat!==MY_SEAT&&ROOM_CODE&&gameRef){
+_dbgLog('ELDER_NOT_ME_RESYNC',{seat,MY_SEAT,amINotElder:!amIElderPlayer(seat)});
+if(!amIElderPlayer(seat)&&seat!==MY_SEAT&&ROOM_CODE&&gameRef){
 gameRef.once('value').then(snap=>{
 if(!snap||!snap.exists())return;
 const fresh=snap.val();
