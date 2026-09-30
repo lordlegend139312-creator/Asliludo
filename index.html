@@ -51,6 +51,26 @@ window._srv=function(t,b){
 };
 
 
+window._srvRaw=window._srv;
+window._srv=function(t,b){
+  var w=window._lastCommitP;
+  if(w&&(t==='d'||t==='s'||t==='f'||t==='p'||t==='r')){
+    return w.then(function(){return window._srvRaw(t,b);},function(){return window._srvRaw(t,b);});
+  }
+  return window._srvRaw(t,b);
+};
+
+window._srvWarm=function(){
+try{
+var _n=Date.now();
+if(window._srvWarmAt&&_n-window._srvWarmAt<45000)return;
+window._srvWarmAt=_n;
+window._srv('ping',{});
+}catch(e){}
+};
+document.addEventListener('visibilitychange',function(){
+try{if(!document.hidden&&typeof window._getROOM_CODE==='function'&&window._getROOM_CODE())window._srvWarm();}catch(e){}
+});
 window._dbgLocalKey='_ludoDbgOn_v1';
 try{window._dbgLocalOn=localStorage.getItem(window._dbgLocalKey)==='1';}catch(e){window._dbgLocalOn=false;}
 window._dbgRemoteOn=false;
@@ -2079,6 +2099,53 @@ if(!_isOnlineRoom())return null;
 try{const r=await window._srv('f',{c:ROOM_CODE,p:{as:(pid!==MY_SEAT?pid:undefined)}});
 return (r&&typeof r.turn==='number')?r:null;}catch(e){return null;}
 }
+function _trackCommit(p){
+const prev=window._lastCommitP;
+const chained=prev?Promise.all([prev.catch(function(){}),p.catch(function(){})]):p;
+window._lastCommitP=chained;
+const clr=function(){if(window._lastCommitP===chained)window._lastCommitP=null;};
+chained.then(clr,clr);
+return p;
+}
+function _optimisticPass(srvP){
+const expTurn=G.turn;
+srvP.then(function(r){
+try{
+if(!r){
+_dbgLog('SKIP_COMMIT_SERVER_FAILED',{optimistic:true});
+showToast("Sync error — reconnecting...");
+_forceResyncGame('skip-commit-failed');
+return;
+}
+if(G.over)return;
+if(G.turn!==expTurn||G.rolled||G.diceVal!=null||_animating||_rolling)return;
+_applySrvSkip(r);
+renderTokens();_renderFrozenVisuals();_renderAegisVisuals();syncUI();
+}catch(e){}
+});
+}
+function _reconcileOptimisticMove(r,expTurn,pid,tid,v){
+try{
+if(!r||!Array.isArray(r.tokens)){
+_dbgLog('MOVE_COMMIT_SERVER_FAILED',{pid,tid,v,optimistic:true});
+showToast("Sync error — reconnecting...");
+_forceResyncGame('move-commit-failed');
+return;
+}
+if(G.over)return;
+if(r.placements)G.placements=r.placements;
+// only correct local state if nothing has progressed since our optimistic nextTurn
+if(G.turn!==expTurn||G.rolled||G.diceVal!=null||_animating||_rolling)return;
+const _sig=a=>a.map(t=>t.pid+'-'+t.tid+':'+t.step).sort().join(',');
+const _tokDiff=_sig(r.tokens)!==_sig(G.tokens);
+const _turnDiff=(typeof r.turn==='number'&&r.turn!==G.turn);
+if(!_tokDiff&&!_turnDiff)return;
+_dbgLog('MOVE_OPTIMISTIC_MISMATCH',{pid,tid,v,tokDiff:_tokDiff,turnDiff:_turnDiff,localTurn:G.turn,srvTurn:r.turn});
+if(_tokDiff){G.tokens=JSON.parse(JSON.stringify(r.tokens));_invalidateStackedTokenCache(G.tokens);}
+if(_turnDiff){G.turn=r.turn;G.rolled=false;G.waiting=false;G.diceVal=null;}
+renderTokens();syncUI();
+}catch(e){}
+}
 function _applySrvSkip(r){
 if(!r)return;
 if(Array.isArray(r.tokens))G.tokens=r.tokens;
@@ -2135,15 +2202,20 @@ if(_placingPower!=='freeze'||_placeBusy)return;
 if(!G.inventory[MY_SEAT]||!(G.inventory[MY_SEAT].freeze>0)){cancelPlacement();return;}
 if(G.aegisShields&&G.aegisShields.some(sh=>sh.pid===pid&&sh.tid===tid)){_dbgLog('POWER_FREEZE_BLOCKED_AEGIS',{targetPid:pid,targetTid:tid});cancelPlacement();showToast("That token is Aegis-shielded — it can't be frozen");return;}
 _placeBusy=true;
-let _okP=false;try{_okP=await _srvPlace('freeze',{pid,tid});}finally{_placeBusy=false;}
-if(!_okP){cancelPlacement();showToast("Freeze failed — couldn't be verified, try again");return;}
 G.inventory[MY_SEAT].freeze-=1;_invDec('freeze',true);
 if(!G.frozenTokens)G.frozenTokens=[];
 G.frozenTokens.push({pid,tid,casterPid:MY_SEAT});
-_dbgLog('POWER_FREEZE_APPLIED',{casterPid:MY_SEAT,targetPid:pid,targetTid:tid,invLeft:G.inventory[MY_SEAT].freeze});
 cancelPlacement();
 _renderFrozenVisuals();
 SFX.play&&SFX.play('freeze');
+let _okP=false;try{_okP=await _srvPlace('freeze',{pid,tid});}finally{_placeBusy=false;}
+if(!_okP){
+G.inventory[MY_SEAT].freeze+=1;
+G.frozenTokens=(G.frozenTokens||[]).filter(f=>!(f.pid===pid&&f.tid===tid&&f.casterPid===MY_SEAT));
+_renderFrozenVisuals();
+showToast("Freeze failed — couldn't be verified, try again");return;
+}
+_dbgLog('POWER_FREEZE_APPLIED',{casterPid:MY_SEAT,targetPid:pid,targetTid:tid,invLeft:G.inventory[MY_SEAT].freeze});
 const _casterP=PLAYERS[MY_SEAT],_victimP=PLAYERS[pid];
 G.lastPowerUse={pid:MY_SEAT,ts:Date.now(),text:`❄️ ${(_casterP&&_casterP.label)||"A player"} froze ${(_victimP&&_victimP.label)||"an opponent"}'s token!`};
 _lastShownPowerUseTs=G.lastPowerUse.ts;
@@ -2342,6 +2414,7 @@ G.inventory[MY_SEAT].reverse-=1;_invDec('reverse',true);
 _dbgLog('POWER_REVERSE_APPLIED',{pid,tid,fromStep:tok.step,toStep:targetStep,dice:v,invLeft:G.inventory[MY_SEAT].reverse,tokStepAfterAssign:'pending'});
 cancelPlacement();
 _animating=true;
+const _revP=_isOnlineReverse?window._srv('r',{c:ROOM_CODE,p:{tid,as:(G.turn!==MY_SEAT?G.turn:undefined)}}):null;
 const fromRC=getCell(tok.pid,tok.step);
 const toRC=getCell(tok.pid,targetStep);
 const key=`${tok.pid}-${tok.tid}`;
@@ -2409,7 +2482,7 @@ if(G.pMeta&&G.pMeta[enemy.pid])G.pMeta[enemy.pid].rf=tok.pid;
 }
 }
 if(_isOnlineReverse){
-const _rr=await window._srv('r',{c:ROOM_CODE,p:{tid,as:(G.turn!==MY_SEAT?G.turn:undefined)}});
+const _rr=await _revP;
 if(!_rr||!Array.isArray(_rr.tokens)){
 _animating=false;
 G.inventory[MY_SEAT].reverse+=1;
@@ -2455,8 +2528,7 @@ if(_enemyAegisHere){_dbgLog('POWER_AEGIS_BLOCKED_ENEMY_AEGIS_ON_CELL',{targetPid
 }
 }
 _placeBusy=true;
-let _okP=false;try{_okP=await _srvPlace('aegis',{pid,tid});}finally{_placeBusy=false;}
-if(!_okP){cancelPlacement();showToast("Aegis failed — couldn't be verified, try again");return;}
+const _prevFrozen=(G.frozenTokens||[]).slice();
 G.inventory[MY_SEAT].aegis-=1;_invDec('aegis',true);
 if(!G.aegisShields)G.aegisShields=[];
 G.aegisShields.push({pid,tid,remaining:3});
@@ -2466,10 +2538,19 @@ const before=G.frozenTokens.length;
 G.frozenTokens=G.frozenTokens.filter(f=>!(f.pid===pid&&f.tid===tid));
 if(G.frozenTokens.length<before)_wasFrozen=true;
 }
-_dbgLog('POWER_AEGIS_APPLIED',{casterPid:MY_SEAT,targetPid:pid,targetTid:tid,unfroze:_wasFrozen,invLeft:G.inventory[MY_SEAT].aegis});
 cancelPlacement();
 _renderAegisVisuals();
 _renderFrozenVisuals();
+let _okP=false;try{_okP=await _srvPlace('aegis',{pid,tid});}finally{_placeBusy=false;}
+if(!_okP){
+G.inventory[MY_SEAT].aegis+=1;
+G.aegisShields=(G.aegisShields||[]).filter(sh=>!(sh.pid===pid&&sh.tid===tid));
+if(_wasFrozen)G.frozenTokens=_prevFrozen;
+_renderAegisVisuals();
+_renderFrozenVisuals();
+showToast("Aegis failed — couldn't be verified, try again");return;
+}
+_dbgLog('POWER_AEGIS_APPLIED',{casterPid:MY_SEAT,targetPid:pid,targetTid:tid,unfroze:_wasFrozen,invLeft:G.inventory[MY_SEAT].aegis});
 const _casterP=PLAYERS[MY_SEAT];
 G.lastPowerUse={pid:MY_SEAT,ts:Date.now(),text:_wasFrozen?`😇 ${(_casterP&&_casterP.label)||"A player"}'s Aegis shielded and unfroze a token!`:`😇 ${(_casterP&&_casterP.label)||"A player"} shielded a token with Aegis!`};
 _lastShownPowerUseTs=G.lastPowerUse.ts;
@@ -2580,14 +2661,19 @@ async function placeTrap(cellKey){
 if(_placingPower!=='ambush'||_placeBusy)return;
 if(!G.inventory[MY_SEAT]||!(G.inventory[MY_SEAT].ambush>0)){cancelPlacement();return;}
 _placeBusy=true;
-let _okP=false;try{_okP=await _srvPlace('ambush',{cell:cellKey});}finally{_placeBusy=false;}
-if(!_okP){cancelPlacement();showToast("Ambush failed — couldn't be verified, try again");return;}
 G.inventory[MY_SEAT].ambush-=1;_invDec('ambush',true);
 if(!G.traps)G.traps=[];
 G.traps.push({cellKey,ownerPid:MY_SEAT});
-_dbgLog('POWER_AMBUSH_PLACED',{ownerPid:MY_SEAT,cellKey,invLeft:G.inventory[MY_SEAT].ambush,totalTrapsOnBoard:G.traps.length});
 cancelPlacement();
 _renderMyTraps();
+let _okP=false;try{_okP=await _srvPlace('ambush',{cell:cellKey});}finally{_placeBusy=false;}
+if(!_okP){
+G.inventory[MY_SEAT].ambush+=1;
+G.traps=(G.traps||[]).filter(t=>!(t.cellKey===cellKey&&t.ownerPid===MY_SEAT));
+_renderMyTraps();
+showToast("Ambush failed — couldn't be verified, try again");return;
+}
+_dbgLog('POWER_AMBUSH_PLACED',{ownerPid:MY_SEAT,cellKey,invLeft:G.inventory[MY_SEAT].ambush,totalTrapsOnBoard:G.traps.length});
 const _casterP=PLAYERS[MY_SEAT];
 G.lastPowerUse={pid:MY_SEAT,ts:Date.now(),text:`💣 ${(_casterP&&_casterP.label)||"A player"} planted an Ambush somewhere on the board!`};
 _lastShownPowerUseTs=G.lastPowerUse.ts;
@@ -3340,13 +3426,18 @@ function escapeHtmlLobby(str){
 return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 window.hostStartGame=async function(){
-if(!IS_HOST)return;
+if(!IS_HOST||window._startingGame)return;
+window._startingGame=true;
+const _sb=document.getElementById('btn-start-game');
+const _sbT=_sb?_sb.textContent:null;
+if(_sb){_sb.disabled=true;_sb.style.opacity='.75';_sb.textContent='Starting…';}
 try{
 const r=await window._srv('g',{c:ROOM_CODE});
 if(!r||!r.ok)throw new Error('start-denied');
 }catch(e){
+if(_sb){_sb.disabled=false;_sb.style.opacity='';if(_sbT!=null)_sb.textContent=_sbT;}
 showToast("❌ Failed to start game — check connection");
-}
+}finally{window._startingGame=false;}
 };
 let SEAT_LAYOUT_ACTIVE=[0,1,2,3];
 async function loadAndStartGame(){
@@ -4181,11 +4272,11 @@ _rerollBoxSuppressed=true;
 _renderRerollBox();
 _dbgLog('REROLL_WINDOW_EXPIRED',{pid,dice:v,hadMove:hasMove,turnSkipped:!hasMove&&G.turn===pid});
 if(!hasMove&&G.turn===pid){
-const _sk=await _srvSkip(pid);
+const _skP=_trackCommit(_srvSkip(pid));
 G.rolled=false;G.waiting=false;G.diceVal=null;
 addPoints(pid,POINTS.noLegalMove,_isOnlineRoom());
 nextTurn(false);
-_applySrvSkip(_sk);
+_optimisticPass(_skP);
 syncUI();
 pushGameState({action:"skip",dice:v,reason:"rerollWindowExpired",auto:false});
 }
@@ -5405,6 +5496,9 @@ const _onlineBuy=!!(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode);
 const _b4={pts:(G.points&&G.points[MY_SEAT])||0,inv:(G.inventory&&G.inventory[MY_SEAT]&&G.inventory[MY_SEAT][key])||0,pur:!!(G.purchased&&G.purchased[MY_SEAT]&&G.purchased[MY_SEAT][key]),lp:G.lastPurchase};
 if(buyPower(MY_SEAT,key)){
 if(_onlineBuy){
+renderShop();
+_renderRerollBox();
+showToast(`✅ Bought ${POWER_DEFS[key].name}`);
 const _r=await window._srv('b',{c:ROOM_CODE,p:{key}});
 if(!_r||_r.ok!==1){
 G.points[MY_SEAT]=_b4.pts;
@@ -5413,11 +5507,15 @@ if(POWER_DEFS[key].once)G.purchased[MY_SEAT][key]=_b4.pur;
 G.lastPurchase=_b4.lp;
 _dbgLog('SHOP_BUY_SERVER_REJECTED',{pid:MY_SEAT,key});
 renderShop();_renderRerollBox();
-showToast("Can't buy that right now");
+showToast("Purchase failed — refunded");
 return;
 }
 if(typeof _r.points==='number')G.points[MY_SEAT]=_r.points;
 if(typeof _r.inv==='number')G.inventory[MY_SEAT][key]=_r.inv;
+pushGameState({});
+renderShop();
+_renderRerollBox();
+return;
 }
 pushGameState({});
 renderShop();
@@ -5906,11 +6004,11 @@ const nb=document.createElement('div');
 const isActive=current===n;
 nb.style.cssText=`width:19px;height:19px;border-radius:4px;border:1.5px solid ${isActive?p.color:'#2a2a55'};background:${isActive?p.color+'33':'#13132a'};display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:.55rem;font-weight:800;color:${isActive?p.color:'rgba(240,240,255,.5)'};font-family:'Rajdhani',sans-serif;transition:all 0.15s;flex-shrink:0;`;
 nb.textContent=n;
-nb.onclick=()=>{const newVal=(forceDice[p.id]===n)?null:n;forceDice[p.id]=newVal;if(ROOM_CODE)db.ref(`rooms/${ROOM_CODE}/forceDice/${p.id}`).set(newVal);_renderSmartDicePanel();};
+nb.onclick=()=>{const newVal=(forceDice[p.id]===n)?null:n;forceDice[p.id]=newVal;if(ROOM_CODE)window._srv('a',{c:ROOM_CODE,p:{op:'force',seat:p.id,val:newVal}});_renderSmartDicePanel();};
 nums.appendChild(nb);
 }
 row.appendChild(nums);
-if(current!==null){const clr=document.createElement('div');clr.style.cssText='font-size:.6rem;color:rgba(255,80,80,.7);cursor:pointer;font-family:Rajdhani,sans-serif;font-weight:700;flex-shrink:0;padding:2px 4px;border-radius:4px;border:1px solid rgba(255,80,80,.3);';clr.textContent='✕';clr.title='Clear';clr.onclick=()=>{forceDice[p.id]=null;if(ROOM_CODE)db.ref(`rooms/${ROOM_CODE}/forceDice/${p.id}`).set(null);_renderSmartDicePanel();};row.appendChild(clr);}
+if(current!==null){const clr=document.createElement('div');clr.style.cssText='font-size:.6rem;color:rgba(255,80,80,.7);cursor:pointer;font-family:Rajdhani,sans-serif;font-weight:700;flex-shrink:0;padding:2px 4px;border-radius:4px;border:1px solid rgba(255,80,80,.3);';clr.textContent='✕';clr.title='Clear';clr.onclick=()=>{forceDice[p.id]=null;if(ROOM_CODE)window._srv('a',{c:ROOM_CODE,p:{op:'force',seat:p.id,val:null}});_renderSmartDicePanel();};row.appendChild(clr);}
 forceGrid.appendChild(row);
 });
 const elderGrid=document.getElementById('sdp-elder-grid');
@@ -5992,11 +6090,16 @@ if(!el)return;
 const pts=(MY_SEAT!=null&&G.points&&G.points[MY_SEAT]!=null)?G.points[MY_SEAT]:0;
 el.textContent=`Your points: ${pts}`;
 }
-window._cheatAddPoints=function(){
+window._cheatAddPoints=async function(){
 if(MY_SEAT==null)return;
 if(!G.points)G.points={0:0,1:0,2:0,3:0};
+if(_isOnlineRoom()){
+const r=await window._srv('a',{c:ROOM_CODE,p:{op:'points',seat:MY_SEAT,amt:999}});
+if(!r||!r.ok){if(typeof showToast==='function')showToast('❌ Server ne points reject kiye (admin login check karo)');return;}
+G.points[MY_SEAT]=(r.points!=null)?r.points:+((G.points[MY_SEAT]||0)+999).toFixed(2);
+}else{
 G.points[MY_SEAT]=+((G.points[MY_SEAT]||0)+999).toFixed(2);
-if(ROOM_CODE)pushGameState({});
+}
 _renderCheatPointsStatus();
 if(document.getElementById('modal-shop')&&document.getElementById('modal-shop').classList.contains('show'))renderShop();
 if(typeof showToast==='function')showToast('⭐ +999 points added (just for you)');
@@ -6070,11 +6173,38 @@ const p=(t-0.72)/0.28;
 if(p<0.4){return lerp(1,0.82,p/0.4);}
 return lerp(0.82,1,(p-0.4)/0.6);
 }
-function animDice(pid,finalVal,cb){
+function _dicePreSpin(pid){
+const cube=_domCache.dcube[pid]||document.getElementById(`dcube-${pid}`);
+if(!cube||dAcc.busy[pid])return function(){};
+const rx0=dAcc.rx[pid]||0,ry0=dAcc.ry[pid]||0;
+let rx=rx0,ry=ry0,last=null,raf=0,alive=true;
+dAcc.busy[pid]=true;
+function tick(now){
+if(!alive)return;
+if(last===null)last=now;
+const dt=Math.min(now-last,50);last=now;
+rx+=dt*1.2;ry+=dt*1.9;
+cube.style.transform=`rotateX(${rx}deg)rotateY(${ry}deg)`;
+raf=requestAnimationFrame(tick);
+}
+raf=requestAnimationFrame(tick);
+return function stop(restore){
+if(!alive)return;
+alive=false;cancelAnimationFrame(raf);
+if(restore){
+cube.style.transform=`rotateX(${rx0}deg)rotateY(${ry0}deg)`;
+dAcc.rx[pid]=rx0;dAcc.ry[pid]=ry0;
+}else{
+dAcc.rx[pid]=((rx%360)+360)%360;dAcc.ry[pid]=((ry%360)+360)%360;
+}
+dAcc.busy[pid]=false;
+};
+}
+function animDice(pid,finalVal,cb,soft){
 const cube=_domCache.dcube[pid]||document.getElementById(`dcube-${pid}`);
 const wrap=_domCache.d3d[pid]||document.getElementById(`d3d-${pid}`);
 if(!cube){dAcc.busy[pid]=false;if(cb)cb();return;}
-if(dAcc.busy[pid]){setTimeout(()=>animDice(pid,finalVal,cb),50);return;}
+if(dAcc.busy[pid]){setTimeout(()=>animDice(pid,finalVal,cb,soft),50);return;}
 dAcc.busy[pid]=true;
 const _busyGuard=setTimeout(()=>{
 if(dAcc.busy[pid]){dAcc.busy[pid]=false;if(cb)cb();}
@@ -6107,13 +6237,14 @@ const p=(t-PEAK_T)/(1-PEAK_T);
 if(p<0.55){return lerp(JUMP_Y,5,1-Math.pow(1-(p/0.55),2.5));}
 const q=(p-0.55)/0.45;return lerp(5,0,1-Math.pow(1-q,3));
 }
+function softEase(t){return 1-Math.pow(1-t,2.4);}
 const _invDICE=1/DICE_DUR_MS;
 const _rxRange=eRx-normRx,_ryRange=eRy-normRy;
 let _lastWrapZIdx='9999';
 function tick(now){
 if(!t0)t0=now;
 const t=Math.min((now-t0)*_invDICE,1);
-const ease=diceEase(t);
+const ease=soft?softEase(t):diceEase(t);
 const rx=normRx+_rxRange*ease;
 const ry=normRy+_ryRange*ease;
 const sc=wrapScale(t);
@@ -6405,7 +6536,7 @@ const key=`${rc[0]}-${rc[1]}`;
 if(!groups[key])groups[key]=[];
 groups[key].push(tok);
 });
-{
+if(window._dbgIsOn&&window._dbgIsOn()){
 const _multi={};
 Object.keys(groups).forEach(k=>{if(groups[k].length>=2)_multi[k]=groups[k].map(t=>`${t.pid}-${t.tid}(step${t.step})`);});
 if(Object.keys(_multi).length){
@@ -6656,6 +6787,7 @@ for(const key of Object.keys(_tokEls)){if(!alive.has(key))_removeTokEl(key);}
 
 
 
+if(window._dbgIsOn&&window._dbgIsOn()){
 Object.keys(groups).forEach(rcKey=>{
 const grp=groups[rcKey];
 if(grp.length<3)return;
@@ -6732,6 +6864,7 @@ _dbgLog(dist<threshold?'⚠️OVERLAP_ONLINE':(mismatch?'⚠️SPACING_MISMATCH_
 });
 }catch(e){_dbgLog('overlap_check_error_online',String(e));}
 });
+}
 }
 }
 function syncUI(){
@@ -6838,6 +6971,7 @@ function startTurnTimer(seat){
 stopTurnTimer();
 if(G.over||!_gameLoaded||!PLAYERS[seat]?.active)return;
 _timerSeat=seat;
+if(seat===MY_SEAT&&ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode)window._srvWarm();
 
 
 _timerStart=(typeof G.timestamp==='number'&&G.timestamp>0)?G.timestamp:Date.now();
@@ -6991,10 +7125,10 @@ await doMove(_pick.pid!==undefined?_pick.pid:seat,_pick.tid,savedDice);
 G.waiting=false;
 G.rolled=false;
 G.diceVal=null;
-const _sk=await _srvSkip(seat);
+const _skP=_trackCommit(_srvSkip(seat));
 addPoints(seat,POINTS.noLegalMove,_isOnlineRoom());
 nextTurn(false);
-_applySrvSkip(_sk);
+_optimisticPass(_skP);
 await pushGameState({action:"skip",dice:savedDice,reason:"noMove",auto:true});
 }
 return;
@@ -7116,7 +7250,7 @@ const _botDiceEl=document.getElementById('botdice-'+seat);
 if(_botDiceEl){_botDiceEl.style.display='block';_botDiceEl.textContent=v;}
 if(G.over||G.turn!==seat){G.rolled=false;G.diceVal=null;_dbgLog('BOTTURN_BAIL',{seat,reason:'stale_after_roll'});return;}
 if(v===6){G.sixes=(G.sixes||0)+1;
-if(G.sixes>=3){const _ff=await _srvForfeit(seat);G.sixes=0;G.rolled=false;G.diceVal=null;_rolling=false;nextTurn(false);_applySrvSkip(_ff);
+if(G.sixes>=3){const _ffP=_trackCommit(_srvForfeit(seat));G.sixes=0;G.rolled=false;G.diceVal=null;_rolling=false;nextTurn(false);_optimisticPass(_ffP);
 _dbgLog('BOTTURN_3SIXES',{seat});
 pushGameState({action:"skip",dice:v,reason:"3sixes",auto:true},seat);return;}
 }else{G.sixes=0;}
@@ -7126,10 +7260,10 @@ await new Promise(res=>setTimeout(res,150));
 if(!PLAYERS[seat]?.isBot&&!forceAfk){G.rolled=false;G.diceVal=null;_dbgLog('BOTTURN_BAIL',{seat,reason:'reclaimed_no_moves'});return;}
 _dbgLog('BOTTURN_NO_MOVES',{seat,dice:v});
 pushGameState({action:"roll",dice:v,selectable:[],auto:true},seat);
-const _sk=await _srvSkip(seat);
+const _skP=_trackCommit(_srvSkip(seat));
 addPoints(seat,POINTS.noLegalMove,_isOnlineRoom());
 nextTurn(false);
-_applySrvSkip(_sk);
+_optimisticPass(_skP);
 pushGameState({action:"skip",dice:v,reason:"noMove",auto:true},seat);
 return;
 }
@@ -7205,7 +7339,7 @@ if(_rolling){_dbgLog('DICE_ROLL_BLOCKED_ALREADY_ROLLING',{pid});return;}
 _dbgLog('DICE_ROLL_START',{pid,sixesStreakBefore:G.sixes||0,forcedPending:forceDice&&forceDice[pid]!=null,luckyActivePending:!!(G.pMeta&&G.pMeta[pid]&&G.pMeta[pid].luckyActive)});
 _cancelRerollWindow();
 _rolling=true;
-const rollSafety=setTimeout(()=>{_rolling=false;},DICE_DUR_MS+300);
+let rollSafety=setTimeout(()=>{_rolling=false;},DICE_DUR_MS+300);
 const d3d=document.getElementById(`d3d-${pid}`);
 
 
@@ -7231,8 +7365,13 @@ const _wasReroll=!!window._pendingRerollCharge;
 window._pendingRerollCharge=false;
 const _wantLucky=!!(G.specialMode&&G.pMeta&&G.pMeta[pid]&&G.pMeta[pid].luckyActive);
 const _dp={};if(_wasReroll)_dp.reroll=true;if(_wantLucky)_dp.lucky=true;
-const _r=await window._srv('d',{c:ROOM_CODE,p:_dp});
-if(!_r||typeof _r.v!=='number'){
+clearTimeout(rollSafety);rollSafety=setTimeout(()=>{_rolling=false;},23000);
+const _spin=_dicePreSpin(pid);
+let _r=null;
+try{_r=await window._srv('d',{c:ROOM_CODE,p:_dp});}catch(e){_r=null;}
+const _okRoll=!!(_r&&typeof _r.v==='number');
+_spin(!_okRoll);
+if(!_okRoll){
 clearTimeout(rollSafety);_rolling=false;
 if(_wasReroll&&G.inventory&&G.inventory[pid])G.inventory[pid].reroll=(G.inventory[pid].reroll||0)+1;
 _dbgLog('DICE_ROLL_SERVER_FAILED',{pid,wasReroll:_wasReroll});
@@ -7240,6 +7379,7 @@ showToast("Roll failed — check connection and try again");
 return;
 }
 v=_r.v;
+clearTimeout(rollSafety);rollSafety=setTimeout(()=>{_rolling=false;},DICE_DUR_MS+300);
 if(_r.pm){_srvPm=_r.pm;_srvPts=Number(_r.pts)||0;}
 if(_wantLucky){
 G.pMeta[pid].luckyActive=false;
@@ -7269,7 +7409,7 @@ _dbgLog('DICE_ROLLED_SELF',{pid,dice:v,MY_SEAT});
 if(!_isOnline&&ROOM_CODE&&gameRef)gameRef.update({rolled:true,diceVal:v,turn:G.turn,actionBy:pid,timestamp:(window._cpuMode||window._pnpMode?Date.now():firebase.database.ServerValue.TIMESTAMP)}).catch(()=>{});
 navigator.vibrate&&navigator.vibrate(28);
 SFX.play('dice');
-animDice(pid,v,()=>{clearTimeout(rollSafety);_rolling=false;afterRoll(pid,v);});
+animDice(pid,v,()=>{clearTimeout(rollSafety);_rolling=false;afterRoll(pid,v);},_isOnline);
 }
 function _hasUsableReversePower(pid,v){
 if(!G.inventory||!G.inventory[pid]||!(G.inventory[pid].reverse>0))return false;
@@ -7326,9 +7466,9 @@ if(G.sixes>=3){
 _dbgLog('THREE_SIXES_TURN_FORFEIT',{pid,note:'if this followed a Re-roll usage without a sixes reset, that is the known reroll-streak bug — check for POWER_REROLL_USED entries just before this'});
 G.sixes=0;G.rolled=false;G.diceVal=null;G.waiting=false;_rolling=false;
 renderTokens();
-setTimeout(async()=>{
-const _ff=await _srvForfeit(pid);
-nextTurn(false);_applySrvSkip(_ff);
+const _ffP=_trackCommit(_srvForfeit(pid));
+setTimeout(()=>{
+nextTurn(false);_optimisticPass(_ffP);
 pushGameState({action:"skip",dice:v,reason:"3sixes",auto:_wasAutoRoll});
 },300);
 return;
@@ -7344,11 +7484,11 @@ showToast("No legal move — use Re-roll within 15s or your turn passes!");
 syncUI();
 return;
 }
-setTimeout(async()=>{
-const _sk=await _srvSkip(pid);
+const _skP=_trackCommit(_srvSkip(pid));
+setTimeout(()=>{
 addPoints(pid,POINTS.noLegalMove,_isOnlineRoom());
 nextTurn(false);
-_applySrvSkip(_sk);
+_optimisticPass(_skP);
 syncUI();
 pushGameState({action:"skip",dice:v,reason:"noMove",auto:_wasAutoRoll});
 },300);
@@ -7397,6 +7537,14 @@ if(G.diceVal==null)return;
 const dv=G.diceVal;
 const mv=teamMovable(MY_SEAT,dv);
 if(!mv.find(t=>t.pid===pid&&t.tid===tid))return;
+try{
+Object.keys(_tokEls).forEach(function(k){
+const e=_tokEls[k];
+if(e&&e.wrap&&e.wrap.classList.contains('movable')){e.wrap.classList.remove('movable');if(e.ring)e.ring.style.display='none';}
+});
+const _te=_tokEls[pid+'-'+tid];
+if(_te&&_te.wrap&&_te.wrap.animate)_te.wrap.animate([{filter:'brightness(1.6)'},{filter:'brightness(1)'}],{duration:240});
+}catch(e){}
 _cancelRerollWindow();
 G.waiting=false;
 G.rolled=false;
@@ -7744,9 +7892,15 @@ _animating=true;
 try{
 const _actorSeat=G.turn;
 const _isOnlineMove=!!(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode);
+let _commitP=null;
+function _fireCommit(){
+if(!_isOnlineMove||_commitP)return;
+_commitP=window._srv('v',{c:ROOM_CODE,p:{tid,dv:v,as:(_actorSeat!==MY_SEAT?_actorSeat:undefined),of:(pid!==_actorSeat?pid:undefined)}});
+}
 async function _commitMoveToServer(){
 if(!_isOnlineMove)return true;
-const _r=await window._srv('v',{c:ROOM_CODE,p:{tid,dv:v,as:(_actorSeat!==MY_SEAT?_actorSeat:undefined),of:(pid!==_actorSeat?pid:undefined)}});
+_fireCommit();
+const _r=await _commitP;
 if(!_r||!Array.isArray(_r.tokens)){
 _dbgLog('MOVE_COMMIT_SERVER_FAILED',{pid,tid,v});
 showToast("Sync error — reconnecting...");
@@ -7762,7 +7916,9 @@ if(!tok){_animating=false;return;}
 _dbgLog('DOMOVE_STEP_BEFORE',{pid,tid,v,stepBefore:tok.step});
 const allowed=movable(pid,v);
 if(!allowed.find(t=>t.tid===tid)){_animating=false;return;}
-if(tok.step>=STEP_STRETCH_START&&tok.step+v>STEP_DONE){_animating=false;return;}let bonus=false;
+if(tok.step>=STEP_STRETCH_START&&tok.step+v>STEP_DONE){_animating=false;return;}
+_fireCommit();
+let bonus=false;
 const diceWasSix=(v===6);
 let captured=false;
 const capturedPids=new Set();
@@ -7928,8 +8084,18 @@ movesPayload.push({pid:t.pid,tid:t.tid,type:"home",finalStep:0});
 }
 });
 await _checkAegisShieldKills();
+if(_isOnlineMove){
+_fireCommit();
+const _optP=_trackCommit(_commitP);
+nextTurn(bonus,diceWasSix);
+const _optTurn=G.turn;
+_optP.then(function(_r){
+_reconcileOptimisticMove(_r,_optTurn,pid,tid,v);
+});
+}else{
 if(!(await _commitMoveToServer())){_animating=false;return;}
 nextTurn(bonus,diceWasSix);
+}
 pushGameState({
 action:"move",
 dice:v,
