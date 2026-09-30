@@ -2,52 +2,16 @@
 <html lang="en">
 <head>
 <script>
-/* ===== [DBG] TEMP DIAGNOSTIC LOGGING — standalone, runs first, isolated from rest of app (remove after done) ===== */
 (function(){
 try{
 window._DBG_ENABLED=true;
-/* [DBG] Trimmed down to just what's needed to trace the recurring
-   "turn/dice stuck, dono taraf atak gaya" class of bugs (turn-timer
-   expiry, elder election, dice-not-responding, sync/rejoin) — NOT the
-   high-frequency per-step/per-render tags (SYNC_PUSH, ANIMATEMOVE_*,
-   CELLPX_*, DOMOVE_STEP_*, etc.), since those fire constantly during
-   normal play and would both flood the log (each entry also gets
-   persisted to localStorage + pushed to Firebase) and add real
-   overhead to every single move. Add more tags here only if a new bug
-   class needs tracing; remove tags once a given bug is confirmed fixed
-   and stays fixed. */
-window._DBG_TAG_WHITELIST=[
-  /* errors — cheap (only fire when something actually goes wrong),
-     highest diagnostic value, catch-all safety net */
-  'WINDOW_ERROR','PROMISE_REJECTION','CONSOLE_ERROR','CONSOLE_WARN',
-  /* turn-timer / elder election — the "dono taraf stuck" deadlock class */
-  'TIMER_EXPIRE_CALLED','TIMER_EXPIRE_BAIL_STALE','TIMER_EXPIRE_BAIL_ROLLED',
-  'TIMER_EXPIRE_COUNT_INC','ELDER_CHECK_AT_EXPIRY','TIMER_EXPIRE_FORCE_AUTOROLL',
-  'TIMER_EXPIRE_FORCE_MOVE_OR_SKIP','BOTTURN_ELDER_ATTEMPT','ELDER_NOT_ME_RESYNC',
-  'STALE_WATCHDOG_TRIGGER','STALE_WATCHDOG_ACTING','STALE_WATCHDOG_CLAIM_FAILED',
-  /* dice not responding to taps */
-  'DICE_ROLL_START','DICE_ROLL_BLOCKED_ALREADY_ROLLING',
-  /* sync / disconnect / rejoin */
-  'SYNC_PUSH_FAILED','SYNC_RECEIVE_QUEUED','DB_CONNECTED_CHANGE','FORCE_RESYNC',
-  'SESSION_SAVED','SESSION_CLEARED',
-  /* rejoin flow — each fires once per rejoin attempt, not per-frame; the
-     REJOIN_FAILED entries carry a `reason` field, so this alone should
-     explain a "rejoin card hi nahi dikha" report next time it happens */
-  'REJOIN_ATTEMPT_START','REJOIN_FAILED','REJOIN_ROOM_STATE_FETCHED','REJOIN_SUCCESS_LOADING_GAME',
-  /* Lucky Number power — fires once per activate/roll, not per-frame;
-     watching for regressions on the dice-lag fix */
-  'POWER_LUCKYNUMBER_ACTIVATE_START','POWER_LUCKYNUMBER_ARMED','POWER_LUCKYNUMBER_ROLL','POWER_LUCKYNUMBER_NO_BEST_NUM',
-  /* Reverse power — fires once per use, not per-frame; watching for
-     regressions on the cell-by-cell walk-back fix */
-  'POWER_REVERSE_APPLIED','POWER_REVERSE_DICE_MISMATCH','POWER_REVERSE_MISSING_TOKEN_EL','POWER_REVERSE_NO_ELIGIBLE_TOKEN',
-  /* bot/AFK seat handover — fires only on state transitions (someone
-     going AFK / being voted to bot / reclaiming their seat), not
-     per-turn; watching for regressions on the elder-deadlock fix */
-  'BOT_ACTIVATED','BOT_DEACTIVATED','AFKSEATS_WRITE_OK','AFKSEATS_WRITE_FAILED'
-];
+
+
+
+window._DBG_TAG_WHITELIST=null;
 if(!window._DBG_ENABLED){
-  /* [DBG] disabled — set window._DBG_ENABLED=true before this script to re-enable full logging+UI.
-     _dbgLog is kept as a no-op so scattered calls elsewhere in the app don't throw. */
+
+
   window._dbg=[];
   window._dbgLog=function(){};
   window._dbgFormatAll=function(){return '';};
@@ -85,9 +49,8 @@ window._srv=function(t,b){
     }).catch(function(){return null;});
   }catch(e){return Promise.resolve(null);}
 };
-/* [DBG] Logging ab default OFF hai. ON tabhi hota hai jab remote flag on ho:
-   - _dbgLocalOn  : is device (aur isi browser ke saare tabs) pe, localStorage mein save - jab tak khud off na karo, on rehta hai
-   - _dbgRemoteOn : admin ne 'all devices' ke liye on kiya ho (players/<adminUid>/dbgLogs) - sab devices padhte hain */
+
+
 window._dbgLocalKey='_ludoDbgOn_v1';
 try{window._dbgLocalOn=localStorage.getItem(window._dbgLocalKey)==='1';}catch(e){window._dbgLocalOn=false;}
 window._dbgRemoteOn=false;
@@ -115,16 +78,14 @@ window._dbgLog=function(tag,data){
     window._dbg.push(_entry);
     if(window._dbg.length>1500)window._dbg.shift();
     window._dbgPersist();
-    /* [FIX] har log entry turant push hoti hai, 15s interval/tab-close ke bharose nahi. */
+
     try{
       if(_rc&&typeof window._srv==='function')window._srv('l',{c:_rc,e:_entry});
     }catch(e3){}
   }catch(e){}
 };
-/* [FIX] hook console.log/warn/error/info so EVERYTHING ever console'd
-   anywhere in the app (including raw Firebase errors sitting inside
-   catch(e){console.error(e)} blocks) lands in the same visible 🐞 panel —
-   no devtools console needed on a phone. */
+
+
 (function(){
   const _origConsole={log:console.log,warn:console.warn,error:console.error,info:console.info};
   function _stringifyArg(a){
@@ -153,10 +114,9 @@ function _dbgFallbackCopy(text,cb){
 window._dbgFallbackCopy=_dbgFallbackCopy;
 function _dbgBuildUI(){
   try{
-    /* [DBG] re-enabled — chasing the AFK-turn/elder-flap, vote-fail and
-       dice-disappear reports now, need the on-device 🐞 panel + copy
-       button again since devtools isn't available mid-phone-test. */
-    /* [DBG] on-screen floating panel disabled — logs capture silently in the background (window._dbg). */
+
+
+
     let _dbgFlag=false;
     if(!_dbgFlag)return;
     if(document.getElementById('dbg-btn'))return;
@@ -175,13 +135,10 @@ function _dbgBuildUI(){
     <pre id="dbg-log" style="flex:1;overflow:auto;background:#111;color:#0f0;font-size:10px;padding:8px;border-radius:8px;margin:0;white-space:pre-wrap;word-break:break-all;"></pre>`;
     document.body.appendChild(btn);document.body.appendChild(panel);
     const logEl=panel.querySelector('#dbg-log'),countEl=panel.querySelector('#dbg-count');
-    /* [DBG] retargeted from the old presence-only hunt to everything
-       relevant to the 3 currently-open reports: elder/timer/AFK
-       auto-play (ELDER_*, TIMER_EXPIRE_*, BOTTURN_*), vote flow
-       (VOTE_*, AFKSEATS_*), dice display (DICE_*), plus anything that
-       hit console.error/warn or an unhandled rejection anywhere. */
-    /* [DBG] show EVERYTHING captured — no tag filter — so a single glance
-       at the panel surfaces any bug, not just a pre-guessed subset. */
+
+
+
+
     function _dbgFiltered(){return window._dbg;}
     function refresh(){
       const rows=_dbgFiltered();
@@ -371,10 +328,8 @@ if(btn)btn.addEventListener('click',()=>{SFX.setMuted(!SFX.isMuted());});
 #power-instruct-icon{font-size:1.9rem;flex-shrink:0;line-height:1;filter:drop-shadow(0 0 8px rgba(245,197,24,.4));}
 #power-instruct-title{color:var(--gold);font-size:.95rem;font-weight:800;font-family:'Rajdhani',sans-serif;letter-spacing:.5px;margin-bottom:2px;}
 #power-instruct-text{color:var(--text);font-size:.78rem;font-family:'Nunito',sans-serif;line-height:1.4;}
-/* [FIX] Lucky Number ka target apna hi player-box hai jo bottom ke paas
-   hota hai — default card size/position usi ko dhak deta tha, isliye
-   sirf isi power ke liye card chhota + aur neeche kar diya, baaki
-   powers (freeze/aegis/reverse/ambush) untouched. */
+
+
 #power-instruct-overlay.pi-lucky{padding-bottom:calc(4px + env(safe-area-inset-bottom,0px));}
 #power-instruct-overlay.pi-lucky #power-instruct-card{max-width:250px;padding:9px 13px;gap:7px;}
 #power-instruct-overlay.pi-lucky #power-instruct-icon{font-size:1.4rem;}
@@ -532,11 +487,8 @@ appId:"1:273830749078:web:b197c8e42fc24b2b8a73b7"
 const app=null;
 let db=window._fbStub.database();
 let auth=window._fbStub.auth();
-/* [FIX] har device ki apni clock alag hoti hai (kisi ka phone 5-10s aage/peeche).
-   Timer ka anchor server ka timestamp hota hai, aur usse Date.now() se compare
-   karne pe dono devices pe bar alag jagah dikhta tha. Firebase ka
-   .info/serverTimeOffset (server - local, ms) nikaal ke server-time ko local
-   clock mein convert karte hain, taaki sabke device pe wahi remaining time aaye. */
+
+
 let _serverOffset=0;
 let _srvOffRef=null;
 function _onSrvOffset(snap){try{const v=snap&&snap.val();if(typeof v==='number'&&isFinite(v))_serverOffset=v;}catch(e){}}
@@ -548,9 +500,7 @@ auth=window.auth||firebase.auth();
 _authReady=false;
 _authResolvers=[];
 auth.onAuthStateChanged(function(user){
-/* [FIX] fires immediately with user=null before anon sign-in finishes —
-   only mark ready once we actually have a signed-in user, else
-   waitForAuth() resolves too early and rules (auth!=null) reject writes. */
+
 window._dbgLog('AUTH_STATE_CHANGED',{uid:user?user.uid:null,source:'patchFirebaseRefs'});
 if(user){_setAuthReady();setSyncStatus("ok");}
 });
@@ -582,36 +532,21 @@ _authResolvers.forEach(r=>r());
 _authResolvers=[];
 }
 auth.onAuthStateChanged((user)=>{
-/* [FIX] same fix as above — don't mark ready on the initial null callback. */
+
 window._dbgLog('AUTH_STATE_CHANGED',{uid:user?user.uid:null,source:'topLevel'});
 if(user){_setAuthReady();setSyncStatus("ok");}
 });
 auth.signInAnonymously().catch((err)=>{
-/* anon sign-in genuinely failed (e.g. Anonymous provider disabled in
-   Firebase console) — log the real reason and still release waitForAuth()
-   so the app doesn't hang forever; downstream write attempts will then
-   correctly fail because auth.currentUser is still null. */
+
+
 console.error('ANON_SIGNIN_FAILED',{code:err.code,message:err.message});
 _setAuthReady();
 });
-/* ---------- Google Profile System (Kills/Wins/Losses — survives browser data clear) ---------- */
+
 let MY_PROFILE=null;
 let _statsRoomLogged=null;
-/* [FIX] Replaced Firebase's own popup/redirect Google sign-in with Google
-   Identity Services (GSI) directly. Both signInWithPopup and
-   signInWithRedirect route the OAuth handshake through the Firebase
-   authDomain (ludo-king-ka-baap.firebaseapp.com) — a different origin than
-   this GitHub Pages site. Completing that handshake requires a hidden
-   iframe on this page to read/write storage on the authDomain's origin,
-   which mobile Chrome/Safari silently block under third-party storage
-   partitioning. That's why the popup looked "closed" and the redirect came
-   back with an empty result (no user, no error) even though sign-in
-   succeeded on Google's side.
-   GSI's token client talks to accounts.google.com in a real popup with no
-   Firebase authDomain in the loop, so there's no third-party storage
-   handshake to break. We get an access token straight from Google and hand
-   it to Firebase's signInWithCredential/linkWithCredential — a plain
-   network call, not a storage/iframe dance. */
+
+
 const GOOGLE_WEB_CLIENT_ID='273830749078-cglidp9hq93darv2j2q26jkrvk3gsm45.apps.googleusercontent.com';
 let _gsiLoading=null;
 function _loadGSI(){
@@ -679,12 +614,12 @@ console.error('ONE_TAP_SIGNIN_FAILED',{code:err&&err.code,message:err&&err.messa
 }
 }
 window._initGoogleOneTap=async function(){
-// [FEATURE] Google One Tap — auto-appears top-right on page load if the browser has a
-// signed-in Google session, letting the user pick an account (or "use another account")
-// with a single tap, no separate button click needed. Falls back silently to nothing if
-// suppressed/unavailable — the existing "Sign in with Google" button always still works.
+
+
+
+
 try{
-if(MY_PROFILE)return; // already signed in with Google, nothing to prompt
+if(MY_PROFILE)return;
 if(!(await waitForRealFirebase(6000)))return;
 const gsiOk=await _loadGSI();
 if(!gsiOk||!(window.google&&window.google.accounts&&window.google.accounts.id))return;
@@ -701,14 +636,14 @@ google.accounts.id.prompt();
 }catch(e){console.error('ONE_TAP_INIT_FAILED',e);}
 };
 window.signInWithGoogle=async function(){
-// [FIX] Popup-based sign-in (GSI requestAccessToken) opens a real new tab/window.
-// On aggressive-memory-management Android phones (MIUI/Xiaomi, some OnePlus/Samsung
-// battery savers), the ORIGINAL tab gets suspended/killed the moment it goes background
-// while the popup is open — so by the time Google returns the token, the page has already
-// reloaded and the pending JS callback is gone. Sign-in succeeds on Google's side but never
-// reaches the app. Redirect flow avoids this entirely: it's the SAME tab navigating away and
-// back (no second window to kill), and the token comes back in the URL on next load — so it
-// survives even if the tab process itself got fully killed and recreated while backgrounded.
+
+
+
+
+
+
+
+
 try{
 sessionStorage.setItem('ludo_gsignin_return','1');
 }catch(e){}
@@ -723,8 +658,6 @@ const authUrl='https://accounts.google.com/o/oauth2/v2/auth'
 location.href=authUrl;
 };
 window._checkGoogleRedirectReturn=async function(){
-// Runs on every page load. If we're returning from the redirect above, the access token
-// is in the URL fragment (#access_token=...). Parse it, clean the URL, complete sign-in.
 if(!location.hash||location.hash.indexOf('access_token=')===-1)return;
 const params=new URLSearchParams(location.hash.slice(1));
 const accessToken=params.get('access_token');
@@ -741,9 +674,8 @@ async function _onGoogleSignedIn(user){
 if(!user)return;
 const _isGoogleProv=user.providerData&&user.providerData.some(p=>p.providerId==='google.com');
 if(!_isGoogleProv){
-/* [FIX] this used to return silently, which looked identical to "nothing
-   happened" from the user's side. If sign-in ever reaches this point
-   without Google in providerData again, at least surface it. */
+
+
 const _dbgInfo='SIGNIN_SKIPPED_NOT_GOOGLE_PROVIDER\nuid: '+(user&&user.uid)+'\nproviders: '+JSON.stringify(user&&user.providerData);
 console.warn(_dbgInfo);
 if(typeof window.showSignInDebug==='function')window.showSignInDebug(_dbgInfo);
@@ -886,7 +818,7 @@ if(_statsRoomLogged===ROOM_CODE)return;
 _statsRoomLogged=ROOM_CODE;
 try{window._srv('w',{c:ROOM_CODE,p:{won:!!won}});}catch(e){}
 }
-/* ---------- End Google Profile System ---------- */
+
 let _connRef=db.ref(".info/connected");
 let _wasConnected=false;
 function _onConnChange(snap){
@@ -908,11 +840,8 @@ showToast("🟢 Reconnected!");
 if(ROOM_CODE&&MY_SEAT!==null){
 _bindPresence(ROOM_CODE,MY_SEAT);
 }
-/* [FIX] only resync on a REAL drop (was actually disconnected for
-   >5s), not a brief mobile-network blip — those are common exactly
-   around timer-expiry/auto-move moments and firing a resync on every
-   one of them was stomping in-progress moves (see _forceResyncGame
-   guard below too). */
+
+
 if(_disconnectedAt&&(Date.now()-_disconnectedAt>5000)){
 _forceResyncGame('reconnect');
 }
@@ -929,21 +858,13 @@ _wasConnected=false;
 }
 }
 _connRef.on("value",_onConnChange);
-/* [FIX] Rejoin/resync after being genuinely offline for a while (tab
-   backgrounded & throttled, or network dropped mid-game). Previously,
-   the app only relied on Firebase's live listeners silently catching
-   back up on their own — on mobile these often don't fire reliably
-   after a long background period, so coming back showed a stale
-   (sometimes pre-game, all-tokens-at-home) board and missed chat.
-   This forces a fresh read of the authoritative game/chat/players data
-   from the server on: tab becoming visible again, bfcache restore, and
-   Firebase reconnect — and applies it directly (no stale animation
-   replay), so position + chat always match the server. */
+
+
 let _lastHiddenAt=0;
 let _disconnectedAt=0;
 let _resyncInFlight=false;
 function _resyncUnsafeNow(){
-/* true while a local action is actually in flight — never stomp these */
+
 return _rolling||_animating||_syncAnimPlaying||_pendingAutoRoll||_pendingAutoMove;
 }
 async function _forceResyncGame(reason){
@@ -954,26 +875,8 @@ _resyncInFlight=true;
 try{
 const gSnap=await gameRef.once('value').catch(()=>null);
 const gData=gSnap&&gSnap.val();
-/* re-check after the await — a roll/move may have started while we
-   were fetching, and the fetched snapshot could now be stale.
-   [FIX] route through the normal syncGameState(), not a raw
-   _applySyncGameState() call with the action stripped out — the raw
-   call was skipping syncGameState's actionBy===MY_SEAT guard, so if
-   the last write in the room was MY OWN roll (rolled=true, waiting
-   for me to pick a token), this resync fell into the generic branch
-   and force-reset G.rolled/G.waiting/G.diceVal, wiping my own
-   in-progress turn. syncGameState() already has the correct guards
-   for own-action / bot-elder / animation-queueing and routes to the
-   right roll/move/skip branch, so let it decide.
-   [FIX] pass _forceApply=true here. Same seat played from two tabs:
-   an action made in tab A is written with actionBy===MY_SEAT (since
-   both tabs share the seat), so tab B's plain syncGameState(gData)
-   was silently ignoring it via that same actionBy===MY_SEAT guard —
-   tab B stayed stuck on stale state until a manual leave/rejoin. This
-   call site only runs after _resyncUnsafeNow() confirms nothing is
-   actually in-flight locally (no roll/animation/pending action), so
-   there's no own in-progress turn left to protect here — safe to
-   force the fetched server state in regardless of who actionBy is. */
+
+
 if(gData&&!_resyncUnsafeNow()&&_syncAnimPending.length===0&&(!G||!G.over)){
 syncGameState(gData,true);
 }
@@ -1002,12 +905,8 @@ if(document.hidden){_lastHiddenAt=Date.now();}
 else if(_lastHiddenAt&&(Date.now()-_lastHiddenAt>3000)){
 _forceResyncGame('visibility');
 }
-/* [FIX] elder election (amIElderPlayer) only ever knew whether a seat's
-   websocket was connected, not whether that tab was actually foreground
-   and able to run its timers — see the matching [FIX] note on
-   amIElderPlayer() below. Push a live visibility flag onto our own
-   presence connection every time it changes, so other clients can tell
-   the difference between "online" and "online but backgrounded". */
+
+
 if(typeof _presenceConnRef!=='undefined'&&_presenceConnRef){_presenceConnRef.set({v:!document.hidden}).catch(()=>{});}
 });
 window.addEventListener('pageshow',function(e){
@@ -2169,6 +2068,30 @@ _fzUnfreezeVisual(els);
 els.frost._fzInitDone=true;
 });
 }
+function _isOnlineRoom(){return !!(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode);}
+async function _srvSkip(pid){
+if(!_isOnlineRoom())return null;
+const r=await window._srv('s',{c:ROOM_CODE,p:{as:(pid!==MY_SEAT?pid:undefined)}});
+return (r&&typeof r.turn==='number')?r:null;
+}
+async function _srvForfeit(pid){
+if(!_isOnlineRoom())return null;
+try{const r=await window._srv('f',{c:ROOM_CODE,p:{as:(pid!==MY_SEAT?pid:undefined)}});
+return (r&&typeof r.turn==='number')?r:null;}catch(e){return null;}
+}
+function _applySrvSkip(r){
+if(!r)return;
+if(Array.isArray(r.tokens))G.tokens=r.tokens;
+G.turn=r.turn;
+G.frozenTokens=r.frozenTokens||[];
+G.aegisShields=r.aegisShields||[];
+}
+let _placeBusy=false;
+async function _srvPlace(kind,extra){
+if(!(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode))return true;
+const r=await window._srv('p',{c:ROOM_CODE,p:Object.assign({k:kind},extra||{})});
+return !!(r&&r.ok);
+}
 function startFreezeTargeting(){
 if(!G.inventory||!G.inventory[MY_SEAT]||!(G.inventory[MY_SEAT].freeze>0)){showToast("You don't have a Freeze to use");return;}
 window.closeShop();
@@ -2207,11 +2130,14 @@ else if(_notFrozenCount===0){_dbgLog('POWER_FREEZE_NO_ELIGIBLE',{pid:MY_SEAT,rea
 else{_dbgLog('POWER_FREEZE_NO_ELIGIBLE',{pid:MY_SEAT,reason:'only_target_is_aegis_shielded'});showToast("Can't use Freeze — the only eligible opponent token is protected by an Aegis shield");}
 }
 window.startFreezeTargeting=startFreezeTargeting;
-function applyFreeze(pid,tid){
-if(_placingPower!=='freeze')return;
+async function applyFreeze(pid,tid){
+if(_placingPower!=='freeze'||_placeBusy)return;
 if(!G.inventory[MY_SEAT]||!(G.inventory[MY_SEAT].freeze>0)){cancelPlacement();return;}
 if(G.aegisShields&&G.aegisShields.some(sh=>sh.pid===pid&&sh.tid===tid)){_dbgLog('POWER_FREEZE_BLOCKED_AEGIS',{targetPid:pid,targetTid:tid});cancelPlacement();showToast("That token is Aegis-shielded — it can't be frozen");return;}
-G.inventory[MY_SEAT].freeze-=1;
+_placeBusy=true;
+let _okP=false;try{_okP=await _srvPlace('freeze',{pid,tid});}finally{_placeBusy=false;}
+if(!_okP){cancelPlacement();showToast("Freeze failed — couldn't be verified, try again");return;}
+G.inventory[MY_SEAT].freeze-=1;_invDec('freeze',true);
 if(!G.frozenTokens)G.frozenTokens=[];
 G.frozenTokens.push({pid,tid,casterPid:MY_SEAT});
 _dbgLog('POWER_FREEZE_APPLIED',{casterPid:MY_SEAT,targetPid:pid,targetTid:tid,invLeft:G.inventory[MY_SEAT].freeze});
@@ -2225,10 +2151,8 @@ pushGameState({});
 showToast(G.lastPowerUse.text);
 }
 let _aegisSparkleTimers={};
-/* Ported 1:1 from index-162's spawnSparkle(): same size range (3-8px),
-   same duration (1-2.2s), same fall distance (dx ±12px, dy 25-55px).
-   Only the spawn x/y use % instead of a fixed 150px canvas, because this
-   ring has to scale to whatever token size is on screen. */
+
+
 function _spawnAegisHaloSparkle(ring){
 if(!ring.isConnected)return;
 const s=document.createElement('div');
@@ -2267,7 +2191,7 @@ ring.className='aegis-ring-mark';
 ring.style.cssText='position:absolute;left:5%;top:-13%;width:90%;height:30%;pointer-events:none;z-index:9;overflow:visible;';
 const _haloGradId=`aegisHaloGrad-${key}`,_haloBlurId=`aegisHaloBlur-${key}`;
 ring.innerHTML=`<svg viewBox="106 0 88 40" width="100%" height="100%" style="overflow:visible"><defs><linearGradient id="${_haloGradId}" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#fff6c8"/><stop offset="25%" stop-color="#ffd94a"/><stop offset="50%" stop-color="#b8791a"/><stop offset="75%" stop-color="#ffe07a"/><stop offset="100%" stop-color="#a86a15"/></linearGradient><filter id="${_haloBlurId}" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="3"/></filter></defs><g class="halo-g"><g opacity=".85" filter="url(#${_haloBlurId})"><ellipse cx="150" cy="20" rx="44" ry="14" fill="none" stroke="#ffe27a" stroke-width="16"/></g><g><ellipse cx="150" cy="20" rx="44" ry="14" fill="none" stroke="url(#${_haloGradId})" stroke-width="12"/></g></g></svg>`;
-/* ^ identical markup to index-162's halo-g block (same gradient stops, same blur filter, same ellipse geometry) — ids suffixed with `key` (per pid-tid) so multiple simultaneous Aegis rings don't collide in the DOM */
+
 els.wrap.appendChild(ring);
 });
 }
@@ -2413,7 +2337,8 @@ if(v==null||tok.step<2||tok.step>STEP_MAIN_END){cancelPlacement();return;}
 const targetStep=tok.step-v;
 if(targetStep<1){cancelPlacement();return;}
 if(_pathBlockedByShield(pid,tid,tok.step,targetStep)){cancelPlacement();return;}
-G.inventory[MY_SEAT].reverse-=1;
+const _isOnlineReverse=!!(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode);
+G.inventory[MY_SEAT].reverse-=1;_invDec('reverse',true);
 _dbgLog('POWER_REVERSE_APPLIED',{pid,tid,fromStep:tok.step,toStep:targetStep,dice:v,invLeft:G.inventory[MY_SEAT].reverse,tokStepAfterAssign:'pending'});
 cancelPlacement();
 _animating=true;
@@ -2422,11 +2347,8 @@ const toRC=getCell(tok.pid,targetStep);
 const key=`${tok.pid}-${tok.tid}`;
 const els=_tokEls[key];
 if(fromRC&&toRC&&els){
-/* [FIX] Reverse used to jumpStep once, straight from fromRC to toRC —
-   a single direct shift across the whole gap. Forward moves instead
-   walk one cell at a time via animateMove()'s per-step jumpStep loop.
-   Mirror that here so Reverse visually retraces the path cell-to-cell,
-   just walking backward, instead of teleporting to the final cell. */
+
+
 const color=getDisplayColorForSeat(tok.pid);
 const cp=cellPx(),BASE_W=Math.round(cp*1.15);
 const rW=_tokRW(BASE_W);
@@ -2443,6 +2365,7 @@ SFX.play('step');
 await jumpStep(els.wrap,els.shadow,startXY.x,startXY.y,endXY.x,endXY.y,rW,color,cp,layer);
 }
 }
+const fromStepBeforeReverse=tok.step;
 tok.step=targetStep;
 if(els&&els.wrap)els.wrap._lastStaticTr=null;
 renderTokens();
@@ -2453,8 +2376,8 @@ const landRC=getCell(tok.pid,targetStep);
 if(landRC){
 const ck=`${landRC[0]}-${landRC[1]}`;
 if(!SAFE.has(ck)){
-/* [FIX] Reverse se landing pe bhi Ambush trigger hona chahiye (pehle sirf forward move mein hota tha).
-   doMove ki tarah: trap pehle, aur trap trigger hua to capture check skip. */
+
+
 _revTrapped=await checkTrapTrigger(ck,tok.pid,tok.tid);
 const enemiesHere=_revTrapped?[]:G.tokens.filter(o=>{
 if(o.pid===tok.pid||o.step===0||o.step>=STEP_DONE)return false;
@@ -2474,16 +2397,31 @@ capturedPids.add(enemy.pid);
 captured=true;
 SFX.play('capture');
 if(tok.pid===MY_SEAT)recordKill();
-if(_enemyStepAtCapture===STEP_MAIN_END)addPoints(tok.pid,POINTS.killBeforeStretch);else addPoints(tok.pid,POINTS.kill);
-addPoints(tok.pid,POINTS.powerKill);
-addPoints(enemy.pid,_victimKillPoints(_enemyStepAtCapture));
+if(_enemyStepAtCapture===STEP_MAIN_END)addPoints(tok.pid,POINTS.killBeforeStretch,true);else addPoints(tok.pid,POINTS.kill,true);
+addPoints(tok.pid,POINTS.powerKill,true);
+addPoints(enemy.pid,_victimKillPoints(_enemyStepAtCapture),true);
 if(G.pMeta&&G.pMeta[tok.pid]&&G.pMeta[tok.pid].rf===enemy.pid){
-addPoints(tok.pid,POINTS.revengeKill);
+addPoints(tok.pid,POINTS.revengeKill,true);
 G.pMeta[tok.pid].rf=null;
 }
 if(G.pMeta&&G.pMeta[enemy.pid])G.pMeta[enemy.pid].rf=tok.pid;
 }
 }
+}
+if(_isOnlineReverse){
+const _rr=await window._srv('r',{c:ROOM_CODE,p:{tid,as:(G.turn!==MY_SEAT?G.turn:undefined)}});
+if(!_rr||!Array.isArray(_rr.tokens)){
+_animating=false;
+G.inventory[MY_SEAT].reverse+=1;
+tok.step=fromStepBeforeReverse;
+renderTokens();
+_dbgLog('REVERSE_COMMIT_SERVER_FAILED',{pid,tid});
+showToast("Sync error — reconnecting...");
+return;
+}
+G.tokens=_rr.tokens;
+if(typeof _rr.over!=='undefined')G.over=_rr.over;
+if(_rr.placements)G.placements=_rr.placements;
 }
 renderTokens();
 _animating=false;
@@ -2491,17 +2429,15 @@ const _casterP=PLAYERS[MY_SEAT];
 G.lastPowerUse={pid:MY_SEAT,ts:Date.now(),text:_revTrapped?`💥 ${(_casterP&&_casterP.label)||"A player"} reversed onto an Ambush!`:captured?`🔄 ${(_casterP&&_casterP.label)||"A player"} reversed and struck down a token!`:`🔄 ${(_casterP&&_casterP.label)||"A player"} used Reverse!`};
 _lastShownPowerUseTs=G.lastPowerUse.ts;
 showToast(G.lastPowerUse.text);
-/* [FIX] Reverse ke saath 6 aaya ho to extra turn milna chahiye (pehle hamesha turn pass ho jaati thi).
-   Normal 6 ki tarah: same seat + G.sixes streak barkarar. Aur push ab explicit action:'reverse' ke saath jaata hai -
-   pehle pushGameState({}) game node ka purana action ('roll') reuse karta tha, to observers isse roll samajh ke
-   tokens apply hi nahi karte the (Reverse ka token move unhe dikhta nahi tha) aur extra-turn ka state galat hota. */
+
+
 const _revBonus=(v===6);
 nextTurn(_revBonus,_revBonus);
 pushGameState({action:"reverse"});
 }
 window.applyReverse=applyReverse;
-function applyAegis(pid,tid){
-if(_placingPower!=='aegis')return;
+async function applyAegis(pid,tid){
+if(_placingPower!=='aegis'||_placeBusy)return;
 if(!G.inventory[MY_SEAT]||!(G.inventory[MY_SEAT].aegis>0)){cancelPlacement();return;}
 const _atok=tokOf(pid,tid);
 if(_atok){
@@ -2518,7 +2454,10 @@ return src&&`${src[0]}-${src[1]}`===_ack;
 if(_enemyAegisHere){_dbgLog('POWER_AEGIS_BLOCKED_ENEMY_AEGIS_ON_CELL',{targetPid:pid,targetTid:tid,cellKey:_ack});cancelPlacement();showToast("Can't shield — an enemy Aegis token shares this cell");return;}
 }
 }
-G.inventory[MY_SEAT].aegis-=1;
+_placeBusy=true;
+let _okP=false;try{_okP=await _srvPlace('aegis',{pid,tid});}finally{_placeBusy=false;}
+if(!_okP){cancelPlacement();showToast("Aegis failed — couldn't be verified, try again");return;}
+G.inventory[MY_SEAT].aegis-=1;_invDec('aegis',true);
 if(!G.aegisShields)G.aegisShields=[];
 G.aegisShields.push({pid,tid,remaining:3});
 let _wasFrozen=false;
@@ -2580,7 +2519,7 @@ if(overlayEl)overlayEl.classList.remove('show');
 function confirmLuckyNumberActivate(){
 if(_placingPower!=='luckyNumber')return;
 if(!G.inventory[MY_SEAT]||!(G.inventory[MY_SEAT].luckyNumber>0)){cancelPlacement();return;}
-G.inventory[MY_SEAT].luckyNumber-=1;
+G.inventory[MY_SEAT].luckyNumber-=1;_invDec('luckyNumber',true);
 if(!G.pMeta)G.pMeta=_defaultPMeta();
 if(!G.pMeta[MY_SEAT])G.pMeta[MY_SEAT]={ks:0,lr:0,sr:0,lv:null,rf:null,luckyActive:false};
 G.pMeta[MY_SEAT].luckyActive=true;
@@ -2596,18 +2535,15 @@ if(!_rerollWindowActive||G.turn!==MY_SEAT||!G.rolled||G.diceVal==null){showToast
 _cancelRerollWindow();
 stopTurnTimer();
 _dbgLog('POWER_REROLL_USED',{pid:MY_SEAT,discardedDice:G.diceVal,sixesStreakBeforeReset:G.sixes||0,invLeftBefore:G.inventory[MY_SEAT].reroll});
-/* [FIX] G.sixes tracks consecutive sixes for the "3 sixes in a row = forfeit
-   turn" rule. A discarded (rerolled) six was never actually "kept" by the
-   player, so it must not count toward that streak — otherwise 2 natural/
-   rerolled sixes followed by a 3rd six from Re-roll wrongly forfeits the
-   turn (reported bug: reroll → 6, reroll again → 6, then turn auto-skipped
-   as if 3 sixes were rolled in a row). */
+
+
 G.sixes=0;
-G.inventory[MY_SEAT].reroll-=1;
+G.inventory[MY_SEAT].reroll-=1;_invDec('reroll',true);
 window.closeShop();
 G.rolled=false;
 G.waiting=false;
 G.diceVal=null;
+window._pendingRerollCharge=true;
 pushGameState({});
 showToast("Rerolling...");
 setTimeout(()=>{if(G.turn===MY_SEAT)doRoll(MY_SEAT);},250);
@@ -2640,10 +2576,13 @@ else if(_notOccupiedCount===0){_dbgLog('POWER_AMBUSH_NO_ELIGIBLE',{pid:MY_SEAT,r
 else{_dbgLog('POWER_AMBUSH_NO_ELIGIBLE',{pid:MY_SEAT,reason:'all_have_traps'});showToast("Can't place an Ambush — every open cell already has a trap on it");}
 }
 window.startAmbushPlacement=startAmbushPlacement;
-function placeTrap(cellKey){
-if(_placingPower!=='ambush')return;
+async function placeTrap(cellKey){
+if(_placingPower!=='ambush'||_placeBusy)return;
 if(!G.inventory[MY_SEAT]||!(G.inventory[MY_SEAT].ambush>0)){cancelPlacement();return;}
-G.inventory[MY_SEAT].ambush-=1;
+_placeBusy=true;
+let _okP=false;try{_okP=await _srvPlace('ambush',{cell:cellKey});}finally{_placeBusy=false;}
+if(!_okP){cancelPlacement();showToast("Ambush failed — couldn't be verified, try again");return;}
+G.inventory[MY_SEAT].ambush-=1;_invDec('ambush',true);
 if(!G.traps)G.traps=[];
 G.traps.push({cellKey,ownerPid:MY_SEAT});
 _dbgLog('POWER_AMBUSH_PLACED',{ownerPid:MY_SEAT,cellKey,invLeft:G.inventory[MY_SEAT].ambush,totalTrapsOnBoard:G.traps.length});
@@ -2663,9 +2602,8 @@ const trap=G.traps[idx];
 const tok=tokOf(pid,tid);
 if(!tok)return false;
 G.traps.splice(idx,1);
-/* [FIX] token trap pe marta hai to step 0 ho jaata hai, aur move payload mein finalStep:0 jaata tha -
-   opponent ko pata hi nahi chalta tha ki token bomb wale cell tak gaya tha. Yahan wo step yaad rakhte hain
-   jispe token tha (blast se pehle), doMove payload mein trapStep/trapCell ke roop mein bhejega. */
+
+
 _lastTrapHit={pid:tok.pid,tid:tok.tid,step:tok.step,cellKey};
 G.lastAmbushTrigger={cellKey,victimPid:tok.pid,victimTid:tok.tid,step:tok.step,ts:Date.now()};
 _lastShownAmbushTs=G.lastAmbushTrigger.ts;
@@ -2681,9 +2619,9 @@ _renderMyTraps();
 showToast(`🛡️💥 ${(_victimP&&_victimP.label)||"A token"}'s Aegis absorbed the Ambush blast!`);
 return true;
 }
-if(tok.step===STEP_MAIN_END)addPoints(trap.ownerPid,POINTS.killBeforeStretch);else addPoints(trap.ownerPid,POINTS.kill);
-addPoints(trap.ownerPid,POINTS.powerKill);
-addPoints(tok.pid,_victimKillPoints(tok.step));
+if(tok.step===STEP_MAIN_END)addPoints(trap.ownerPid,POINTS.killBeforeStretch,true);else addPoints(trap.ownerPid,POINTS.kill,true);
+addPoints(trap.ownerPid,POINTS.powerKill,true);
+addPoints(tok.pid,_victimKillPoints(tok.step),true);
 await sendHomeFast(tok,true);
 _renderMyTraps();
 showToast(`💥 ${(_victimP&&_victimP.label)||"A token"} hit a hidden Ambush!`);
@@ -2709,9 +2647,9 @@ const lone=enemiesHere[0];
 if(G.aegisShields.some(s2=>s2.pid===lone.pid&&s2.tid===lone.tid))continue;
 _dbgLog('POWER_AEGIS_AUTO_KILL',{aegisPid:sh.pid,aegisTid:sh.tid,cellKey:ck,victimPid:lone.pid,victimTid:lone.tid});
 await _showBlast(ck,lone.pid,lone.tid);
-if(lone.step===STEP_MAIN_END)addPoints(sh.pid,POINTS.killBeforeStretch);else addPoints(sh.pid,POINTS.kill);
-addPoints(sh.pid,POINTS.powerKill);
-addPoints(lone.pid,_victimKillPoints(lone.step));
+if(lone.step===STEP_MAIN_END)addPoints(sh.pid,POINTS.killBeforeStretch,true);else addPoints(sh.pid,POINTS.kill,true);
+addPoints(sh.pid,POINTS.powerKill,true);
+addPoints(lone.pid,_victimKillPoints(lone.step),true);
 await sendHomeFast(lone);
 const _victimP=PLAYERS[lone.pid],_casterP=PLAYERS[sh.pid];
 G.lastPowerUse={pid:sh.pid,ts:Date.now(),text:`🛡️ ${(_casterP&&_casterP.label)||"A player"}'s Aegis shield struck down ${(_victimP&&_victimP.label)||"a lone token"}!`};
@@ -2719,14 +2657,8 @@ _lastShownPowerUseTs=G.lastPowerUse.ts;
 showToast(G.lastPowerUse.text);
 }
 }
-/* When a token's Aegis ("Angel") protection runs out (3 of its owner's
-   turns elapsed), that token may still be sitting inside an enemy's
-   shielded stack (2+ same-pid tokens = normal/super shield) — it only
-   got there in the first place because Aegis let it bypass the shield
-   block. Once the power is off, it's just a lone unprotected token
-   parked with 2+ enemies, so it dies — unless its owner already moved
-   it off that cell before the power expired (checked naturally since
-   this reads the token's *current* step). */
+
+
 function _killExpiredAegisTokens(list){
 list.forEach(({pid,tid})=>{
 const tok=tokOf(pid,tid);
@@ -2749,20 +2681,24 @@ const stepAtDeath=tok.step;
 _dbgLog('POWER_AEGIS_EXPIRED_TOKEN_KILLED',{pid,tid,stepAtDeath,cellKey:ck,shieldOwnerPid});
 tok.everKilled=true;tok.step=0;
 if(G.frozenTokens&&G.frozenTokens.length)G.frozenTokens=G.frozenTokens.filter(f=>!(f.pid===tok.pid&&f.tid===tok.tid));
-addPoints(Number(shieldOwnerPid),POINTS.kill);
-addPoints(tok.pid,_victimKillPoints(stepAtDeath));
+addPoints(Number(shieldOwnerPid),POINTS.kill,true);
+addPoints(tok.pid,_victimKillPoints(stepAtDeath),true);
 const _victimP=PLAYERS[tok.pid],_killerP=PLAYERS[Number(shieldOwnerPid)];
 G.lastPowerUse={pid:Number(shieldOwnerPid),ts:Date.now(),text:`😇💨 ${(_victimP&&_victimP.label)||"A token"}'s Angel power wore off inside an enemy shield — sent home!`};
 _lastShownPowerUseTs=G.lastPowerUse.ts;
 showToast(G.lastPowerUse.text);
 });
 }
-function addPoints(pid,amount){
+function addPoints(pid,amount,localOnly){
 if(!G.specialMode||pid==null||amount==null)return;
 if(!G.points)G.points={0:0,1:0,2:0,3:0};
 const _before=G.points[pid]||0;
 G.points[pid]=+((G.points[pid]||0)+amount).toFixed(2);
-_dbgLog('POINTS_ADD',{pid,amount,before:_before,after:G.points[pid]});
+_dbgLog('POINTS_ADD',{pid,amount,before:_before,after:G.points[pid],localOnly:!!localOnly});
+/* points: server owns online */
+}
+function _invDec(key,localOnly){
+/* inventory: server owns online */
 }
 let ROOM_CODE=null;
 
@@ -2778,36 +2714,15 @@ if(!ROOM_CODE)return true;
 if(_forcedElderSeat!==null){
 return MY_SEAT===_forcedElderSeat;
 }
-/* [FIX] "timer poori khatam ho gayi, na bot chala na turn aaya — dono
-   taraf stuck": election never excluded the very seat whose turn is
-   currently timing out. If THAT seat's own tab was still technically
-   online+visible (glitched/frozen mid-interaction, not disconnected),
-   it kept winning "first online+visible seat" and crowning itself as
-   its own elder — while its own self-timeout branch elsewhere bails
-   out because it's the one that's actually stuck (_rolling/_animating
-   never cleared). Meanwhile every OTHER client correctly saw that seat
-   as still online+visible and deferred to it as elder, so nobody ever
-   stepped in. Callers driving a specific seat's expired-turn fallback
-   now pass that seat as excludeSeat so election skips straight past it
-   to the next real candidate instead of deadlocking on it. */
+
+
 const onlineKey=[..._onlineSeats].sort().join(',')+'|x'+(excludeSeat??'');
 if(_cachedElderOnlineSet===onlineKey&&_cachedElderResult!==null){
 return _cachedElderResult;
 }
 _cachedElderOnlineSet=onlineKey;
-/* [FIX] elder election used to pick the first active+online seat purely
-   by Firebase connection presence — but presence only tracks the
-   websocket, not whether that tab's JS timers are actually still
-   running. A backgrounded tab (screen off / another app in front) stays
-   "online" for a long time on Android Chrome while its setInterval/
-   setTimeout calls get throttled or fully frozen, so if THAT seat won
-   elder election, nobody was left driving turn timers, bot turns, or
-   AFK-vote detection — the whole room silently hung the moment a real
-   player backgrounded the app mid-turn, no matter how long anyone
-   waited ("timeup ho gaya, computer/opponent chaal nahi chal raha").
-   Now: prefer a seat that is both online AND currently visible
-   (foreground) for elder duty. Only fall back to the old "just online"
-   rule if literally nobody active is currently visible. */
+
+
 for(const seat of SEAT_LAYOUT_ACTIVE){
 if(seat===excludeSeat)continue;
 if(!PLAYERS[seat]?.active)continue;
@@ -2924,12 +2839,12 @@ function _replayPendingDroppedTokens(){
 if(!_pendingDroppedTokensQueue.length)return;
 const queue=_pendingDroppedTokensQueue;
 _pendingDroppedTokensQueue=[];
-// [FIX] Each queued entry is a FULL authoritative tokens snapshot from Firebase at the moment
-// it was dropped. Only the LAST (most recent) one matters — intermediate drops are superseded.
-// Previously this merged every batch with a "only apply if step increased" guard, which meant
-// a legitimate capture (token sent back to step 0) arriving mid-animation got silently ignored,
-// leaving the token stuck at its old position/stack until some unrelated future render fixed it.
-// Now we just trust the latest snapshot completely, same as a normal (non-dropped) Firebase update.
+
+
+
+
+
+
 const latest=queue[queue.length-1];
 latest.forEach(ip=>{
 const cur=G.tokens.find(t=>t.pid===ip.pid&&t.tid===ip.tid);
@@ -2948,11 +2863,10 @@ el.classList.add("show");
 clearTimeout(el._hideTimer);
 el._hideTimer=setTimeout(()=>{el.classList.remove("show");},dur);
 }
-/* [FIX] persistent on-screen panel for sign-in diagnostics — unlike showToast
-   this does NOT auto-hide, so it stays readable/screenshot-able on a phone
-   with no console access, and has a Copy button to paste into a message. */
+
+
 window.showSignInDebug=function(text){
-/* debug panel disabled */
+
 return;
 };
 function setSyncStatus(status){
@@ -3427,60 +3341,9 @@ return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;
 }
 window.hostStartGame=async function(){
 if(!IS_HOST)return;
-const snap=await playersRef.once('value');
-const playersData=snap.val()||{};
-const seats=Object.keys(playersData).map(Number);
-const layout=SEAT_LAYOUTS[NUM_PLAYERS]||[0,1,2,3];
-const tokens=[];
-for(const seat of layout){
-for(let tid=0;tid<4;tid++){
-tokens.push({pid:seat,tid,step:0,everKilled:false});
-}
-}
-const firstTurn=layout.find(s=>seats.includes(s))??layout[0];
-const[teamModeSnap,colorAssignSnap,specialModeSnap]=await Promise.all([
-roomRef.child('teamMode').once('value').catch(()=>null),
-roomRef.child('colorAssign').once('value').catch(()=>null),
-roomRef.child('specialMode').once('value').catch(()=>null)
-]);
-const _startTeamMode=(NUM_PLAYERS===4)&&(teamModeSnap&&teamModeSnap.val()===true);
-const _colorAssign=(colorAssignSnap&&colorAssignSnap.val())||DEFAULT_COLOR_ASSIGN;
-const _teamAssign=_deriveTeamAssign(_colorAssign);
-const _startSpecialMode=!!(specialModeSnap&&specialModeSnap.val()===true);
-const initGame={
-startedAt:firebase.database.ServerValue.TIMESTAMP,
-turn:firstTurn,
-diceVal:null,
-rolled:false,
-waiting:false,
-over:false,
-sixes:0,
-tokens,
-placements:[],
-seatLayout:layout,
-colorAssign:_colorAssign,
-teamMode:_startTeamMode,
-teamAssign:_startTeamMode?_teamAssign:null,
-specialMode:_startSpecialMode,
-points:{0:0,1:0,2:0,3:0},
-pMeta:_defaultPMeta(),
-inventory:_defaultInventory(),
-purchased:{0:{},1:{},2:{},3:{}},
-lastPurchase:null,
-traps:[],
-lastAmbushTrigger:null,
-frozenTokens:[],
-aegisShields:[],
-lastPowerUse:null,
-lastAction:null,
-actionBy:null,
-timestamp:firebase.database.ServerValue.TIMESTAMP
-};
 try{
-await Promise.all([
-gameRef.set(initGame),
-roomRef.update({status:"playing"})
-]);
+const r=await window._srv('g',{c:ROOM_CODE});
+if(!r||!r.ok)throw new Error('start-denied');
 }catch(e){
 showToast("❌ Failed to start game — check connection");
 }
@@ -3518,16 +3381,8 @@ document.getElementById("lobby").style.display="none";
 document.getElementById("game-wrap").style.display="inline-flex";
 document.getElementById("top-bar").style.display="flex";
 const _initTurn=gData.turn??SEAT_LAYOUT_ACTIVE[0];
-/* [FIX] "roll kiya but move nahi kiya, leave+rejoin karo, wapas roll ka
-   option aa jaata hai" — this used to force rolled:false and a hardcoded
-   diceVal:null on rejoin whenever it was the rejoining player's own turn,
-   throwing away a legitimately-already-rolled-but-not-yet-moved state
-   from Firebase every single time. gData.rolled/gData.diceVal already
-   correctly reflect the current turn's actual state (nextTurn() always
-   resets them for the new turn), so there's no reason to distrust them
-   specifically when it's our own turn — if anything that's exactly the
-   case we most need to restore correctly. Now we just trust the synced
-   state regardless of whose turn it is. */
+
+
 G={
 turn:_initTurn,
 diceVal:(typeof gData.diceVal==='number')?gData.diceVal:null,
@@ -3548,13 +3403,8 @@ lastAmbushTrigger:gData.lastAmbushTrigger||null,
 frozenTokens:gData.frozenTokens||[],
 aegisShields:gData.aegisShields||[],
 lastPowerUse:gData.lastPowerUse||null,
-/* [FIX] server's timestamp on the last game-state write IS the start
-   time of the turn being loaded (nextTurn() stamps G.timestamp right
-   as each new turn begins, and that's what gets pushed). Carrying it
-   into G here lets startTurnTimer() catch up instantly on rejoin —
-   e.g. after a call/reload eats a minute — instead of quietly handing
-   the AFK seat's opponent another full 43-45s wait on top of however
-   long the turn had already been running before the reload happened. */
+
+
 timestamp:(typeof gData.timestamp==='number'&&gData.timestamp>0)?_srvTsToLocal(gData.timestamp):Date.now()
 };
 _lastShownPurchaseTs=(G.lastPurchase&&G.lastPurchase.ts)||0;
@@ -3582,16 +3432,8 @@ applyBoardRotation();
 setSyncStatus("ok");
 refreshUI();
 renderTokens();
-/* [FIX] _gameLoaded used to flip true only after updateTurnBanner() ran
-   below — but startTurnTimer() itself bails with `if(...||!_gameLoaded||...)
-   return;`. So on this very first call, right when a rejoin lands on the
-   AFK friend's turn, the primary 43s visual timer silently never started
-   at all, and _lastTimerTurn got set anyway (updateTurnBanner sets it
-   unconditionally), so nothing later re-triggered it either — only the
-   backup 45s timer (which has no _gameLoaded check) was left carrying
-   the turn. Flipping this before updateTurnBanner() means the primary
-   timer's G.timestamp catch-up (see startTurnTimer) actually gets to run
-   on the very first call instead of silently no-op'ing. */
+
+
 _gameLoaded=true;
 updateTurnBanner();
 const _myColorNames={[BLUE]:"Blue",[PINK]:"Pink",[YELLOW]:"Yellow",[GREEN]:"Green"};
@@ -3675,10 +3517,8 @@ else{_syncAnimPending.push(data);_syncPendingRebuildIndex();}
 }else if(data.action==="roll"){
 const moveIdx=_pendingMoveBySeat[data.actionBy]??-1;
 if(moveIdx>=0){
-/* [FIX] pehle yahan koi bhi roll seedha drop ho jaata tha agar usi seat ka move queue mein pada ho. Par agar queued move
-   purana hai aur ye roll (ya uske baad ka koi push, jaise Reverse) naya hai, to drop karne se turn change hamesha ke liye
-   kho jaata tha - observer purani turn pe atka rehta tha aur elder uske naam pe phantom chaal chal deta tha. Ab sirf
-   wahi roll drop hota hai jo queued move se purana ho; naya wala move ke BAAD apply hone ke liye queue mein jaata hai. */
+
+
 const _pm=_syncAnimPending[moveIdx];
 const _tNew=Number(data.timestamp),_tOld=Number(_pm&&_pm.timestamp);
 if(Number.isFinite(_tNew)&&Number.isFinite(_tOld)&&_tNew>_tOld){_syncAnimPending.push(data);_syncPendingRebuildIndex();}
@@ -3717,12 +3557,8 @@ G.over=data.over||false;
 G.sixes=data.sixes||0;
 G.specialMode=!!data.specialMode;
 if(data.points){
-/* [DBG] points/inventory apply with NO _animating guard — unlike
-   G.tokens (see SPACING_FB_TOKENS_APPLIED/DROPPED above), a Firebase
-   update carrying stale points/inventory can overwrite local state
-   mid-animation with no queue/replay protection. Log every apply so a
-   silent points/power rollback shows up in the same timeline as the
-   spacing diagnostics instead of needing a separate repro. */
+
+
 const _localPointsSig=G.points?Object.entries(G.points).map(([k,v])=>`${k}:${v}`).join(','):'';
 const _incomingPointsSig=Object.entries(data.points).map(([k,v])=>`${k}:${v}`).join(',');
 if(_localPointsSig!==_incomingPointsSig)_spacingLog('DIAG_POINTS_APPLIED',{animating:typeof _animating!=='undefined'?_animating:null,from:_localPointsSig,to:_incomingPointsSig});
@@ -3736,16 +3572,8 @@ if(_localInvSig!==_incomingInvSig)_spacingLog('DIAG_INVENTORY_APPLIED',{animatin
 G.inventory=data.inventory;
 }
 if(data.purchased)G.purchased=data.purchased;
-/* [FIX] Firebase RTDB silently deletes a key when it's written as an
-   empty array (`[]` serializes to an empty object, which Firebase
-   prunes to null). So when traps/frozenTokens/aegisShields get
-   cleared to [] and pushed, the key vanishes from the DB entirely —
-   `data.traps` etc. arrive as `undefined`, not `[]`. The old
-   `if(data.X)` guards treated that as "no update" and kept the last
-   known (non-empty) array forever, which is why a freeze could
-   persist for the rest of the game instead of clearing after one
-   turn. Every value event here is a full snapshot, so an absent key
-   really does mean "empty" — assign unconditionally, defaulting to []. */
+
+
 G.traps=data.traps||[];
 G.frozenTokens=data.frozenTokens||[];
 G.aegisShields=data.aegisShields||[];
@@ -3766,14 +3594,12 @@ _lastShownAmbushTs=data.lastAmbushTrigger.ts;
 G.lastAmbushTrigger=data.lastAmbushTrigger;
 const _syncTrapCellEl=_cellDiv(data.lastAmbushTrigger.cellKey);
 if(_syncTrapCellEl){const _mk=_syncTrapCellEl.querySelector(".ambush-mark");if(_mk)_mk.remove();}
-/* [FIX] blast yahan turant chal jaata tha, jabki opponent ki screen pe token abhi apni purani jagah
-   pe hota hai (move animation baad mein chalti hai) - isliye blast wahin dikhta tha jahan se token chala
-   hi nahi. Agar ye ambush isi move ke saath aaya hai (moves[].trapCell), toh blast runMoveAnim mein
-   token ke bomb wale cell tak chalne ke BAAD chalega. */
+
+
 const _ambushDeferred=data.action==="move"&&data.actionBy!==MY_SEAT&&Array.isArray(data.moves)&&data.moves.some(m=>m&&m.trapCell);
 if(!_ambushDeferred){
-/* [FIX] Reverse ke saath aaya trap: observer ki screen pe reverse ki animation nahi chalti (tokens seedhe snap hote
-   hain), isliye blast token ki purani jagah pe dikhta tha. Victim ko trap wale step pe snap karke blast wahin chalate hain. */
+
+
 const _atrig=data.lastAmbushTrigger;
 const _avt=tokOf(_atrig.victimPid,_atrig.victimTid);
 if(_avt&&typeof _atrig.step==='number'&&_atrig.step>=1&&_atrig.step<STEP_DONE&&_avt.step!==_atrig.step&&!_animating){_avt.step=_atrig.step;renderTokens();}
@@ -3815,9 +3641,8 @@ syncUI();
 _flushSyncPending();
 return;
 }
-/* [FIX] mover ki device pe roll ke baad (move choose karne wale branch mein) timer
-   dobara start hota hai (doRoll). Observers pe ye nahi hota tha, isliye dono ke
-   bar alag dikhte the. Bots ka roll waiting nahi hota, unpe koi restart nahi. */
+
+
 if(data.waiting===true&&rolledBy!=null&&!PLAYERS[rolledBy]?.isBot)_stampRemoteTurnWindow(data,_forceApply);
 if(dice!=null&&rolledBy!=null){
 if(PLAYERS[rolledBy]?.isBot){
@@ -4062,14 +3887,8 @@ turn:G.turn,
 diceVal:G.diceVal,
 rolled:G.rolled,
 waiting:G.waiting,
-over:G.over,
 sixes:G.sixes,
-tokens:G.tokens,
-placements:G.placements,
-points:G.points,
 pMeta:G.pMeta,
-inventory:G.inventory,
-purchased:G.purchased,
 lastPurchase:G.lastPurchase,
 traps:G.traps,
 lastAmbushTrigger:G.lastAmbushTrigger,
@@ -4084,6 +3903,7 @@ timestamp:(window._cpuMode||window._pnpMode?Date.now():firebase.database.ServerV
 };
 _dbgLog('SYNC_PUSH',{action:extra.action,reason:extra.reason,turn:payload.turn,dice:payload.diceVal,sixes:payload.sixes,pointsSnapshot:payload.points,inventorySnapshot:payload.inventory,trapsCount:(payload.traps||[]).length,aegisCount:(payload.aegisShields||[]).length,frozenCount:(payload.frozenTokens||[]).length});
 if(!gameRef){setSyncStatus("ok");return Promise.resolve();}
+if(_isOnlineRoom()){['turn','diceVal','rolled','sixes','pMeta','traps','frozenTokens','aegisShields','seatLayout'].forEach(k=>{delete payload[k];});}
 return gameRef.update(payload).then(()=>{
 setSyncStatus("ok");
 }).catch(e=>{
@@ -4123,16 +3943,8 @@ window.tryRejoin=async function(){
 const s=loadSession();
 if(!s){clearSession();return;}
 _dbgLog('REJOIN_ATTEMPT_START',{code:s.code,seat:s.seat,name:s.name});
-/* [FIX] if the previous session ended abruptly (tab backgrounded/killed
-   mid-game instead of going through leaveToLobby/leaveRoom), old
-   gameRef/chat/presence listeners from before can still be attached.
-   A leftover live listener on the exact same gameRef path can make the
-   .once('value') read below in loadAndStartGame() resolve from that
-   listener's cache instead of a fresh server round-trip — if that
-   listener hadn't yet resynced after reconnecting, rejoin would render
-   the stale pre-disconnect board (tokens still "at home", turn 1) even
-   though the server's actual game/tokens was current. Clear everything
-   out so the reload below is guaranteed to hit the server fresh. */
+
+
 _listeners.forEach(fn=>fn());
 _listeners=[];
 _gameLoaded=false;
@@ -4207,10 +4019,8 @@ _gameStartLock=true;
 closeModals();
 _dbgLog('REJOIN_SUCCESS_LOADING_GAME',{code:s.code,seat:s.seat,isHost:IS_HOST});
 showToast('🔄 Rejoining...');
-/* [FIX] load the authoritative game state FIRST, then attach the live
-   gameRef listener via listenRoom(). Doing it in the old order (listener
-   attached before the once() read) is exactly what let that read
-   shortcut off a stale/not-yet-resynced listener — see note above. */
+
+
 await _doLoadAndStartGame();
 listenRoom();
 };
@@ -4364,16 +4174,18 @@ _rerollWindowActive=true;
 _dbgLog('REROLL_WINDOW_STARTED',{pid,dice:v,hasMove});
 _renderRerollBox();
 clearTimeout(_rerollWindowTimer);
-_rerollWindowTimer=setTimeout(()=>{
+_rerollWindowTimer=setTimeout(async()=>{
 if(!_rerollWindowActive)return;
 _rerollWindowActive=false;
 _rerollBoxSuppressed=true;
 _renderRerollBox();
 _dbgLog('REROLL_WINDOW_EXPIRED',{pid,dice:v,hadMove:hasMove,turnSkipped:!hasMove&&G.turn===pid});
 if(!hasMove&&G.turn===pid){
+const _sk=await _srvSkip(pid);
 G.rolled=false;G.waiting=false;G.diceVal=null;
-addPoints(pid,POINTS.noLegalMove);
+addPoints(pid,POINTS.noLegalMove,_isOnlineRoom());
 nextTurn(false);
+_applySrvSkip(_sk);
 syncUI();
 pushGameState({action:"skip",dice:v,reason:"rerollWindowExpired",auto:false});
 }
@@ -4451,18 +4263,8 @@ _staleWatchdogInterval=setInterval(_checkStaleTurnWatchdog,20000);
 function _stopStaleTurnWatchdog(){
 if(_staleWatchdogInterval){clearInterval(_staleWatchdogInterval);_staleWatchdogInterval=null;}
 }
-/* [FIX] Safety-net periodic reconciliation, independent of visibilitychange.
-   The visibilitychange handler already force-resyncs on tab foreground
-   (>3s hidden), which covers the common "switched tabs, other tab shows
-   stale turn" case. But a background tab's Firebase listener can also go
-   silently stale WITHOUT a visibility transition being the trigger that
-   fixes it (e.g. the socket reconnects but the callback is delayed/dropped
-   by browser throttling while the tab stays hidden the whole time, or the
-   user never actually switches tabs but the connection still hiccups).
-   This runs _forceResyncGame on a fixed cadence regardless of visibility
-   state as a cheap safety net; _forceResyncGame itself already no-ops when
-   a local action is in flight (_resyncUnsafeNow), so this never stomps an
-   in-progress roll/move. */
+
+
 let _periodicResyncInterval=null;
 function _startPeriodicResync(){
 if(!ROOM_CODE)return;
@@ -4472,11 +4274,8 @@ _periodicResyncInterval=setInterval(()=>{_forceResyncGame('periodic');},15000);
 function _stopPeriodicResync(){
 if(_periodicResyncInterval){clearInterval(_periodicResyncInterval);_periodicResyncInterval=null;}
 }
-/* [DBG] General health watchdog — runs every 3s, checks several invariants
-   at once so any category of bug (stuck animation, corrupt token array,
-   detached DOM element, turn/state mismatch, orphaned power state) surfaces
-   in the SAME log stream as the spacing diagnostics, with the same seq/ts
-   timeline, instead of needing a separate targeted repro for each. */
+
+
 let _diagLastAnimTrue=0;
 let _diagLastTurn=null;
 let _diagInterval=null;
@@ -4513,30 +4312,29 @@ _spacingLog('DIAG_TOKEN_EL_DETACHED',{key:k});
 });
 }
 }
-/* power-placement UI left open (reverse/freeze/etc targeting mode stuck
-   on screen with no way to complete it — e.g. after a disconnect mid-pick) */
+
+
 if(typeof _placingPower!=='undefined'&&_placingPower){
 if(!_diagPlacingPowerSince)_diagPlacingPowerSince=now;
 if((now-_diagPlacingPowerSince)>15000){
 _spacingLog('DIAG_STUCK_POWER_PLACEMENT',{power:_placingPower,stuckMs:Math.round(now-_diagPlacingPowerSince)});
 }
 }else{_diagPlacingPowerSince=0;}
-/* turn stuck on an eliminated/inactive seat — sync desync or elder-handoff bug */
+
 if(typeof G!=='undefined'&&typeof PLAYERS!=='undefined'&&G.turn!=null&&Array.isArray(PLAYERS)){
 const _cur=PLAYERS.find(p=>p.id===G.turn);
 if(_cur&&_cur.active===false)_spacingLog('DIAG_TURN_ON_INACTIVE_SEAT',{turn:G.turn});
 }
-/* no seat online at all to act as "elder" (handles AFK/bot turns) — if this
-   stays true, a stalled turn may never auto-resolve */
+
+
 if(typeof _onlineSeats!=='undefined'&&_onlineSeats instanceof Set){
 if(_onlineSeats.size===0){
 if(!_diagNoElderSince)_diagNoElderSince=now;
 if((now-_diagNoElderSince)>15000)_spacingLog('DIAG_NO_ONLINE_SEATS',{stuckMs:Math.round(now-_diagNoElderSince),turn:typeof G!=='undefined'?G.turn:null});
 }else{_diagNoElderSince=0;}
 }
-/* lightweight full-state snapshot every tick — cheap cross-check point for
-   any concept (points/inventory/turn/dice) that isn't individually hooked
-   above; diffed against the previous tick so only changes get logged */
+
+
 if(typeof G!=='undefined'){
 const _snapSig=JSON.stringify({turn:G.turn,rolled:G.rolled,waiting:G.waiting,diceVal:G.diceVal,sixes:G.sixes,points:G.points,inventory:G.inventory,over:G.over});
 if(_snapSig!==_diagLastSnapSig){
@@ -4550,21 +4348,8 @@ if(_diagInterval)return;
 _diagInterval=setInterval(_runDiagWatchdog,3000);
 }
 _startDiagWatchdog();
-/* [FIX] amIElderPlayer()'s safety net is entirely presence-based, but
-   Firebase's onDisconnect() only detects an ABRUPT disconnect (network
-   loss, app killed, phone died) after its own internal heartbeat timeout —
-   which can take well over a minute. Until that fires, every live client's
-   _onlineSeats/_visibleSeats still lists the dead seat as present, so
-   amIElderPlayer() keeps deterministically returning false for every other
-   client too (it's the same stale data everywhere) — nobody ever qualifies
-   as elder, so nobody drives the stuck turn ("opponent offline hai, timeup
-   hua, computer chal nahi raha, wahi stuck ho jaata hai"). This watchdog
-   ignores presence entirely and reacts purely to G.timestamp being stale
-   far longer than the normal 43s/45s timers would ever allow in a healthy
-   room. Since presence can't be trusted to pick a single actor here, a
-   Firebase transaction is used as the tie-breaker instead — it lets
-   several live clients notice the same stale turn without more than one of
-   them acting on it. */
+
+
 async function _checkStaleTurnWatchdog(){
 if(!ROOM_CODE||!gameRef||!_gameLoaded||G.over)return;
 if(window._pnpMode)return;
@@ -4594,7 +4379,6 @@ return;
 await _doBotTurn(seat,true);
 if((_timerExpireCount[seat]||0)>=EXPIRE_COUNT_FOR_VOTE&&!PLAYERS[seat]?.isBot){
 _updateOfflineBadge(seat,true);
-db.ref(`rooms/${ROOM_CODE}/afkSeats/${seat}`).set(true).catch(()=>{});
 }
 }
 function _listenAbandonedAt(){
@@ -4639,12 +4423,8 @@ const cb=snap=>{
 const online=snap.exists();
 const wasElder=amIElderPlayer();
 if(online){_onlineSeats.add(seat);}else{_onlineSeats.delete(seat);}
-/* [FIX] see the visibilitychange [FIX] note above — a connection value
-   is now {v:bool} instead of a bare `true`. Treat a legacy bare `true`
-   (or any connection missing `v`) as visible, so a client still running
-   the old build doesn't get permanently excluded from elder duty; only
-   an explicit v:false (a client that HAS the fix and is actually
-   backgrounded) counts as not-visible. */
+
+
 let _seatVisible=false;
 if(online){
 snap.forEach(child=>{
@@ -4656,12 +4436,7 @@ if(_seatVisible){_visibleSeats.add(seat);}else{_visibleSeats.delete(seat);}
 _cachedElderResult=null;
 const _nowElder=amIElderPlayer();
 _dbgLog('ELDER_PRESENCE_EVENT',{seat,online,seatVisible:_seatVisible,wasElder,nowElder:_nowElder,elderChanged:wasElder!==_nowElder,onlineSeats:[..._onlineSeats],visibleSeats:[..._visibleSeats],gTurn:G.turn});
-/* [FIX] this used to only re-check elder handoff on a hard disconnect
-   (!online). Now that elder duty can also change hands purely because a
-   seat went from visible to backgrounded (see amIElderPlayer() [FIX]
-   above) while staying connected, drop the !online requirement so a
-   newly-elected elder picks up turn-timeout duty immediately instead of
-   waiting for a websocket drop that may never come. */
+
 if(!wasElder&&amIElderPlayer()&&_gameLoaded&&!G.over&&G.turn!==MY_SEAT){
 clearTimeout(_turnTimeoutTimer);
 _turnTimeoutTimer=null;
@@ -4670,17 +4445,7 @@ if(!amIElderPlayer()||G.over||G.turn===MY_SEAT)return;
 resetTurnTimeout();
 },200);
 }
-/* [FIX] AFK/vote state (_timerExpireCount, the offline badge, botVotes,
-   afkSeats) used to also get cleared right here the instant Firebase
-   presence reported a seat "online" — but presence is connection-based,
-   not turn-based, and a backgrounded tab's websocket can flap (drop and
-   reconnect) independent of whether the player is actually taking their
-   turns. That flakiness is exactly what caused a vote to fail and the
-   player box to snap back to normal mid-vote. This system reacts purely
-   on a timeup basis now: _timerExpireCount/badge/afkSeats/botVotes are
-   only ever cleared when the player actually rolls or moves for real
-   (see the "roll"/"move" sync handlers above) — never from presence
-   alone. _onlineSeats tracking above is kept only for elder election. */
+
 setTimeout(_updateAbandonTimestamp,500);
 };
 ref.on('value',cb);
@@ -4732,16 +4497,8 @@ txt.textContent=names.join(',')+' voted('+voterSeats.length+'/'+needed+')';
 let _botVotes={};
 let _afkSeats={};
 let _botOffSeen={};
-/* [FIX] botVotes/{seat}/{key} used to be written with MY_SEAT (a small
-   int like "3") as the key everywhere — but the Realtime Database rule
-   for this path is `$uid === auth.uid`, i.e. the key MUST be the
-   voter's Firebase auth UID, not their seat number. "3" never equals
-   an auth uid string, so every single vote write was rejected with
-   PERMISSION_DENIED — not intermittent, 100% of the time, for anyone.
-   Local pass-and-play (!ROOM_CODE) never touches Firebase so it keeps
-   using the seat number, unaffected. These two helpers centralize the
-   "which key am I / whose seat does this key belong to" logic so the
-   write, the already-voted guard, and the who-voted display all agree. */
+
+
 function _myVoteKey(){
 return ROOM_CODE?((window.auth&&window.auth.currentUser)?window.auth.currentUser.uid:null):MY_SEAT;
 }
@@ -4794,15 +4551,8 @@ if(votes>=needed&&votes>0){
 if(!PLAYERS[seat]?.isBot){_dbgLog('VOTE_THRESHOLD_MET_ACTIVATING_BOT',{seat,votes,needed,activePlayersCount:activePlayers.length});_activateBot(seat);}
 return;
 }
-/* [FIX] this used to bail out early with `if(PLAYERS[seat]?.isBot)return;`
-   before even computing votes — so once a seat flipped to bot mode (e.g.
-   via the optimistic local vote echo), this listener could never react
-   to the REAL synced vote count coming back below threshold (e.g. the
-   vote write itself getting rejected/reverted by the server). Player box
-   was stuck showing "bot" while nothing was actually voted for, and the
-   seat never auto-played. Now: if votes are genuinely below threshold
-   and the seat is (still) marked bot, undo it so state always matches
-   the synced data. */
+
+
 if(PLAYERS[seat]?.isBot){
 _dbgLog('VOTE_BELOW_THRESHOLD_UNDOING_BOT',{seat,votes,needed});
 _deactivateBot(seat);
@@ -4904,15 +4654,8 @@ if(ROOM_CODE)db.ref(`rooms/${ROOM_CODE}/afkSeats/${seat}`).remove().catch(()=>{}
 delete _afkSeats[seat];
 refreshUI();
 if(amIElderPlayer()&&!G.over){
-/* [FIX] previously this cleared _turnTimeoutTimer and only rearmed it
-   for two specific immediate cases (this seat's turn, or some other
-   bot's pending turn) — any other game-state at the moment of
-   activation left _turnTimeoutTimer null with nothing scheduled,
-   so the newly-activated bot could get permanently stuck with no
-   timer left to ever drive its turn. resetTurnTimeout() handles
-   every case (whose turn it is, elder status, bot or not) and always
-   leaves a correct timer armed, so just delegate to it here instead
-   of duplicating a narrower version of the same logic. */
+
+
 resetTurnTimeout();
 if(G.turn===seat&&!G.rolled){
 setTimeout(()=>{if(!G.over&&G.turn===seat&&PLAYERS[seat]?.isBot)_doBotTurn(seat);},400);
@@ -4943,15 +4686,8 @@ const _botDice2=document.getElementById(`botdice-${seat}`);
 if(_botDice2){_botDice2.style.display='none';_botDice2.textContent='';}
 }
 if(ROOM_CODE){
-/* [FIX] a seat can never remove its own botVotes node — the security
-   rules block that self-write, mirroring the self-vote guard already
-   in voteForBot (seat===MY_SEAT). When a player reclaims their own
-   bot via turnOffMyBot, this call used to fire anyway and always
-   failed with permission_denied (pure console spam, promise already
-   swallowed by .catch). The real cleanup for that seat still happens
-   correctly on every OTHER connected client via listenBotOff ->
-   _deactivateBot, whose remove() targets someone else's seat and is
-   allowed. Just skip the doomed self-removal here. */
+
+
 if(seat!==MY_SEAT)db.ref(`rooms/${ROOM_CODE}/botVotes/${seat}`).remove().catch(()=>{});
 db.ref(`rooms/${ROOM_CODE}/afkSeats/${seat}`).remove().catch(()=>{});
 }
@@ -4988,7 +4724,9 @@ const COLOR_STARS=new Set(["6-1","1-8","8-13","13-6"]);
 const STAR_SEAT={"6-1":0,"1-8":1,"8-13":2,"13-6":3};
 const CORNER_SEAT={"6-6":0,"6-8":1,"8-8":2,"8-6":3};
 function renderSeatVisuals(seat){
-const color=(PLAYERS[seat]&&PLAYERS[seat].color)?PLAYERS[seat].color:getDisplayColorForSeat(seat);
+
+
+const color=getDisplayColorForSeat(seat)||(PLAYERS[seat]&&PLAYERS[seat].color)||"#888";
 const isActive=G.turn===seat&&!G.over;
 const tokW=_domCache.ptok[seat]||document.getElementById(`ptok-${seat}`);
 if(tokW&&tokW.dataset.rc!==color){tokW.innerHTML=tokIconHTML(color,36,1.65);tokW.dataset.rc=color;}
@@ -5440,7 +5178,9 @@ return col;
 function makePanel(pid,side,pos,isMe=false){
 const p=PLAYERS[pid];
 if(!p)return makePlaceholder(side);
-const displayColor=p.color||getDisplayColorForSeat(pid)||"#888";
+
+
+const displayColor=getDisplayColorForSeat(pid)||p.color||"#888";
 const col=document.createElement("div");
 col.className=`pcol ${side}`;
 col.dataset.pid=pid;
@@ -5660,8 +5400,25 @@ renderShop();
 window.closeShop=function(){
 document.getElementById("modal-shop").classList.remove("show");
 };
-window._buyPowerClick=function(key){
+window._buyPowerClick=async function(key){
+const _onlineBuy=!!(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode);
+const _b4={pts:(G.points&&G.points[MY_SEAT])||0,inv:(G.inventory&&G.inventory[MY_SEAT]&&G.inventory[MY_SEAT][key])||0,pur:!!(G.purchased&&G.purchased[MY_SEAT]&&G.purchased[MY_SEAT][key]),lp:G.lastPurchase};
 if(buyPower(MY_SEAT,key)){
+if(_onlineBuy){
+const _r=await window._srv('b',{c:ROOM_CODE,p:{key}});
+if(!_r||_r.ok!==1){
+G.points[MY_SEAT]=_b4.pts;
+G.inventory[MY_SEAT][key]=_b4.inv;
+if(POWER_DEFS[key].once)G.purchased[MY_SEAT][key]=_b4.pur;
+G.lastPurchase=_b4.lp;
+_dbgLog('SHOP_BUY_SERVER_REJECTED',{pid:MY_SEAT,key});
+renderShop();_renderRerollBox();
+showToast("Can't buy that right now");
+return;
+}
+if(typeof _r.points==='number')G.points[MY_SEAT]=_r.points;
+if(typeof _r.inv==='number')G.inventory[MY_SEAT][key]=_r.inv;
+}
 pushGameState({});
 renderShop();
 _renderRerollBox();
@@ -5677,10 +5434,8 @@ if(!_amSignedIn()){showToast("🔒 Sign in to send reactions");return;}
 window.closePlayerMenu();
 const payload={from:MY_SEAT,to:toPid,emoji:emojiKey,ts:Date.now()};
 db.ref(`rooms/${ROOM_CODE}/reactions`).push(payload).catch(()=>{});
-/* [FIX] show it locally right away for the sender instead of waiting on the
-   DB round-trip — if this fires before listenReactions' initial baseline
-   fetch resolves, its own push can get swallowed as "already seen" and the
-   sender would never see their own reaction animate. */
+
+
 playReactionFly(emojiKey,MY_SEAT,toPid);
 };
 function playReactionFly(emojiKey,fromPid,toPid){
@@ -5778,8 +5533,8 @@ matchBiasMul:1,
 };
 function _sdeReset(){
 [0,1,2,3].forEach(p=>{_sde.recentRolls[p]=[];_sde.biasCooldown[p]=0;_sde.turnsSinceSix[p]=0;_sde.badStreak[p]=0;_sde.lastTokenStuckTurns[p]=0;_sde.lastTokenLastStep[p]=null;});
-// per-match randomization: each match gets its own bias intensity (0.7x-1.3x)
-// so overall balancing "feel" varies a bit game to game instead of being identical every time
+
+
 _sde.matchBiasMul=0.7+Math.random()*0.6;
 }
 _sdeReset();
@@ -5837,9 +5592,9 @@ gap=Math.max(-1,Math.min(1,gap));
 if(Math.abs(gap)<=0.15)return;
 if(Math.random()>=0.45)return;
 let trailing=gap<0;
-// bidirectional noise: sometimes flip who gets the nudge, so the pattern
-// never feels fully deterministic (leading player occasionally gets a
-// little help too, trailing player occasionally gets a rough roll)
+
+
+
 if(Math.random()<0.18)trailing=!trailing;
 let mag=0.10*Math.sqrt(Math.abs(gap))*_sde.matchBiasMul;
 if(trailing&&_rbAnyTokenHome())mag+=0.025;
@@ -5941,14 +5696,14 @@ return skipResult;
 const dist=[1/6,1/6,1/6,1/6,1/6,1/6];
 const mul=_sde.matchBiasMul;
 const allLocked=myToks.every(t=>t.step===0);
-// 1. all-tokens-locked bonus
+
 if(allLocked&&!blockSix){
 const b=8/100*mul;
 dist[5]+=b;
 dist[0]-=b*0.25;dist[1]-=b*0.25;dist[2]-=b*0.25;dist[3]-=b*0.25;
 debugInfo.weightsApplied.push('allLocked');
 }
-// 2. progressive 6-pity system, based on turnsSinceSix
+
 if(!blockSix){
 const tss=_sde.turnsSinceSix[pid];
 let pity=0;
@@ -5963,7 +5718,7 @@ dist[0]-=pity*0.25;dist[1]-=pity*0.25;dist[2]-=pity*0.25;dist[3]-=pity*0.25;
 debugInfo.weightsApplied.push(`sixPity(${tss})`);
 }
 }
-// 3. bad-luck streak pity - consecutive low rolls (1-2) nudge future rolls upward
+
 if(_sde.badStreak[pid]>=2){
 const streak=_sde.badStreak[pid];
 let bp=0;
@@ -5977,7 +5732,7 @@ dist[0]-=bp*0.4;dist[1]-=bp*0.3;dist[2]-=bp*0.3;
 debugInfo.weightsApplied.push(`badLuckPity(${streak})`);
 }
 }
-// 4. home-stretch entry bonus
+
 const entryVal=_rbFindHomeStretchEntryVal(pid,blockSix);
 if(entryVal!==null){
 const b=4/100*mul;
@@ -5985,7 +5740,7 @@ dist[entryVal-1]+=b;
 dist[0]-=b*0.25;dist[1]-=b*0.25;dist[2]-=b*0.25;dist[3]-=b*0.25;
 debugInfo.weightsApplied.push('homeStretchEntry');
 }
-// 5. exact finish bonus (retain existing strength)
+
 const nearHomeVal=_rbFindExactFinishVal(pid,blockSix);
 if(nearHomeVal!==null){
 const b=8/100*mul;
@@ -5993,7 +5748,7 @@ dist[nearHomeVal-1]+=b;
 dist[0]-=b*0.25;dist[1]-=b*0.25;dist[2]-=b*0.25;dist[3]-=b*0.25;
 debugInfo.weightsApplied.push('exactFinish');
 }
-// 6. kill opportunity bonus - can stack across multiple useful numbers
+
 const killVals=_rbFindKillVals(pid,blockSix);
 if(killVals.length){
 const perVal=(killVals.length>1?4/100:6/100)*mul;
@@ -6002,8 +5757,8 @@ const drain=perVal*killVals.length/6;
 for(let i=0;i<6;i++)dist[i]-=drain;
 debugInfo.weightsApplied.push(`kill(${killVals.join(',')})`);
 }
-// 7. last-token system - real stuck detection via step snapshot,
-// not just a turn counter, so it only fires when the token truly hasn't moved
+
+
 const lastTokState=_rbLastTokenState(pid);
 if(lastTokState.active){
 const tok=lastTokState.tok;
@@ -6031,7 +5786,7 @@ debugInfo.weightsApplied.push(`lastToken(${stuck})`);
 _sde.lastTokenLastStep[pid]=null;
 _sde.lastTokenStuckTurns[pid]=0;
 }
-// 8. end-game intensity
+
 const endGame=_rbEndGameState(pid);
 if(endGame.active&&endGame.bothFar&&!endGame.closeGame){
 const usefulVals=new Set([...killVals]);
@@ -6043,10 +5798,10 @@ usefulVals.forEach(v=>{if(!(blockSix&&v===6))dist[v-1]+=b;});
 debugInfo.weightsApplied.push('endGameIntensity');
 }
 }
-// 9. rubber-band standing bias (trailing player gets subtle help)
+
 _rbStandingBias(pid,dist,blockSix);
 debugInfo.weightsApplied.push('rubberband');
-// 12. repeated-number protection
+
 const recent=_sde.recentRolls[pid];
 if(recent.length>=3){
 const last3=[recent[recent.length-1],recent[recent.length-2],recent[recent.length-3]];
@@ -6055,7 +5810,7 @@ dist[last3[0]-1]-=8/100;
 debugInfo.weightsApplied.push('repeatProtection');
 }
 }
-// clamp for a natural cap while never fully zeroing a number
+
 for(let i=0;i<6;i++)dist[i]=Math.max(0,dist[i]);
 const finalDist=_sdeClamp(dist);
 if(blockSix){
@@ -6252,7 +6007,7 @@ function _scrubShow(){
 const w=document.getElementById('sdp-scrubber-wrap');
 if(w)w.style.display=_scrubIsTest()?'block':'none';
 const dw=document.getElementById('sdp-debug-wrap');
-if(dw){dw.style.display='none';} /* debug panel permanently disabled */
+if(dw){dw.style.display='none';}
 _renderDebugBotGrid();
 }
 function _renderDebugBotGrid(){
@@ -6513,21 +6268,8 @@ dot.addEventListener('transitionend',_onEnd,{once:true});
 }
 let _cpx=0,_cacheValid=false;
 let _trailSkip=0;
-/* [FIX2] getComputedStyle('--cell') never actually resolves min()/vw/dvh
-   for an unregistered custom property — verified directly: every
-   Chromium browser returns the raw unparsed text
-   "min(5.8vw,4.8dvh,40px)", so parseFloat on it is always NaN. That
-   made both the earlier "let CSS own it" attempt AND the cssvar-first
-   reorder complete no-ops — cellPx() was in practice ALWAYS coming from
-   measuring a live .lc grid cell's getBoundingClientRect(), which
-   reflects the real, engine-resolved dvh value — and that's exactly
-   what differs Chrome vs Brave, since dvh depends on each browser's own
-   toolbar/chrome height. Computing the cell size in plain JS from
-   window.innerWidth/innerHeight (an old, simple, consistently-reported
-   API — unlike dvh or visualViewport.height) and writing that same
-   number onto --cell removes the dvh dependency entirely, so the grid
-   and the token math always agree with each other and with the other
-   browser. */
+
+
 function _computeCellPx(){
 return Math.min(window.innerWidth*0.058,window.innerHeight*0.054,40);
 }
@@ -6624,15 +6366,8 @@ if(gen===_renderGeneration)_doRenderTokens();
 });
 }
 function _invalidateStackedTokenCache(tokensArr){
-/* [FIX] remote sync replaces G.tokens wholesale but never clears the
-   per-element _lastStaticTr dirty-check cache, unlike the local
-   move-animation path which force-invalidates it for stack-mates on
-   landing (see ONLINE_LAND_FORCE_INVALIDATE). Without this, a token
-   already sitting alone on a cell keeps its cached solo-position
-   transform when a synced opponent token joins it, and the two
-   overlap visually (looks like only 1 token). Group tokens by cell
-   and null out the cache for every cell with 2+ occupants so the
-   next render recomputes real stacked offsets for all of them. */
+
+
 try{
 const groups={};
 (tokensArr||[]).forEach(t=>{
@@ -6791,17 +6526,8 @@ const _newTr=`translate(${_ctx}px,${_cty}px)rotate(${_tr}deg)${scaleTransform}`;
 const _skippedCache=wrap._lastStaticTr===_newTr;
 if(stackCount>=2)_spacingLog('SPACING_WRITE',{writer:'static_render',pid:tok.pid,tid:tok.tid,step:tok.step,n:stackCount,scale:visualScale,px:+px.toFixed(1),py:+py.toFixed(1),ctx:+_ctx.toFixed(1),cty:+_cty.toFixed(1),deg:getBoardRotation(),tokenRotDeg:_tr,skippedCache:_skippedCache,tr:_newTr});
 if(!_skippedCache){
-/* [FIX] Smooth "restack" transition: when a token already sitting on a
-   cell (e.g. a star) gets a new stack-mate, n changes and every token
-   in that stack gets a new offset+scale here. Previously this branch
-   always hard-snapped straight to the new transform, so 3->4 tokens on
-   a star visibly jumped/rearranged instantly. Detect "same cell, stack
-   size changed since last render" via a stored rcKey|n signature and,
-   only in that case, animate the transform over a short eased
-   transition instead of an instant snap. A token's own move-in is
-   handled by the animating-flag branch above (not this one), so first
-   placement / normal movement is unaffected — no unwanted fly-in on
-   initial load or rejoin. */
+
+
 const _prevStackSig=wrap.dataset.stackSig||'';
 const _isRestack=!!(_curStackSig&&_prevStackSig&&_prevStackSig.split('|')[0]===_curStackSig.split('|')[0]&&_prevStackSig!==_curStackSig);
 if(_curStackSig)wrap.dataset.stackSig=_curStackSig;else delete wrap.dataset.stackSig;
@@ -6816,18 +6542,8 @@ if(els.frost._lastW!==rW){els.frost._lastW=rW;els.frost.style.width=`${rW}px`;el
 if(els.frost._lastOrigin!==wrap.style.transformOrigin){els.frost._lastOrigin=wrap.style.transformOrigin;els.frost.style.transformOrigin=wrap.style.transformOrigin;}
 if(els.frost._lastTr!==_newTr){els.frost._lastTr=_newTr;els.frost.style.transform=_newTr;}
 }
-/* [FIX] Shadow desync: wrap's and frost's position writes above are both
-   gated behind `!wrap.dataset.animating`, so a renderTokens() call that
-   fires mid-jumpStep (e.g. triggered by some other token's move/capture
-   while this token is still animating) can't snap them off the animated
-   path. The shadow's write sat outside that gate, so the same concurrent
-   renderTokens() would still yank it straight to the token's *current*
-   (pre-animation, since tok.step only updates after the loop) cell —
-   opponents would then briefly see the shadow parked on the old/wrong
-   cell while the token itself kept animating smoothly. Moved inside the
-   same gate so the shadow only gets this static write when the token
-   isn't mid-flight; jumpStep() already drives shadowEl every frame while
-   it is. */
+
+
 const shadowW=rW*0.60,shadowH=rW*0.16,sx=px-shadowW/2,sy=py-shadowH/2+1;
 const _sTr=`translate(${sx}px,${sy}px)`;
 if(shadow._lastTr!==_sTr){shadow._lastTr=_sTr;shadow.style.transform=_sTr;}
@@ -6936,10 +6652,10 @@ els.shield.className='tok-shield';
 }
 });
 for(const key of Object.keys(_tokEls)){if(!alive.has(key))_removeTokEl(key);}
-// [DBG] STAR_STACK_INTEGRITY — for every cell with 3+ tokens, verify each token
-// actually has a live DOM element that is attached, visible, and has a real transform.
-// If any entry below shows missing:true, inDOM:false, display:none/opacity:0, or
-// transform:null, THAT is the "3rd token silently missing" bug.
+
+
+
+
 Object.keys(groups).forEach(rcKey=>{
 const grp=groups[rcKey];
 if(grp.length<3)return;
@@ -6954,9 +6670,9 @@ return{key:k,missing:false,inDOM,display:cs?cs.display:null,opacity:cs?cs.opacit
 });
 _dbgLog('STAR_STACK_INTEGRITY',{rcKey,isStarCell:SAFE.has(rcKey),count:grp.length,ids:grp.map(t=>`${t.pid}-${t.tid}(step${t.step})`),report});
 });
-// [DBG] TOK_DOM_COUNT_MISMATCH — compares how many .tok elements physically exist in the DOM
-// vs how many tokens we believe are "alive" this render. A mismatch means either stale elements
-// weren't cleaned up, or an element failed to get created for a live token.
+
+
+
 {
 const _layer=document.getElementById('tokens-layer');
 const _layerCount=_layer?_layer.querySelectorAll('.tok').length:0;
@@ -6972,7 +6688,7 @@ try{
 _dbgLog('ONLINE_HEARTBEAT',{MY_SEAT,deg:getBoardRotation(),tokens:G.tokens.map(t=>({pid:t.pid,tid:t.tid,step:t.step}))});
 }catch(e){_dbgLog('heartbeat_error_online',String(e));}
 }
-// [DBG] Overlap detection via real DOM measurement
+
 if(Date.now()-window._dbgLastOverlapCheck>500){
 window._dbgLastOverlapCheck=Date.now();
 requestAnimationFrame(()=>{
@@ -7072,25 +6788,12 @@ dAcc.rx[p.id]=tg.rx;dAcc.ry[p.id]=tg.ry;dAcc.last[p.id]=6;
 });
 _renderRerollBox();
 }
-/* [FIX] extra turn (6 / capture / home) ke baad timer renew nahi hota tha
-   doosre players ki device pe. Mover ki apni device pe nextTurn() khud
-   G.timestamp stamp karke _lastTimerTurn=-1 karta hai, isliye wahan timer
-   sahi restart hota hai. Par jab wahi move receive hota hai kisi aur device
-   pe (elder samet, jo AFK auto-play chalata hai), toh G.turn same seat rehta
-   hai -> _lastTimerTurn reset nahi hota tha -> startTurnTimer/resetTurnTimeout
-   dobara chalte hi nahi the, purana 43s/45s countdown chalta reh jaata tha.
-   Upar se G.timestamp remote pe kabhi update nahi hota tha (sirf load ke waqt
-   ya local nextTurn pe), toh restart karne pe bhi timer purane anchor se
-   gine jaata. Ye helper dono ek saath karta hai: naya window stamp + restart.
-   Anchor = action ka server timestamp (offset se local clock mein convert),
-   taaki sabhi devices pe bar ek hi jagah dikhe. */
+
+
 function _stampRemoteTurnWindow(data,forceApply){
 let t=Date.now();
 if(data&&typeof data.timestamp==='number'&&data.timestamp>0){
-/* server ka timestamp = us action ka asli waqt, animation/network delay ke
-   bawajood sabhi devices pe same anchor. Live action pe kam se kam 3s bachte
-   hain (backgrounded tab ka purana backlog process karte waqt instant expire
-   na ho); forced resync (authoritative current state) pe koi cap nahi. */
+
 t=_srvTsToLocal(data.timestamp);
 if(!forceApply)t=Math.max(t,Date.now()-(TURN_TIMER_SEC-3)*1000);
 }
@@ -7135,15 +6838,8 @@ function startTurnTimer(seat){
 stopTurnTimer();
 if(G.over||!_gameLoaded||!PLAYERS[seat]?.active)return;
 _timerSeat=seat;
-/* [FIX] used to always be Date.now() — correct for a turn this same
-   client just started locally (nextTurn stamps G.timestamp at that same
-   instant, so the two agree), but on rejoin-after-reload G.timestamp
-   (loaded from the server's record of when this turn began, see
-   loadAndStartGame) can already be well in the past — e.g. a phone call
-   eats a minute, the tab gets reloaded, and the friend's turn had
-   already timed out before we ever rejoined. Anchoring here means that
-   gets caught up on immediately below instead of quietly granting
-   another full 43s wait on top of the one that already elapsed. */
+
+
 _timerStart=(typeof G.timestamp==='number'&&G.timestamp>0)?G.timestamp:Date.now();
 const _elapsedAtStart=(Date.now()-_timerStart)/1000;
 if(_elapsedAtStart>=TURN_TIMER_SEC){
@@ -7163,19 +6859,8 @@ bar.style.filter=`drop-shadow(0 0 4px ${color})`;
 bar.classList.remove('draining');
 void bar.getBoundingClientRect();
 bar.style.setProperty('--timer-dur',`${TURN_TIMER_SEC}s`);
-/* [FIX] the JS side below already anchors _timerStart to G.timestamp so
-   a rejoin mid-turn correctly fires _onTurnTimerExpired at the real
-   deadline — but this CSS "draining" animation always began its
-   stroke-dashoffset sweep from 0 (full bar) over the full TURN_TIMER_SEC
-   every time the class was (re)applied, regardless of how much time had
-   already elapsed. So on rejoin with e.g. 28s already gone, the bar
-   visually looked like a brand new 43s countdown had just started, even
-   though only ~15s actually remained before it would really expire — the
-   picture and the real deadline silently disagreed ("abhi hi timer start
-   hua hai, but 15 sec hi bache hote hain"). A negative animation-delay
-   fast-forwards the animation to the correct point on its timeline
-   (already partially drained) without changing its total duration, so
-   the bar's visual finish lines back up with the real expiry moment. */
+
+
 bar.style.animationDelay=_elapsedAtStart>0?`-${_elapsedAtStart.toFixed(2)}s`:'0s';
 bar.classList.add('draining');
 }
@@ -7225,9 +6910,8 @@ bar.style.stroke='none';
 }
 }catch(e){}
 }
-/* [FIX] Elder apne local G pe bharosa karke kisi AFK seat ki chaal khel deta tha. Local view stale ho (queue mein atka update, background
-   tab) to wo us seat ke naam pe phantom roll/move push kar deta tha, jabki server pe turn pehle hi aage badh chuki hoti thi. Ab pehle
-   server ka turn/rolled check karte hain; mismatch ho to chaal nahi khelte aur fresh state kheench lete hain. */
+
+
 async function _elderViewIsStale(seat){
 if(!ROOM_CODE||!gameRef)return false;
 try{
@@ -7243,27 +6927,34 @@ return true;
 }catch(e){}
 return false;
 }
+
+
+async function _claimExpiredTurn(seat,turnTs){
+if(!ROOM_CODE||!gameRef)return true;
+try{
+const lockKey=`${seat}_${Math.round(turnTs||0)}`;
+const lockRef=db.ref(`rooms/${ROOM_CODE}/turnLocks/${lockKey}`);
+const result=await lockRef.transaction(cur=>{
+if(cur)return;
+return {by:MY_SEAT,ts:Date.now()};
+});
+if(!result||!result.committed){
+_dbgLog('TURN_CLAIM_LOST',{seat,lockKey,MY_SEAT});
+return false;
+}
+_dbgLog('TURN_CLAIM_WON',{seat,lockKey,MY_SEAT});
+return true;
+}catch(e){
+_dbgLog('TURN_CLAIM_ERROR',{seat,message:e&&e.message});
+return true;
+}
+}
 async function _onTurnTimerExpired(seat){
 _dbgLog('TIMER_EXPIRE_CALLED',{seat,MY_SEAT,gTurn:G.turn,gOver:G.over,gRolled:G.rolled,gWaiting:G.waiting,turnExpiryHandled:_turnExpiryHandled});
 if(G.over||G.turn!==seat){_dbgLog('TIMER_EXPIRE_BAIL_STALE',{seat,gTurn:G.turn,gOver:G.over});return;}
 if(G.rolled&&!G.waiting){_dbgLog('TIMER_EXPIRE_BAIL_ROLLED',{seat,gRolled:G.rolled,gWaiting:G.waiting});return;}
 if(seat!==MY_SEAT&&!PLAYERS[seat]?.isBot){
-/* [FIX] startTurnTimer's visual 43s timer and resetTurnTimeout's backup
-   45s timer both end up calling _onTurnTimerExpired for the SAME turn —
-   only ~2s apart. This used to `return` on the 2nd call so
-   _timerExpireCount/the vote badge only counted the miss once — that
-   part was correct — but the same early return also skipped the elder
-   branches below on the retry. If the 1st call's amIElderPlayer() check
-   happened to land during a presence flap (dost ka backgrounded tab
-   briefly re-registering online) and came back false that instant,
-   nothing played, G.turn never advanced, and the 2nd call — the only
-   other chance to retry — got thrown away here before ever reaching
-   _doBotTurn. That's the "computer chal raha tha, phir ek dafa achanak
-   atak gaya" pattern: one bad-luck flap on the first attempt, no retry
-   left. Now only the count/badge update is deduped; the elder branches
-   below run on every call and lean on their own guards (_botActing,
-   G.turn!==seat) for idempotency, so a 2nd call genuinely gets a fresh
-   shot instead of being blocked by this flag. */
+
 if(!_turnExpiryHandled){
 _turnExpiryHandled=true;
 _timerExpireCount[seat]=(_timerExpireCount[seat]||0)+1;
@@ -7275,6 +6966,8 @@ if(seat===MY_SEAT&&_placingPower){_dbgLog('TIMER_EXPIRE_CANCEL_PENDING_POWER',{s
 if(seat===MY_SEAT&&!G.rolled){
 if(_rolling||_animating)return;
 _dbgLog('TIMER_EXPIRE_FORCE_AUTOROLL',{seat,rerollWindowActiveAtForce:_rerollWindowActive});
+if(!(await _claimExpiredTurn(seat,G.timestamp)))return;
+if(G.over||G.turn!==seat||G.rolled||_rolling||_animating)return;
 _pendingAutoRoll=true;
 doRoll(seat);
 return;
@@ -7286,8 +6979,8 @@ const savedDice=G.diceVal;
 const mv=teamMovable(seat,savedDice);
 _dbgLog('TIMER_EXPIRE_FORCE_MOVE_OR_SKIP',{seat,savedDice,hasLegalMove:mv.length>0});
 if(mv.length>0){
-/* [FIX] yahan pehle hamesha mv[0] (pehla movable token) chalta tha, jabki doosre player ke device pe elder wahi turn
-   _doBotTurn ke smart scoring se khelta hai. Ab dono jagah same move choose hota hai. */
+
+
 let _pick=mv[0],_pickScore=-Infinity;
 try{for(const t of mv){const sc=_aiScoreMove(seat,t,savedDice);if(sc>_pickScore){_pickScore=sc;_pick=t;}}}catch(e){_pick=mv[0];}
 G.waiting=false;
@@ -7298,36 +6991,31 @@ await doMove(_pick.pid!==undefined?_pick.pid:seat,_pick.tid,savedDice);
 G.waiting=false;
 G.rolled=false;
 G.diceVal=null;
-addPoints(seat,POINTS.noLegalMove);
+const _sk=await _srvSkip(seat);
+addPoints(seat,POINTS.noLegalMove,_isOnlineRoom());
 nextTurn(false);
+_applySrvSkip(_sk);
 await pushGameState({action:"skip",dice:savedDice,reason:"noMove",auto:true});
 }
 return;
 }
 if(amIElderPlayer(seat)&&PLAYERS[seat]?.isBot){
 if(await _elderViewIsStale(seat))return;
+if(!(await _claimExpiredTurn(seat,G.timestamp)))return;
 _doBotTurn(seat);
 return;
 }
 if(amIElderPlayer(seat)&&seat!==MY_SEAT){
 if(G.turn!==seat)return;
 if(await _elderViewIsStale(seat))return;
-/* [FIX] this awaited a plain _doBotTurn(seat) — but _doBotTurn's own
-   internal guards (`if(!PLAYERS[seat]?.isBot)return;`, repeated after
-   every await inside it) only ever let it act on seats already flagged
-   isBot===true. A real AFK human (dost ka tab backgrounded) is never
-   isBot until 3 misses pile up AND someone manually votes to convert
-   the seat — so on every timeout before that, this call silently
-   no-op'd: G.turn never advanced, no roll, no move ("timeup ho gaya
-   but computer chaal nahi chal raha"). Pass forceAfk=true so this one
-   call site — a genuine elder-driven timeout, already gated above by
-   amIElderPlayer()+G.turn===seat — can drive a non-bot seat's single
-   turn without needing the seat permanently relabeled as a bot. */
+if(!(await _claimExpiredTurn(seat,G.timestamp)))return;
+if(G.over||G.turn!==seat)return;
+
+
 _dbgLog('BOTTURN_ELDER_ATTEMPT',{seat,MY_SEAT,expireCount:_timerExpireCount[seat]||0});
 await _doBotTurn(seat,true);
 if((_timerExpireCount[seat]||0)>=EXPIRE_COUNT_FOR_VOTE&&!PLAYERS[seat]?.isBot){
 _updateOfflineBadge(seat,true);
-if(ROOM_CODE)db.ref(`rooms/${ROOM_CODE}/afkSeats/${seat}`).set(true).then(()=>{_dbgLog('AFKSEATS_WRITE_OK',{seat});}).catch(e=>{_dbgLog('AFKSEATS_WRITE_FAILED',{seat,code:e.code,message:e.message});});
 }
 return;
 }
@@ -7400,13 +7088,7 @@ if(G.over||G.turn!==seat){_dbgLog('BOTTURN_BAIL',{seat,reason:'stale',gTurn:G.tu
 if(G.rolled||G.waiting){_dbgLog('BOTTURN_BAIL',{seat,reason:'already_rolled_or_waiting',gRolled:G.rolled,gWaiting:G.waiting});return;}
 if(_rolling){_dbgLog('BOTTURN_BAIL',{seat,reason:'rolling_in_progress'});return;}
 if(_botActing){_dbgLog('BOTTURN_BAIL',{seat,reason:'bot_already_acting'});return;}
-/* [FIX] forceAfk lets the elder's timeout handler (_onTurnTimerExpired)
-   drive a single turn for a real AFK human seat — isBot only ever
-   becomes true after 3 misses AND a manual vote, so without this every
-   check below silently no-op'd the whole function on a genuine human
-   seat, and the turn just sat there forever. The G.turn/G.over/G.rolled
-   guards above and at every await below are untouched by forceAfk, so a
-   player who comes back mid-"thinking" and taps for real still wins. */
+
 if(!PLAYERS[seat]?.isBot&&!forceAfk){_dbgLog('BOTTURN_BAIL',{seat,reason:'not_bot_no_force'});return;}
 _botActing=true;
 if(G.over||G.turn!==seat||G.rolled){_dbgLog('BOTTURN_BAIL',{seat,reason:'stale_after_lock'});_botActing=false;return;}
@@ -7416,25 +7098,25 @@ const thinkMs=diff==='easy'?150+Math.random()*150
 :diff==='hard'?300+Math.random()*200
 :200+Math.random()*150;
 await new Promise(res=>setTimeout(res,thinkMs));
-/* [FIX] the "thinking" delay above (and the move-pick delay below) are
-   real await gaps — if the real player taps "Turn off bot" while one is
-   in flight, PLAYERS[seat].isBot flips to false mid-turn but this
-   function had no way of noticing and would barrel on and roll/move for
-   them anyway, stealing the turn right back. Re-checking isBot after
-   every await means a reclaim mid-turn cleanly hands control back:
-   the bot stops, and the seat is left exactly as G currently is —
-   G.turn stays on seat with rolled/waiting reset by whichever branch
-   bailed, so the real player's own tap drives the roll/move from here. */
+
+
 if(!PLAYERS[seat]?.isBot&&!forceAfk){_dbgLog('BOTTURN_BAIL',{seat,reason:'reclaimed_after_think'});return;}
 if(G.over||G.turn!==seat){_dbgLog('BOTTURN_BAIL',{seat,reason:'stale_after_think',gTurn:G.turn});return;}
-const v=smartRng(seat);
+let v;
+if(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode){
+const _br=await window._srv('d',{c:ROOM_CODE,p:(seat!==MY_SEAT?{as:seat}:{})});
+if(!_br||typeof _br.v!=='number'){_dbgLog('BOTTURN_BAIL',{seat,reason:'server_roll_failed'});return;}
+v=_br.v;
+}else{
+v=smartRng(seat);
+}
 G.rolled=true;G.diceVal=v;
 _dbgLog('BOTTURN_ROLLED',{seat,dice:v,forceAfk:!!forceAfk});
 const _botDiceEl=document.getElementById('botdice-'+seat);
 if(_botDiceEl){_botDiceEl.style.display='block';_botDiceEl.textContent=v;}
 if(G.over||G.turn!==seat){G.rolled=false;G.diceVal=null;_dbgLog('BOTTURN_BAIL',{seat,reason:'stale_after_roll'});return;}
 if(v===6){G.sixes=(G.sixes||0)+1;
-if(G.sixes>=3){G.sixes=0;G.rolled=false;G.diceVal=null;_rolling=false;nextTurn(false);
+if(G.sixes>=3){const _ff=await _srvForfeit(seat);G.sixes=0;G.rolled=false;G.diceVal=null;_rolling=false;nextTurn(false);_applySrvSkip(_ff);
 _dbgLog('BOTTURN_3SIXES',{seat});
 pushGameState({action:"skip",dice:v,reason:"3sixes",auto:true},seat);return;}
 }else{G.sixes=0;}
@@ -7444,8 +7126,10 @@ await new Promise(res=>setTimeout(res,150));
 if(!PLAYERS[seat]?.isBot&&!forceAfk){G.rolled=false;G.diceVal=null;_dbgLog('BOTTURN_BAIL',{seat,reason:'reclaimed_no_moves'});return;}
 _dbgLog('BOTTURN_NO_MOVES',{seat,dice:v});
 pushGameState({action:"roll",dice:v,selectable:[],auto:true},seat);
-addPoints(seat,POINTS.noLegalMove);
+const _sk=await _srvSkip(seat);
+addPoints(seat,POINTS.noLegalMove,_isOnlineRoom());
 nextTurn(false);
+_applySrvSkip(_sk);
 pushGameState({action:"skip",dice:v,reason:"noMove",auto:true},seat);
 return;
 }
@@ -7468,19 +7152,13 @@ _dbgLog('BOTTURN_MOVE_PICKED',{seat,dice:v,tid:best.tid,forceAfk:!!forceAfk});
 await doMove(seat,best.tid,v);
 _dbgLog('BOTTURN_MOVE_DONE',{seat});
 }catch(err){
-/* [FIX] a throw anywhere above (teamMovable/_aiScoreMove on a corrupted
-   token) after G.rolled=true but before doMove used to leave G.rolled
-   stuck true forever. _onTurnTimerExpired's own guard
-   (`if(G.rolled&&!G.waiting)return;`) then bails before it ever reaches
-   the isBot branch that would retry _doBotTurn, and _doBotTurn's own
-   top guard (`if(G.rolled||G.waiting)return;`) blocks a fresh call too
-   — so the bot's dice stays showing and nothing ever moves again, even
-   though the turn timer keeps expiring. Recover here instead. */
+
 console.error('[BOT-RECOVER] _doBotTurn failed, forcing recovery:',err);
 _dbgLog('BOTTURN_ERROR',{seat,message:err&&err.message,stack:err&&String(err.stack||'').slice(0,300)});
 if(!G.over&&G.turn===seat){
 G.rolled=false;G.waiting=false;G.diceVal=null;_pendingAutoMove=false;
-nextTurn(false);
+const _ff=await _srvForfeit(seat);
+nextTurn(false);_applySrvSkip(_ff);
 pushGameState({action:"skip",dice:0,reason:"botError",auto:true},seat).catch(()=>{});
 }
 }finally{
@@ -7503,10 +7181,8 @@ _turnTimeoutTimer=setTimeout(()=>{if(!G.over&&PLAYERS[G.turn]?.isBot)_doBotTurn(
 return;
 }
 if(!amIElderPlayer()||!ROOM_CODE)return;
-/* [FIX] same catch-up reasoning as startTurnTimer: blindly waiting a
-   fresh TURN_TIMEOUT_MS here ignored however long the turn had already
-   been running (e.g. across a rejoin-after-reload), doubling the wait
-   on top of what the primary timer already accounts for. */
+
+
 const _elapsedMs=Date.now()-((typeof G.timestamp==='number'&&G.timestamp>0)?G.timestamp:Date.now());
 const _remainingMs=Math.max(0,TURN_TIMEOUT_MS-_elapsedMs);
 _turnTimeoutTimer=setTimeout(()=>{
@@ -7524,26 +7200,20 @@ if(_g)window._setMY_SEAT(_g.turn);
 if(G.turn!==MY_SEAT)return;
 doRoll(G.turn);
 }
-function doRoll(pid){
+async function doRoll(pid){
 if(_rolling){_dbgLog('DICE_ROLL_BLOCKED_ALREADY_ROLLING',{pid});return;}
 _dbgLog('DICE_ROLL_START',{pid,sixesStreakBefore:G.sixes||0,forcedPending:forceDice&&forceDice[pid]!=null,luckyActivePending:!!(G.pMeta&&G.pMeta[pid]&&G.pMeta[pid].luckyActive)});
 _cancelRerollWindow();
 _rolling=true;
 const rollSafety=setTimeout(()=>{_rolling=false;},DICE_DUR_MS+300);
 const d3d=document.getElementById(`d3d-${pid}`);
-/* [FIX] "dice atak/lag jaata hai after Lucky Number roll": the heavy
-   `luckyArmedPulse` filter:drop-shadow animation on .dice-cube (added
-   while lucky-armed) was only ever removed later by refreshUI(), which
-   doesn't run until after this whole roll+move sequence finishes. So the
-   entire time the dice was doing its own 3D roll animation, this filter
-   pulse animation was STILL running on the same element — two expensive
-   animations (3D transform + animated filter) stacked on one element,
-   which is exactly the kind of thing that stutters on mid/low-end
-   phones. Clear it synchronously right here, before the roll animation
-   starts, instead of waiting for the later refresh. */
+
+
 if(d3d){d3d.classList.add("off");if(d3d.classList.contains("lucky-armed"))d3d.classList.remove("lucky-armed");}
 let v;
-if(G.specialMode&&G.pMeta&&G.pMeta[pid]&&G.pMeta[pid].luckyActive){
+let _srvPm=null,_srvPts=0;
+const _isOnline=!!(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode);
+if(!_isOnline&&G.specialMode&&G.pMeta&&G.pMeta[pid]&&G.pMeta[pid].luckyActive){
 const bestNum=_computeBestNumber(pid);
 if(bestNum!=null){
 const blockSix=(G.sixes||0)>=2;
@@ -7556,11 +7226,36 @@ _dbgLog('POWER_LUCKYNUMBER_NO_BEST_NUM',{pid,fallbackDice:v});
 if(pid===MY_SEAT)showToast("Lucky Number couldn't help this roll — no favorable move available");
 }
 G.pMeta[pid].luckyActive=false;
+}else if(_isOnline){
+const _wasReroll=!!window._pendingRerollCharge;
+window._pendingRerollCharge=false;
+const _wantLucky=!!(G.specialMode&&G.pMeta&&G.pMeta[pid]&&G.pMeta[pid].luckyActive);
+const _dp={};if(_wasReroll)_dp.reroll=true;if(_wantLucky)_dp.lucky=true;
+const _r=await window._srv('d',{c:ROOM_CODE,p:_dp});
+if(!_r||typeof _r.v!=='number'){
+clearTimeout(rollSafety);_rolling=false;
+if(_wasReroll&&G.inventory&&G.inventory[pid])G.inventory[pid].reroll=(G.inventory[pid].reroll||0)+1;
+_dbgLog('DICE_ROLL_SERVER_FAILED',{pid,wasReroll:_wasReroll});
+showToast("Roll failed — check connection and try again");
+return;
+}
+v=_r.v;
+if(_r.pm){_srvPm=_r.pm;_srvPts=Number(_r.pts)||0;}
+if(_wantLucky){
+G.pMeta[pid].luckyActive=false;
+if(_r.lucky===0&&pid===MY_SEAT)showToast("Lucky Number couldn't help this roll — no favorable move available");
+_dbgLog('POWER_LUCKYNUMBER_ROLL',{pid,bestNum:_r.lucky,resultDice:v,source:'server'});
+}
+_dbgLog('DICE_ROLLED_NORMAL',{pid,dice:v,sixesStreakBeforeThisRoll:G.sixes||0,blockSixWasActive:(G.sixes||0)>=2,source:'server'});
 }else{
 v=smartRng(pid);
 _dbgLog('DICE_ROLLED_NORMAL',{pid,dice:v,sixesStreakBeforeThisRoll:G.sixes||0,blockSixWasActive:(G.sixes||0)>=2});
 }
-if(G.specialMode&&G.pMeta&&G.pMeta[pid]){
+if(_srvPm&&G.pMeta&&G.pMeta[pid]){
+const m=G.pMeta[pid];
+m.lr=_srvPm.lr;m.sr=_srvPm.sr;m.lv=_srvPm.lv;
+if(_srvPts)addPoints(pid,_srvPts,true);
+}else if(G.specialMode&&G.pMeta&&G.pMeta[pid]){
 const m=G.pMeta[pid];
 if(v<3){m.lr=(m.lr||0)+1;if(m.lr===3){_dbgLog('POINTS_LOW_ROLL_STREAK_3',{pid});addPoints(pid,POINTS.lowRollStreak);m.lr=0;}}else{m.lr=0;}
 if(m.lv===v){m.sr=(m.sr||0)+1;if(m.sr===3){_dbgLog('POINTS_SAME_ROLL_STREAK_3',{pid,v});addPoints(pid,POINTS.sameRollStreak);m.sr=0;}}else{m.sr=1;}
@@ -7569,6 +7264,9 @@ m.lv=v;
 G.rolled=true;
 G.diceVal=v;
 _dbgLog('DICE_ROLLED_SELF',{pid,dice:v,MY_SEAT});
+
+
+if(!_isOnline&&ROOM_CODE&&gameRef)gameRef.update({rolled:true,diceVal:v,turn:G.turn,actionBy:pid,timestamp:(window._cpuMode||window._pnpMode?Date.now():firebase.database.ServerValue.TIMESTAMP)}).catch(()=>{});
 navigator.vibrate&&navigator.vibrate(28);
 SFX.play('dice');
 animDice(pid,v,()=>{clearTimeout(rollSafety);_rolling=false;afterRoll(pid,v);});
@@ -7628,8 +7326,9 @@ if(G.sixes>=3){
 _dbgLog('THREE_SIXES_TURN_FORFEIT',{pid,note:'if this followed a Re-roll usage without a sixes reset, that is the known reroll-streak bug — check for POWER_REROLL_USED entries just before this'});
 G.sixes=0;G.rolled=false;G.diceVal=null;G.waiting=false;_rolling=false;
 renderTokens();
-setTimeout(()=>{
-nextTurn(false);
+setTimeout(async()=>{
+const _ff=await _srvForfeit(pid);
+nextTurn(false);_applySrvSkip(_ff);
 pushGameState({action:"skip",dice:v,reason:"3sixes",auto:_wasAutoRoll});
 },300);
 return;
@@ -7645,18 +7344,18 @@ showToast("No legal move — use Re-roll within 15s or your turn passes!");
 syncUI();
 return;
 }
-addPoints(pid,POINTS.noLegalMove);
-setTimeout(()=>{
+setTimeout(async()=>{
+const _sk=await _srvSkip(pid);
+addPoints(pid,POINTS.noLegalMove,_isOnlineRoom());
 nextTurn(false);
+_applySrvSkip(_sk);
 syncUI();
 pushGameState({action:"skip",dice:v,reason:"noMove",auto:_wasAutoRoll});
 },300);
 return;
 }
-/* [FIX] jab player ke paas Re-roll ho, single legal move ko auto-play nahi karte - warna Re-roll ka 15s window
-   khulta hi nahi tha (window sirf 'no legal move' ya 'multiple moves' branch mein start hoti thi). Ab is case mein
-   waiting branch chalti hai: token pe tap karke move karo ya Re-roll use karo. Timer se auto-roll hua ho (player
-   absent) to auto-move pehle jaisa hi rehta hai. */
+
+
 const _holdForReroll=!_wasAutoRoll&&pid===MY_SEAT&&!PLAYERS[pid]?.isBot&&!!(G.inventory&&G.inventory[pid]&&G.inventory[pid].reroll>0);
 if(!_holdForReroll&&shouldAutoMove(mv,v,pid)){
 _dbgLog('DICE_AUTOMOVE_TRIGGERED',{pid,dice:v,onlyLegalMoveTidsOrSameDest:mv.map(t=>({pid:t.pid,tid:t.tid,step:t.step})),reason:mv.length===1?'single_legal_move':'all_candidates_same_destination'});
@@ -7676,11 +7375,11 @@ showToast(`🤝 Team Control!You can also move ${mateName}'s tokens`);
 }
 syncUI();
 pushGameState({action:"roll",dice:v,selectable,auto:_wasAutoRoll});
-// [FIX] This is the actual bug: previously nothing restarted the turn timer here, so once
-// a player's ROLL timed out and auto-fired, there was no second countdown to catch them also
-// abandoning the MOVE decision — the "waiting" branch in _onTurnTimerExpired existed in code
-// but could never actually fire again. Restarting the timer for this same seat now gives a
-// fresh window for the move decision, whether the roll was manual or auto-triggered.
+
+
+
+
+
 if(pid===MY_SEAT){G.timestamp=Date.now();startTurnTimer(pid);}
 }
 async function onTokClick(pid,tid){
@@ -7713,11 +7412,8 @@ function finish(){if(done)return;done=true;resolve();}
 const start=performance.now();
 function tick(now){if(now-start>=ms)finish();else requestAnimationFrame(tick);}
 requestAnimationFrame(tick);
-/* [FIX] rAF is throttled/paused in backgrounded tabs (e.g. spectating on
-   an inactive tab while another tab is active). If rAF never fires, this
-   Promise would hang forever, keeping _animating stuck true and blocking
-   the Firebase sync queue (DIAG_STUCK_ANIMATING). setTimeout is clamped
-   but still fires in background tabs, so it guarantees eventual recovery. */
+
+
 setTimeout(finish,ms+800);
 });
 }
@@ -7727,13 +7423,8 @@ function jumpStep(el,shadowEl,startX,startY,endX,endY,rW,color,cp,layer,visualSc
 return new Promise(resolve=>{
 let _done=false;
 function _finish(){if(_done)return;_done=true;resolve();}
-/* [FIX] this whole animation is driven by requestAnimationFrame. If the
-   tab is backgrounded (spectating while another tab is active), browsers
-   throttle/pause rAF and this Promise can hang indefinitely mid-move —
-   leaving _animating stuck true, which then queues/delays every incoming
-   Firebase sync update (DIAG_STUCK_ANIMATING). setTimeout still fires
-   (clamped, but not paused) in background tabs, so it force-resolves and
-   snaps the token to its final transform instead of hanging forever. */
+
+
 setTimeout(()=>{
 if(_done)return;
 try{
@@ -7864,15 +7555,8 @@ const gap=cp*0.22;const _rawDx=(idx-(n-1)/2)*gap,_rawDy=0;
 const oxy=rcToXY(orc[0],orc[1]);
 const scaleStr=sc!==1?` scale(${sc})`:'';
 const _oRad=_tokenRotationDeg*Math.PI/180;
-/* [FIX] rotate the stacking offset by the seat's POV rotation, same as the
-   static renderer in _doRenderTokens() does (px=rxy.x+off.dx*cos-off.dy*sin).
-   #board-wrap is CSS-rotated per seat, and #tokens-layer lives inside it, so
-   any un-rotated (dx,0) offset written here gets auto-rotated again by that
-   parent transform — pushing companions along the wrong on-screen axis for
-   every seat except the one with 0deg rotation. That's the root cause of the
-   "teen token star pe sahi se khade nahi hote / ek token chhip jaata hai" bug:
-   for 3 of 4 seats this temporary push lands a companion off-axis from where
-   the settled layout expects it. */
+
+
 const dx=_rawDx*Math.cos(_oRad)-_rawDy*Math.sin(_oRad);
 const dy=_rawDx*Math.sin(_oRad)+_rawDy*Math.cos(_oRad);
 const _oTipDX=oTipFromCenter*Math.sin(_oRad);
@@ -7882,26 +7566,21 @@ const _mwTr=`translate(${oxy.x+dx-_rW0/2+_oTipDX}px,${oxy.y+dy-oHH-_oTipDY}px)ro
 _spacingLog('SPACING_WRITE',{writer:'companion_makeway',pid:other.pid,tid:other.tid,step:other.step,n,idx,scale:sc,dx:+dx.toFixed(1),dy:+dy.toFixed(1),deg:getBoardRotation(),tokenRotDeg:_tokenRotationDeg,tr:_mwTr});
 oEls.wrap.style.transform=_mwTr;
 oEls.wrap.style.transformOrigin=`${_rW0/2}px ${oHH}px`;
-/* [FIX] this "make way" transform is written directly and bypasses the
-   _lastStaticTr dirty-check cache used by _doRenderTokens(). If we don't
-   invalidate it here, the next authoritative render may see its freshly
-   computed transform string coincidentally match this stale cache and
-   skip re-applying it — leaving the token visually stuck at this temporary
-   wide-grid position instead of its correct final stacked spot (the
-   "token chhip gya peeche" bug). */
+
+
 oEls.wrap._lastStaticTr=null;
 setTimeout(()=>{if(oEls.wrap)oEls.wrap.style.transition="";},JUMP_MS+10);
 });
 if(!_homeStretchFired&&curStep===STEP_STRETCH_START){
 _homeStretchFired=true;
 _dbgLog('TOKEN_STRETCH_ENTRY',{pid:tok.pid,tid:tok.tid,curStep});
-addPoints(tok.pid,POINTS.stretchEntry);
+addPoints(tok.pid,POINTS.stretchEntry,_isOnlineRoom());
 }
 const cellKey=`${rc[0]}-${rc[1]}`;
 const isStarCell=GREY_STARS.has(cellKey)||COLOR_STARS.has(cellKey);
 if(i===steps-1&&isStarCell){
 _dbgLog('TOKEN_STAR_LAND',{pid:tok.pid,tid:tok.tid,cellKey});
-addPoints(tok.pid,POINTS.starLand);
+addPoints(tok.pid,POINTS.starLand,_isOnlineRoom());
 setTimeout(()=>{flashStarCell(rc[0],rc[1]);},JUMP_MS+20);
 setTimeout(()=>{SFX.play('star');},JUMP_MS+30);
 }
@@ -8063,6 +7742,21 @@ _pendingAutoMove=false;
 _lastTrapHit=null;
 _animating=true;
 try{
+const _actorSeat=G.turn;
+const _isOnlineMove=!!(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode);
+async function _commitMoveToServer(){
+if(!_isOnlineMove)return true;
+const _r=await window._srv('v',{c:ROOM_CODE,p:{tid,dv:v,as:(_actorSeat!==MY_SEAT?_actorSeat:undefined),of:(pid!==_actorSeat?pid:undefined)}});
+if(!_r||!Array.isArray(_r.tokens)){
+_dbgLog('MOVE_COMMIT_SERVER_FAILED',{pid,tid,v});
+showToast("Sync error — reconnecting...");
+return false;
+}
+G.tokens=_r.tokens;
+if(typeof _r.over!=='undefined')G.over=_r.over;
+if(_r.placements)G.placements=_r.placements;
+return true;
+}
 const tok=tokOf(pid,tid);
 if(!tok){_animating=false;return;}
 _dbgLog('DOMOVE_STEP_BEFORE',{pid,tid,v,stepBefore:tok.step});
@@ -8101,16 +7795,16 @@ capturedPids.add(enemy.pid);
 captured=true;
 SFX.play('capture');
 if(movingPid===MY_SEAT)recordKill();
-if(_enemyStepAtCapture===STEP_MAIN_END)addPoints(movingPid,POINTS.killBeforeStretch);else addPoints(movingPid,POINTS.kill);
-addPoints(enemy.pid,_victimKillPoints(_enemyStepAtCapture));
-if(isSpawn)addPoints(movingPid,POINTS.spawnKill);
+if(_enemyStepAtCapture===STEP_MAIN_END)addPoints(movingPid,POINTS.killBeforeStretch,true);else addPoints(movingPid,POINTS.kill,true);
+addPoints(enemy.pid,_victimKillPoints(_enemyStepAtCapture),true);
+if(isSpawn)addPoints(movingPid,POINTS.spawnKill,true);
 if(G.pMeta&&G.pMeta[movingPid]&&G.pMeta[movingPid].rf===enemy.pid){
-addPoints(movingPid,POINTS.revengeKill);
+addPoints(movingPid,POINTS.revengeKill,true);
 G.pMeta[movingPid].rf=null;
 }
 if(G.pMeta&&G.pMeta[movingPid]){
 G.pMeta[movingPid].ks=(G.pMeta[movingPid].ks||0)+1;
-if(G.pMeta[movingPid].ks===3){_dbgLog('POINTS_KILL_STREAK_3',{movingPid});addPoints(movingPid,POINTS.killStreak);G.pMeta[movingPid].ks=0;}
+if(G.pMeta[movingPid].ks===3){_dbgLog('POINTS_KILL_STREAK_3',{movingPid});addPoints(movingPid,POINTS.killStreak,true);G.pMeta[movingPid].ks=0;}
 }
 if(G.pMeta&&G.pMeta[enemy.pid])G.pMeta[enemy.pid].rf=movingPid;
 }
@@ -8134,16 +7828,8 @@ const els=_tokEls[key];
 const color=getDisplayColorForSeat(tok.pid);
 const _spawnColorName=['PINK','YELLOW','GREEN','BLUE'][tok.pid]||tok.pid;
 if(els){
-/* [FIX] this spawn tween used to jump straight to the raw, unstacked
-   entryXY cell-center with no rotation — ignoring any tokens already
-   sitting on the entry cell and the board's per-seat rotation. That
-   landed a freshly-spawned token exactly on top of the "center" slot
-   of an existing stack (or off-axis for rotated seats) instead of its
-   own offset position, which _doRenderTokens() would then never
-   correct because its dirty-check cache already matched. Compute the
-   same stack-index/rotation-aware destination _doRenderTokens() uses
-   before tweening, so the spawn animation and the settled render
-   agree on where this token belongs. */
+
+
 const _entryRcKey=`${entryCell[0]}-${entryCell[1]}`;
 const _grp=G.tokens.filter(t=>{
 if(t.step<=0||t.step>=STEP_DONE)return false;
@@ -8182,8 +7868,8 @@ bonus=diceWasSix;
 if(tok.step>=STEP_DONE){
 _dbgLog('TOKEN_STEP_DONE',{pid,tid,everKilled:!!tok.everKilled});
 renderTokens();await rafDelay(100);
-addPoints(pid,POINTS.stepDone);
-if(!tok.everKilled)addPoints(pid,POINTS.flawlessRun);
+addPoints(pid,POINTS.stepDone,_isOnlineRoom());
+if(!tok.everKilled)addPoints(pid,POINTS.flawlessRun,_isOnlineRoom());
 if(toksOf(pid).every(t=>t.step>=STEP_DONE)){
 if(!G.placements.includes(pid)){G.placements.push(pid);stampRank(pid);_dbgLog('PLAYER_FINISHED_ALL_TOKENS',{pid,rank:G.placements.indexOf(pid)+1});}
 renderTokens();
@@ -8198,6 +7884,7 @@ G.over=true;
 _dbgLog('GAME_OVER',{finalPlacements:G.placements.slice()});
 _animating=false;
 _replayPendingDroppedTokens();
+if(!(await _commitMoveToServer())){_animating=false;return;}
 await pushGameState({lastAction:"win"});
 const totalActive=PLAYERS.filter(p=>p.active).length;
 const myRank=G.placements.length;
@@ -8241,6 +7928,7 @@ movesPayload.push({pid:t.pid,tid:t.tid,type:"home",finalStep:0});
 }
 });
 await _checkAegisShieldKills();
+if(!(await _commitMoveToServer())){_animating=false;return;}
 nextTurn(bonus,diceWasSix);
 pushGameState({
 action:"move",
@@ -8251,21 +7939,15 @@ movedTid:tid,
 auto:_wasAutoMove
 },pid).catch(e=>{_animating=false;});
 }catch(err){
-/* [FIX] any throw inside the animation/move chain above (e.g. a missing
-   _tokEls entry mid-jumpStep, a null cell lookup) used to leave
-   _animating stuck true forever with no recovery path — every later
-   guard (`if(_animating||_rolling)return;` in _onTurnTimerExpired,
-   updateTurnBanner's smart-dice check, etc) then silently refuses to
-   act, so the turn timer runs out over and over but nothing ever
-   moves ("timeup ho gaya but computer chaal nahi chal raha"). Catching
-   here guarantees _animating always clears and the turn still advances
-   even if this particular move died mid-animation. */
+
+
 console.error('[MOVE-RECOVER] doMove failed, forcing recovery:',err);
 _animating=false;
 _replayPendingDroppedTokens();
 try{renderTokens();}catch(e){}
 if(!G.over&&G.turn===pid){
-nextTurn(false);
+const _ff=await _srvForfeit(pid);
+nextTurn(false);_applySrvSkip(_ff);
 pushGameState({action:"skip",dice:v,reason:"moveError",auto:true},pid).catch(()=>{});
 }
 }
@@ -8336,7 +8018,7 @@ clearSession();
 if(ROOM_CODE&&roomRef&&!window._cpuMode&&!window._pnpMode){
 {
 const _endedRoomCode=ROOM_CODE;
-/* match over: clear this room's chat right away, then remove the whole room */
+
 try{
 db.ref(`rooms/${_endedRoomCode}/chat`).remove();
 db.ref(`rooms/${_endedRoomCode}/teamChat`).remove();
@@ -8351,7 +8033,7 @@ if(window._autoBackTimer)clearInterval(window._autoBackTimer);
 const _abTick=()=>{
 if(ROOM_CODE!==_endedRoomCode){clearInterval(window._autoBackTimer);window._autoBackTimer=null;return;}
 if(_abBtn)_abBtn.textContent='Back ('+_abn+')';
-if(_abn<=0){clearInterval(window._autoBackTimer);window._autoBackTimer=null;window.leaveToLobby();return;}
+if(_abn<=0){clearInterval(window._autoBackTimer);window._autoBackTimer=null;_handlePlayAgainClick();return;}
 _abn--;
 };
 _abTick();
@@ -8506,165 +8188,27 @@ window._confettiFrame=requestAnimationFrame(drawConfetti);
 }
 }
 }
-let _playAgainListener=null;
-let _playAgainVoted=false;
-let _playAgainRetryTimer=null;
-function _listenPlayAgain(){
-if(!ROOM_CODE)return;
-if(_playAgainListener)return;
-const ref=db.ref(`rooms/${ROOM_CODE}/playAgainCode`);
-const cb=snap=>{
-const newCode=snap.val();
-if(!newCode)return;
-_joinPlayAgainRoom(newCode);
-};
-ref.on('value',cb);
-_playAgainListener=()=>ref.off('value',cb);
-}
-async function _joinPlayAgainRoom(newCode){
-clearTimeout(_playAgainRetryTimer);_playAgainRetryTimer=null;
-if(_playAgainListener){_playAgainListener();_playAgainListener=null;}
-document.getElementById("win").classList.remove("show");
-if(window._confettiFrame){cancelAnimationFrame(window._confettiFrame);window._confettiFrame=null;}
-showToast('🎮 Joining new room...');
-clearTimeout(_turnTimeoutTimer);_turnTimeoutTimer=null;
-clearTimeout(_abandonCheckTimer);_abandonCheckTimer=null;
-_stopHeartbeat();
-_stopStaleTurnWatchdog();_stopPeriodicResync();
-_listeners.forEach(fn=>fn());_listeners=[];
-_gameStarted=false;_gameStartLock=false;_pendingSync=[];
-_rolling=false;_animating=false;_onlineSeats=new Set();_pendingDroppedTokensQueue=[];
-Object.keys(_processedMoveTs).forEach(k=>delete _processedMoveTs[k]);
-Object.keys(_lastSeenDice).forEach(k=>delete _lastSeenDice[k]);
-_lastTimerTurn=-1;_cachedElderResult=null;_cachedElderOnlineSet='';
-_forcedElderSeat=null;_gameLoaded=false;_playAgainVoted=false;
-smartDice.targetPids.clear();
-Object.keys(_tokEls).forEach(k=>_removeTokEl(k));
-document.getElementById("game-wrap").style.display="none";
-document.getElementById("top-bar").style.display="none";
-document.getElementById("pause-overlay").classList.remove("show");
-_chatOpen=false;_unreadCount=0;_chatListening=false;_lastChatKey=null;_chatHistoryReady=false;
-_replyTarget=null;
-_resetTeamChatSession();
-const chatPanel=document.getElementById("chat-panel");
-if(chatPanel){chatPanel.classList.remove("open");chatPanel.style.bottom="";}document.body.classList.remove("chat-open");
-await new Promise(r=>setTimeout(r,800));
-try{
-await waitForAuth();
-const newRoomBase=db.ref(`rooms/${newCode}`);
-const[seatLayoutSnap,playersSnap,hostSnap,numPlayersSnap]=await Promise.all([
-newRoomBase.child('seatLayout').once('value').catch(()=>null),
-newRoomBase.child('players').once('value').catch(()=>null),
-newRoomBase.child('host').once('value').catch(()=>null),
-newRoomBase.child('numPlayers').once('value').catch(()=>null)
-]);
-if(!seatLayoutSnap||!numPlayersSnap||!numPlayersSnap.exists()){showToast('New room not ready yet,try again');return;}
-const rData={
-seatLayout:seatLayoutSnap.val(),
-players:(playersSnap&&playersSnap.val())||{},
-host:hostSnap&&hostSnap.val(),
-numPlayers:numPlayersSnap.val()
-};
-const layout=rData.seatLayout||SEAT_LAYOUTS[rData.numPlayers]||[0,1,2,3];
-const taken=Object.keys(rData.players||{}).map(Number);
-const oldSeat=MY_SEAT;
-let newSeat=layout.includes(oldSeat)&&!taken.includes(oldSeat)?oldSeat:layout.find(s=>!taken.includes(s));
-if(newSeat==null){showToast('Room is full');return;}
-MY_SEAT=newSeat;
-IS_HOST=(rData.host===MY_SEAT)||amIElderPlayer();
-NUM_PLAYERS=rData.numPlayers;
-ROOM_CODE=newCode;
-roomRef=db.ref(`rooms/${newCode}`);
-gameRef=db.ref(`rooms/${newCode}/game`);
-playersRef=db.ref(`rooms/${newCode}/players`);
-await db.ref(`rooms/${newCode}/players/${MY_SEAT}`).set(_myRoomPlayerEntry(MY_SEAT));
-await _joinRoomAsMember(newCode);
-_bindPresence(newCode,MY_SEAT);
-saveSession();
-document.getElementById("lobby").style.display="none";
-document.getElementById("display-room-code").textContent=newCode;
-document.getElementById("modal-waiting").classList.add("show");
-listenRoom();
-listenChat();
-_startWaitingExpireTimer(newCode,Date.now());
-showToast('✅ New room joined!Waiting for others...');
-}catch(e){
-showToast('Failed to join new room');
-}
+function _deleteEndedRoom(code){
+if(!code)return;
+try{window._srv('x',{c:code});}catch(e){}
+setTimeout(()=>{try{db.ref(`rooms/${code}`).remove().catch(()=>{});}catch(e){}},2500);
 }
 async function _handlePlayAgainClick(){
-if(_playAgainVoted)return;
-if(window._cpuMode){restartGameLocal();return;}
-if(window._pnpMode){restartGameLocal();return;}
-if(!ROOM_CODE){restartGameLocal();return;}
+if(window._cpuMode||window._pnpMode||!ROOM_CODE){restartGameLocal();return;}
 if(window._autoBackTimer){clearInterval(window._autoBackTimer);window._autoBackTimer=null;}
-window.leaveToLobby();
-return;
-_playAgainVoted=true;
-const btn=document.getElementById('btn-play-again');
-if(btn){btn.textContent='⏳ Waiting...';btn.disabled=true;}
-/* [FIX] pehle sirf 'elder' player ke tap se room banta tha. Ab koi bhi player tap kare to room ban jaata hai:
-   pehla tap 'playAgainClaim' claim karta hai (transaction, taaki do rooms na ban jayein) aur room banata hai; baaki sab
-   playAgainCode listener se apne aap us room mein aa jaate hain. Agar 15s tak koi room nahi bana to button wapas enable. */
-const _oldRoomCode=ROOM_CODE;
-clearTimeout(_playAgainRetryTimer);
-_playAgainRetryTimer=setTimeout(()=>{
-if(_playAgainVoted&&ROOM_CODE===_oldRoomCode){_playAgainVoted=false;if(btn){btn.textContent='Back';btn.disabled=false;}}
-},15000);
-let _mayCreateRematch=false;
+const _code=ROOM_CODE,_seat=MY_SEAT;
+clearSession();
+let _lastOut=false;
 try{
-const _claimRes=await db.ref(`rooms/${_oldRoomCode}/playAgainClaim`).transaction(cur=>{
-if(cur&&cur.ts&&(Date.now()-cur.ts)<12000)return;
-return{seat:MY_SEAT,ts:Date.now()};
-});
-_mayCreateRematch=!!(_claimRes&&_claimRes.committed);
-}catch(e){
-_mayCreateRematch=amIElderPlayer();
-}
-if(_mayCreateRematch){
-try{
-const numP=NUM_PLAYERS;
-const layout=SEAT_LAYOUTS[numP]||[0,1,2,3];
-const[oldTeamModeSnap,oldColorAssignSnap,oldSpecialModeSnap]=await Promise.all([
-db.ref(`rooms/${ROOM_CODE}/teamMode`).once('value').catch(()=>null),
-db.ref(`rooms/${ROOM_CODE}/colorAssign`).once('value').catch(()=>null),
-db.ref(`rooms/${ROOM_CODE}/specialMode`).once('value').catch(()=>null)
-]);
-/* [FIX] settings pehle sirf purane room ke DB node se padhi jaati thi, jabki elder wo room match ke 4s baad delete kar deta hai -
-   to der se tap karne pe Team Mode / Special Mode / colors default pe chale jaate the. Ab local game state se pehle lete hain,
-   DB sirf fallback hai. */
-const _carryTeamMode=!!window._teamMode||!!(oldTeamModeSnap&&oldTeamModeSnap.val()===true);
-const _carryColorAssign=window._colorAssign||(oldColorAssignSnap&&oldColorAssignSnap.val())||DEFAULT_COLOR_ASSIGN;
-const _carrySpecialMode=!!G.specialMode||!!(oldSpecialModeSnap&&oldSpecialModeSnap.val()===true);
-let newCode,exists;
-do{
-newCode=genCode();
-const snap=await db.ref(`rooms/${newCode}/status`).once('value');
-exists=snap.exists();
-}while(exists);
-/* [FIX] yahan pehle db.ref(`rooms/${newCode}`).set({...}) tha - room ke root pe ek single set. Firebase rules mein rooms/$roomId pe
-   koi .write nahi hai (sirf children pe), isliye wo PERMISSION_DENIED hota tha aur rematch 'Failed to create new room' pe atak jaata tha.
-   createRoom ki tarah multi-path root update use karte hain - har path apne rule se check hota hai. */
-const _rmUpdates={};
-_rmUpdates[`rooms/${newCode}/numPlayers`]=numP;
-_rmUpdates[`rooms/${newCode}/status`]='waiting';
-_rmUpdates[`rooms/${newCode}/host`]=layout[0];
-_rmUpdates[`rooms/${newCode}/seatLayout`]=layout;
-_rmUpdates[`rooms/${newCode}/teamMode`]=_carryTeamMode;
-_rmUpdates[`rooms/${newCode}/specialMode`]=_carrySpecialMode;
-_rmUpdates[`rooms/${newCode}/autoStart`]=false;
-_rmUpdates[`rooms/${newCode}/colorAssign`]=_carryColorAssign;
-_rmUpdates[`rooms/${newCode}/createdAt`]=firebase.database.ServerValue.TIMESTAMP;
-await db.ref().update(_rmUpdates);
-await db.ref(`rooms/${_oldRoomCode}/playAgainCode`).set(newCode);
-}catch(e){
-showToast('Failed to create new room');
-_playAgainVoted=false;
-clearTimeout(_playAgainRetryTimer);
-if(btn){btn.textContent='Back';btn.disabled=false;}
-db.ref(`rooms/${_oldRoomCode}/playAgainClaim`).remove().catch(()=>{});
-}
-}
+await db.ref(`rooms/${_code}/leftSeats/${_seat}`).set(true);
+const [pl,ls]=await Promise.all([db.ref(`rooms/${_code}/players`).once('value'),db.ref(`rooms/${_code}/leftSeats`).once('value')]);
+const seats=Object.keys(pl.val()||{});
+const left=ls.val()||{};
+_lastOut=seats.length>0&&seats.every(sn=>left[sn]===true);
+}catch(e){}
+await window.leaveToLobby();
+showToast('You left the room. You are in the lobby now.');
+if(_lastOut)_deleteEndedRoom(_code);
 }
 function restartGameLocal(){
 if(window._confettiFrame){cancelAnimationFrame(window._confettiFrame);window._confettiFrame=null;}
@@ -9409,9 +8953,8 @@ window._getNUM_PLAYERS=function(){return NUM_PLAYERS;};
 window._setNUM_PLAYERS=function(v){NUM_PLAYERS=v;};
 window._getROOM_CODE=function(){return ROOM_CODE;};
 window._setROOM_CODE=function(v){ROOM_CODE=v;};
-/* [FIX] lets _dbgLog (defined earlier, in the diagnostic script block) tag
-   every log entry with which seat/name THIS tab is playing as, so two tabs
-   in the same room no longer produce indistinguishable merged logs. */
+
+
 window._getMySeat=function(){return MY_SEAT;};
 window._getMyName=function(){return MY_NAME;};
 window._getGameRef=function(){return gameRef;};
@@ -9422,12 +8965,8 @@ window._getMY_SLOT=function(){return MY_SLOT;};
 window._setMY_SLOT=function(v){MY_SLOT=v;};
 });</script>
 <script>(function(){
-/* [FIX] removed the second window._dbgLog(msg,color) redefinition + its duplicate
-   dbg-panel/dbg-log/dbg-toggle DOM — it was silently overwriting the original
-   window._dbgLog(tag,data) from the top of <head>, so every gameplay log call
-   (ONLINE_GROUPS, ONLINE_TOKEN_POS, ONLINE_HEARTBEAT, etc.) was being routed to a
-   hidden panel instead of the visible 🐞 panel. Now everything uses the one
-   original logger, so those entries will show up live while playing. */
+
+
 window.addEventListener('unhandledrejection',e=>{
 try{window._dbgLog('PROMISE_REJECTION',{reason:(e.reason&&e.reason.message)?e.reason.message:String(e.reason)});}catch(e2){}
 });
@@ -9435,7 +8974,7 @@ try{window._dbgLog('PROMISE_REJECTION',{reason:(e.reason&&e.reason.message)?e.re
 <script>(function(){
 const DBG_KEY='ludo_dbg_on';
 let _taps=0,_timer=null;
-let _dbgOn=false; /* debug panel permanently disabled — crown-tap toggle removed */
+let _dbgOn=false;
 function _applyDebugState(crown){
 const btn=document.getElementById('dbg-toggle');
 if(btn)btn.style.display='none';
@@ -9451,7 +8990,7 @@ _applyDebugState(crown);
 crown.addEventListener('touchstart',function(e){
 e.preventDefault();
 e.stopPropagation();
-/* crown-tap debug toggle disabled — no-op */
+
 return;
 _taps++;
 clearTimeout(_timer);
@@ -9513,7 +9052,7 @@ appId:"1:273830749078:web:b197c8e42fc24b2b8a73b7"
 }
 window.db=firebase.database();
 window.auth=firebase.auth();
-/* Remote debug flag (players/<adminUid>/dbgLogs), every device listens here. */
+
 (function(){
 const ADMIN_UID='mjGnd06C9Chd20Yc8mIoQEYumDy1';
 const FLAG_PATH='players/'+ADMIN_UID+'/dbgLogs';
@@ -9536,12 +9075,8 @@ window.auth.onAuthStateChanged(function(u){if(u)attach();else detach();});
 boot();
 setInterval(boot,1000);
 })();
-/* [FIX] Explicitly lock persistence to LOCAL (survives tab close, page
-   refresh, and full browser restart — cleared only if the user clears
-   site data). This is already Firebase's default, but setting it
-   explicitly — and waiting for it to resolve before touching auth —
-   removes any chance the SDK falls back to a weaker persistence mode
-   before we start reading/writing sign-in state. */
+
+
 window.auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(function(e){}).then(function(){
 if(typeof _patchFirebaseRefs==='function')_patchFirebaseRefs();
 let _authInitHandled=false;
@@ -9558,23 +9093,15 @@ if(u&&!u.isAnonymous&&typeof window._onGoogleSignedIn==='function'){
 window._onGoogleSignedIn(u);
 }
 if(u){
-/* [FIX] a real user (Google-linked or anonymous) has arrived — never
-   mint a fresh anonymous user after this point, even if a delayed
-   grace-window fallback below is still pending. */
+
+
 _authInitHandled=true;
 return;
 }
 if(!_authInitHandled){
 if(_hadGoogleSessionBefore()){
-/* [FIX] this browser previously signed in with Google. Firebase's
-   own persisted-session restore is async and can occasionally take
-   a moment (slow connection, webview, first paint after browser
-   restart) — the very first onAuthStateChanged callback can fire
-   with null before that restore lands. Previously the code called
-   signInAnonymously() immediately on that first null, which mints a
-   brand-new anonymous UID and silently overwrites/orphans the real
-   linked session — this was the "sign-in disappears on refresh" bug.
-   Give the real session a grace window to show up before falling back. */
+
+
 setTimeout(_fallbackToAnonIfStillUnhandled,2000);
 }else{
 _fallbackToAnonIfStillUnhandled();
