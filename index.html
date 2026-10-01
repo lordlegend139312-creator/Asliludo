@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<link rel="preconnect" href="https://asliludo.vercel.app" crossorigin>
 <script>
 (function(){
 try{
@@ -54,7 +55,7 @@ window._srv=function(t,b){
 window._srvRaw=window._srv;
 window._srv=function(t,b){
   var w=window._lastCommitP;
-  if(w&&(t==='d'||t==='s'||t==='f'||t==='p'||t==='r')){
+  if(w&&(t==='d'||t==='s'||t==='f'||t==='p'||t==='r'||t==='ln')){
     return w.then(function(){return window._srvRaw(t,b);},function(){return window._srvRaw(t,b);});
   }
   return window._srvRaw(t,b);
@@ -2152,8 +2153,29 @@ if(Array.isArray(r.tokens))G.tokens=r.tokens;
 G.turn=r.turn;
 G.frozenTokens=r.frozenTokens||[];
 G.aegisShields=r.aegisShields||[];
+_aegisMergePending();
 }
 let _placeBusy=false;
+/* AEGIS: one-shot + optimistic state that survives server snapshots */
+let _aegisPend=null; // {pid,tid,okAt} from click until the server state confirms it
+function _aegisMergePending(){
+if(!_aegisPend||MY_SEAT===null)return;
+const p=_aegisPend;
+const has=(G.aegisShields||[]).some(s=>s.pid===p.pid&&s.tid===p.tid);
+if(has||(p.okAt&&Date.now()-p.okAt>6000)){_aegisPend=null;return;}
+G.aegisShields=(G.aegisShields||[]).concat([{pid:p.pid,tid:p.tid,remaining:3}]);
+if(G.inventory&&G.inventory[MY_SEAT])G.inventory[MY_SEAT].aegis=0;
+if(G.frozenTokens&&G.frozenTokens.length)G.frozenTokens=G.frozenTokens.filter(f=>!(f.pid===p.pid&&f.tid===p.tid));
+}
+async function _aegisVerify(pid,tid){
+try{
+if(!(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode))return false;
+await new Promise(r=>setTimeout(r,1200));
+const snap=await gameRef.child('aegisShields').once('value');
+const v=snap.val();const list=Array.isArray(v)?v:(v?Object.values(v):[]);
+return list.some(sh=>sh&&sh.pid===pid&&sh.tid===tid);
+}catch(e){return false;}
+}
 async function _srvPlace(kind,extra){
 if(!(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode))return true;
 const r=await window._srv('p',{c:ROOM_CODE,p:Object.assign({k:kind},extra||{})});
@@ -2260,7 +2282,7 @@ if(!els||!els.wrap)return;
 els.wrap.classList.add('aegis-shielded');
 const ring=document.createElement('div');
 ring.className='aegis-ring-mark';
-ring.style.cssText='position:absolute;left:5%;top:-13%;width:90%;height:30%;pointer-events:none;z-index:9;overflow:visible;';
+ring.style.cssText='position:absolute;left:5%;top:-23%;width:90%;height:30%;pointer-events:none;z-index:9;overflow:visible;';
 const _haloGradId=`aegisHaloGrad-${key}`,_haloBlurId=`aegisHaloBlur-${key}`;
 ring.innerHTML=`<svg viewBox="106 0 88 40" width="100%" height="100%" style="overflow:visible"><defs><linearGradient id="${_haloGradId}" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#fff6c8"/><stop offset="25%" stop-color="#ffd94a"/><stop offset="50%" stop-color="#b8791a"/><stop offset="75%" stop-color="#ffe07a"/><stop offset="100%" stop-color="#a86a15"/></linearGradient><filter id="${_haloBlurId}" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="3"/></filter></defs><g class="halo-g"><g opacity=".85" filter="url(#${_haloBlurId})"><ellipse cx="150" cy="20" rx="44" ry="14" fill="none" stroke="#ffe27a" stroke-width="16"/></g><g><ellipse cx="150" cy="20" rx="44" ry="14" fill="none" stroke="url(#${_haloGradId})" stroke-width="12"/></g></g></svg>`;
 
@@ -2268,6 +2290,7 @@ els.wrap.appendChild(ring);
 });
 }
 function startAegisTargeting(){
+if(_aegisPend){showToast("Aegis is already applied");return;}
 if(!G.inventory||!G.inventory[MY_SEAT]||!(G.inventory[MY_SEAT].aegis>0)){showToast("You don't have an Aegis to use");return;}
 window.closeShop();
 cancelPlacement();
@@ -2510,7 +2533,7 @@ pushGameState({action:"reverse"});
 }
 window.applyReverse=applyReverse;
 async function applyAegis(pid,tid){
-if(_placingPower!=='aegis'||_placeBusy)return;
+if(_placingPower!=='aegis'||_placeBusy||_aegisPend)return;
 if(!G.inventory[MY_SEAT]||!(G.inventory[MY_SEAT].aegis>0)){cancelPlacement();return;}
 const _atok=tokOf(pid,tid);
 if(_atok){
@@ -2528,8 +2551,9 @@ if(_enemyAegisHere){_dbgLog('POWER_AEGIS_BLOCKED_ENEMY_AEGIS_ON_CELL',{targetPid
 }
 }
 _placeBusy=true;
+_aegisPend={pid,tid,okAt:0};
 const _prevFrozen=(G.frozenTokens||[]).slice();
-G.inventory[MY_SEAT].aegis-=1;_invDec('aegis',true);
+G.inventory[MY_SEAT].aegis=Math.max(0,(G.inventory[MY_SEAT].aegis||0)-1);_invDec('aegis',true);
 if(!G.aegisShields)G.aegisShields=[];
 G.aegisShields.push({pid,tid,remaining:3});
 let _wasFrozen=false;
@@ -2538,11 +2562,16 @@ const before=G.frozenTokens.length;
 G.frozenTokens=G.frozenTokens.filter(f=>!(f.pid===pid&&f.tid===tid));
 if(G.frozenTokens.length<before)_wasFrozen=true;
 }
+const _casterP=PLAYERS[MY_SEAT];
+const _aegTxt=_wasFrozen?`😇 ${(_casterP&&_casterP.label)||"A player"}'s Aegis shielded and unfroze a token!`:`😇 ${(_casterP&&_casterP.label)||"A player"} shielded a token with Aegis!`;
 cancelPlacement();
 _renderAegisVisuals();
 _renderFrozenVisuals();
+showToast(_aegTxt); /* instant feedback — server confirms in the background */
 let _okP=false;try{_okP=await _srvPlace('aegis',{pid,tid});}finally{_placeBusy=false;}
+if(!_okP)_okP=await _aegisVerify(pid,tid); /* no/ambiguous reply: check real server state before undoing */
 if(!_okP){
+_aegisPend=null;
 G.inventory[MY_SEAT].aegis+=1;
 G.aegisShields=(G.aegisShields||[]).filter(sh=>!(sh.pid===pid&&sh.tid===tid));
 if(_wasFrozen)G.frozenTokens=_prevFrozen;
@@ -2550,12 +2579,11 @@ _renderAegisVisuals();
 _renderFrozenVisuals();
 showToast("Aegis failed — couldn't be verified, try again");return;
 }
+if(_aegisPend){if(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode)_aegisPend.okAt=Date.now();else _aegisPend=null;}
 _dbgLog('POWER_AEGIS_APPLIED',{casterPid:MY_SEAT,targetPid:pid,targetTid:tid,unfroze:_wasFrozen,invLeft:G.inventory[MY_SEAT].aegis});
-const _casterP=PLAYERS[MY_SEAT];
-G.lastPowerUse={pid:MY_SEAT,ts:Date.now(),text:_wasFrozen?`😇 ${(_casterP&&_casterP.label)||"A player"}'s Aegis shielded and unfroze a token!`:`😇 ${(_casterP&&_casterP.label)||"A player"} shielded a token with Aegis!`};
+G.lastPowerUse={pid:MY_SEAT,ts:Date.now(),text:_aegTxt};
 _lastShownPowerUseTs=G.lastPowerUse.ts;
 pushGameState({});
-showToast(G.lastPowerUse.text);
 }
 function _computeBestNumber(pid){
 const blockSix=(G.sixes||0)>=2;
@@ -2597,9 +2625,30 @@ function _cancelLuckyNumberActivation(){
 const overlayEl=document.getElementById(`pluckyactivate-${MY_SEAT}`);
 if(overlayEl)overlayEl.classList.remove('show');
 }
-function confirmLuckyNumberActivate(){
-if(_placingPower!=='luckyNumber')return;
+let _luckyArming=false;
+async function confirmLuckyNumberActivate(){
+if(_placingPower!=='luckyNumber'||_luckyArming)return;
 if(!G.inventory[MY_SEAT]||!(G.inventory[MY_SEAT].luckyNumber>0)){cancelPlacement();return;}
+const _online=!!(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode);
+if(_online){
+/* online: the SERVER arms it (game/pMeta/<seat>/luckyActive) and deducts the stock,
+   so it can't be un-armed from devtools. Local state is only updated after server ok. */
+_luckyArming=true;
+let _r=null;
+try{_r=await window._srv('ln',{c:ROOM_CODE});}catch(e){_r=null;}
+_luckyArming=false;
+if(!(_r&&_r.ok)){cancelPlacement();showToast("Lucky Number activate nahi hua — connection check karke dobara try karo");return;}
+if(!G.pMeta)G.pMeta=_defaultPMeta();
+if(!G.pMeta[MY_SEAT])G.pMeta[MY_SEAT]={ks:0,lr:0,sr:0,lv:null,rf:null,luckyActive:false};
+if(!_r.already&&G.inventory[MY_SEAT].luckyNumber>0)G.inventory[MY_SEAT].luckyNumber-=1;
+G.pMeta[MY_SEAT].luckyActive=true;
+_dbgLog('POWER_LUCKYNUMBER_ARMED',{pid:MY_SEAT,invLeft:G.inventory[MY_SEAT].luckyNumber,source:'server',already:!!_r.already});
+cancelPlacement();
+showToast(_r.already?"Lucky Number pehle se armed hai":"Lucky Number armed — boosts your next roll!");
+if(G.turn===MY_SEAT&&!G.rolled){_preKey=null;_prefetchRoll(MY_SEAT);}
+return;
+}
+/* offline (CPU / pass-and-play): purely local */
 G.inventory[MY_SEAT].luckyNumber-=1;_invDec('luckyNumber',true);
 if(!G.pMeta)G.pMeta=_defaultPMeta();
 if(!G.pMeta[MY_SEAT])G.pMeta[MY_SEAT]={ks:0,lr:0,sr:0,lv:null,rf:null,luckyActive:false};
@@ -2608,6 +2657,7 @@ _dbgLog('POWER_LUCKYNUMBER_ARMED',{pid:MY_SEAT,invLeft:G.inventory[MY_SEAT].luck
 cancelPlacement();
 pushGameState({});
 showToast("Lucky Number armed — boosts your next roll!");
+if(G.turn===MY_SEAT&&!G.rolled){_preKey=null;_prefetchRoll(MY_SEAT);}
 }
 window.confirmLuckyNumberActivate=confirmLuckyNumberActivate;
 function useReroll(){
@@ -2880,7 +2930,7 @@ if(snap.exists()){
 window._dbgLog('JOIN_MEMBER_ALREADY_MEMBER',{code,uid});
 return;
 }
-await _retryAsync('JOIN_MEMBER_UPDATE',async()=>{const x=await window._srv('j',{c:code});if(!x||!x.ok)throw new Error('join-denied');return x;},3,900);
+await _retryAsync('JOIN_MEMBER_UPDATE',async()=>{const x=await window._srv('j',{c:code,p:{name:MY_NAME,photo:(MY_PROFILE&&MY_PROFILE.photoURL)||''}});if(!x||!x.ok)throw new Error('join-denied');return x;},3,900);
 }catch(e){window._dbgLog('JOIN_MEMBER_FAILED',{code:e.code,message:e.message});console.error('JOIN_MEMBER_FAILED',{code:e.code,message:e.message});}
 }
 function _bindPresence(code,seat){
@@ -3136,8 +3186,9 @@ ROOM_CODE=code;
 roomRef=db.ref(`rooms/${code}`);
 gameRef=db.ref(`rooms/${code}/game`);
 playersRef=db.ref(`rooms/${code}/players`);
-await db.ref(`rooms/${code}/players/${MY_SEAT}`).set(_myRoomPlayerEntry(MY_SEAT));
-await _joinRoomAsMember(code);
+const _jr=await _retryAsync('JOIN_SEAT',async()=>{const x=await window._srv('j',{c:code,p:{name:MY_NAME,seat:MY_SEAT,photo:(MY_PROFILE&&MY_PROFILE.photoURL)||''}});if(!x||!x.ok||!Number.isInteger(x.seat))throw new Error('join-denied');return x;},3,900).catch(()=>null);
+if(!_jr){ROOM_CODE=null;roomRef=null;gameRef=null;playersRef=null;showToast("Couldn't join — room is full or closed");return;}
+MY_SEAT=_jr.seat;
 _bindPresence(code,MY_SEAT);
 saveSession();
 closeModals();
@@ -3232,6 +3283,17 @@ syncGameState(data);
 };
 gameRef.on('value',cb3);
 _listeners.push(()=>gameRef.off('value',cb3));
+if(MY_SEAT!==null){
+_trapCache=[];
+const _trapsRef=db.ref(`rooms/${ROOM_CODE}/traps/${MY_SEAT}`);
+const cbTraps=snap=>{
+_trapCache=Object.keys(snap.val()||{});
+G.traps=_myTrapsFromCache();
+try{_renderMyTraps();}catch(e){}
+};
+_trapsRef.on('value',cbTraps,()=>{});
+_listeners.push(()=>_trapsRef.off('value',cbTraps));
+}
 const elderRef=db.ref(`rooms/${ROOM_CODE}/elderSeat`);
 const cbElder=snap=>{
 const val=snap.val();
@@ -3440,6 +3502,8 @@ showToast("❌ Failed to start game — check connection");
 }finally{window._startingGame=false;}
 };
 let SEAT_LAYOUT_ACTIVE=[0,1,2,3];
+let _trapCache=[];
+function _myTrapsFromCache(){return _trapCache.map(k=>({cellKey:k,ownerPid:MY_SEAT}));}
 async function loadAndStartGame(){
 const snap=await playersRef.once('value');
 const playersData=snap.val()||{};
@@ -3489,7 +3553,7 @@ pMeta:gData.pMeta||_defaultPMeta(),
 inventory:gData.inventory||_defaultInventory(),
 purchased:gData.purchased||{0:{},1:{},2:{},3:{}},
 lastPurchase:gData.lastPurchase||null,
-traps:gData.traps||[],
+traps:_myTrapsFromCache(),
 lastAmbushTrigger:gData.lastAmbushTrigger||null,
 frozenTokens:gData.frozenTokens||[],
 aegisShields:gData.aegisShields||[],
@@ -3665,9 +3729,10 @@ G.inventory=data.inventory;
 if(data.purchased)G.purchased=data.purchased;
 
 
-G.traps=data.traps||[];
+G.traps=_myTrapsFromCache();
 G.frozenTokens=data.frozenTokens||[];
 G.aegisShields=data.aegisShields||[];
+_aegisMergePending();
 if(!G.points)G.points={0:0,1:0,2:0,3:0};
 if(!G.pMeta)G.pMeta=_defaultPMeta();
 if(!G.inventory)G.inventory=_defaultInventory();
@@ -3725,7 +3790,7 @@ G.turn=data.turn;
 G.diceVal=dice;
 G.rolled=true;
 G.sixes=data.sixes||0;
-G.waiting=false;
+G.waiting=(rolledBy===MY_SEAT&&G.turn===MY_SEAT&&data.waiting===true);
 if(G.turn===MY_SEAT&&rolledBy!==MY_SEAT){G.rolled=false;G.diceVal=null;}
 if(rolledBy===MY_SEAT){
 syncUI();
@@ -5472,7 +5537,7 @@ const _cost=_powerCost(key);
 const canAfford=myPts>=_cost;
 const disabled=boughtOnce||!canAfford;
 const btnLabel=boughtOnce?"Owned":`${_cost} pts · Buy`;
-const useBtn=(key==='ambush'&&owned>0)?`<button onclick="window.startAmbushPlacement()" class="modal-btn secondary" style="padding:7px 0;font-size:.68rem;width:100%;">Use</button>`:(key==='freeze'&&owned>0)?`<button onclick="window.startFreezeTargeting()" class="modal-btn secondary" style="padding:7px 0;font-size:.68rem;width:100%;">Use</button>`:(key==='aegis'&&owned>0)?`<button onclick="window.startAegisTargeting()" class="modal-btn secondary" style="padding:7px 0;font-size:.68rem;width:100%;">Use</button>`:(key==='luckyNumber'&&owned>0)?`<button onclick="window.startLuckyNumberActivation()" class="modal-btn secondary" style="padding:7px 0;font-size:.68rem;width:100%;">Use</button>`:(key==='reroll'&&owned>0)?`<button onclick="window.useReroll()" class="modal-btn secondary" style="padding:7px 0;font-size:.68rem;width:100%;">Use</button>`:(key==='reverse'&&owned>0)?`<button onclick="window.startReverseTargeting()" class="modal-btn secondary" style="padding:7px 0;font-size:.68rem;width:100%;">Use</button>`:``;
+const useBtn=(key==='ambush'&&owned>0)?`<button onclick="window.startAmbushPlacement()" class="modal-btn secondary" style="padding:7px 0;font-size:.68rem;width:100%;">Use</button>`:(key==='freeze'&&owned>0)?`<button onclick="window.startFreezeTargeting()" class="modal-btn secondary" style="padding:7px 0;font-size:.68rem;width:100%;">Use</button>`:(key==='aegis'&&owned>0&&!_aegisPend)?`<button onclick="window.startAegisTargeting()" class="modal-btn secondary" style="padding:7px 0;font-size:.68rem;width:100%;">Use</button>`:(key==='luckyNumber'&&owned>0)?`<button onclick="window.startLuckyNumberActivation()" class="modal-btn secondary" style="padding:7px 0;font-size:.68rem;width:100%;">Use</button>`:(key==='reroll'&&owned>0)?`<button onclick="window.useReroll()" class="modal-btn secondary" style="padding:7px 0;font-size:.68rem;width:100%;">Use</button>`:(key==='reverse'&&owned>0)?`<button onclick="window.startReverseTargeting()" class="modal-btn secondary" style="padding:7px 0;font-size:.68rem;width:100%;">Use</button>`:``;
 return `<div style="display:flex;flex-direction:column;align-items:center;gap:6px;background:var(--surface);border:1.5px solid var(--border);border-radius:14px;padding:12px 8px;">
 <div style="width:52px;height:52px;border-radius:50%;overflow:hidden;">${POWER_ICONS[key]}</div>
 <div style="color:var(--text);font-size:.78rem;font-weight:800;font-family:'Nunito',sans-serif;text-align:center;">${def.name}</div>
@@ -6273,6 +6338,7 @@ if(cb)cb();
 requestAnimationFrame(tick);
 }
 function makeDice(pid){
+dAcc.last[pid]=null;dAcc.rx[pid]=0;dAcc.ry[pid]=0;dAcc.busy[pid]=false;if(_domCache.dcube)_domCache.dcube[pid]=null;if(_domCache.d3d)_domCache.d3d[pid]=null;
 const TZ=19;
 const wrap=document.createElement("div");
 wrap.className="dice-3d inactive";
@@ -6910,12 +6976,13 @@ if(wasOff2)d3d.classList.remove("off");
 }
 const cube=_domCache.dcube[p.id]||document.getElementById(`dcube-${p.id}`);
 if(cube&&dAcc.last[p.id]==null&&!dAcc.busy[p.id]){
-const tg=LAND[6];
+const _iv=(G.rolled&&G.turn===p.id&&typeof G.diceVal==='number'&&LAND[G.diceVal])?G.diceVal:6;
+const tg=LAND[_iv];
 cube.style.transition="none";
 cube.style.transform=`rotateX(${tg.rx}deg)rotateY(${tg.ry}deg)scaleX(1)scaleY(1)`;
 cube.style.setProperty('--drx',`${tg.rx}deg`);
 cube.style.setProperty('--dry',`${tg.ry}deg`);
-dAcc.rx[p.id]=tg.rx;dAcc.ry[p.id]=tg.ry;dAcc.last[p.id]=6;
+dAcc.rx[p.id]=tg.rx;dAcc.ry[p.id]=tg.ry;dAcc.last[p.id]=_iv;
 }
 }
 });
@@ -6963,6 +7030,25 @@ _doBotTurn(_targetSeat);
 },300);
 }
 }
+let _preRoll=null,_preKey=null;
+function _prefetchRoll(seat){
+try{
+if(seat!==MY_SEAT||!ROOM_CODE||!gameRef||window._cpuMode||window._pnpMode||G.over||G.rolled||G.turn!==seat)return;
+const lk=!!(G.specialMode&&G.pMeta&&G.pMeta[seat]&&G.pMeta[seat].luckyActive);
+const key=seat+':'+G.timestamp+':'+(lk?1:0);
+if(_preKey===key)return;
+_preKey=key;_preRoll=null;
+const _pl=lk?{c:ROOM_CODE,p:{lucky:true}}:{c:ROOM_CODE};
+window._srv('dp',_pl).then(function(r){
+if(_preKey!==key)return;
+if(r&&typeof r.v==='number'&&r.v>=1&&r.v<=6)_preRoll={seat:seat,v:r.v,at:Date.now(),lk:r.lk===1,lucky:(r.lucky==null?null:r.lucky)};
+else _preKey=null;
+}).catch(function(){
+if(_preKey===key){_preKey=null;
+if(lk)setTimeout(function(){if(G.turn===seat&&!G.rolled&&!_rolling)_prefetchRoll(seat);},1700);}
+});
+}catch(e){}
+}
 const TURN_TIMER_SEC=43;
 let _timerInterval=null;
 let _timerSeat=-1;
@@ -6971,7 +7057,7 @@ function startTurnTimer(seat){
 stopTurnTimer();
 if(G.over||!_gameLoaded||!PLAYERS[seat]?.active)return;
 _timerSeat=seat;
-if(seat===MY_SEAT&&ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode)window._srvWarm();
+if(seat===MY_SEAT&&ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode){window._srvWarm();_prefetchRoll(seat);}
 
 
 _timerStart=(typeof G.timestamp==='number'&&G.timestamp>0)?G.timestamp:Date.now();
@@ -7345,7 +7431,7 @@ const d3d=document.getElementById(`d3d-${pid}`);
 
 if(d3d){d3d.classList.add("off");if(d3d.classList.contains("lucky-armed"))d3d.classList.remove("lucky-armed");}
 let v;
-let _srvPm=null,_srvPts=0;
+let _srvPm=null,_srvPts=0,_srvPromise=null,_deferSrv=false;
 const _isOnline=!!(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode);
 if(!_isOnline&&G.specialMode&&G.pMeta&&G.pMeta[pid]&&G.pMeta[pid].luckyActive){
 const bestNum=_computeBestNumber(pid);
@@ -7364,7 +7450,17 @@ G.pMeta[pid].luckyActive=false;
 const _wasReroll=!!window._pendingRerollCharge;
 window._pendingRerollCharge=false;
 const _wantLucky=!!(G.specialMode&&G.pMeta&&G.pMeta[pid]&&G.pMeta[pid].luckyActive);
-const _dp={};if(_wasReroll)_dp.reroll=true;if(_wantLucky)_dp.lucky=true;
+const _dp={};if(_wasReroll)_dp.reroll=true;
+const _pre=(!_wasReroll&&pid===MY_SEAT&&_preRoll&&_preRoll.seat===pid&&_preRoll.lk===_wantLucky&&Date.now()-_preRoll.at<100000)?_preRoll:null;
+_preRoll=null;
+if(_pre){
+v=_pre.v;_dp.pre=true;_dp.pv=_pre.v;
+if(_wantLucky){G.pMeta[pid].luckyActive=false;if(_pre.lucky===0&&pid===MY_SEAT)showToast("Lucky Number couldn't help this roll — no favorable move available");_dbgLog('POWER_LUCKYNUMBER_ROLL',{pid,bestNum:_pre.lucky,resultDice:v,source:'preroll'});}
+_deferSrv=true;
+_srvPromise=window._srv('d',{c:ROOM_CODE,p:_dp}).catch(function(){return null;});
+clearTimeout(rollSafety);rollSafety=setTimeout(()=>{_rolling=false;},23000);
+_dbgLog('DICE_ROLLED_NORMAL',{pid,dice:v,source:'preroll'});
+}else{
 clearTimeout(rollSafety);rollSafety=setTimeout(()=>{_rolling=false;},23000);
 const _spin=_dicePreSpin(pid);
 let _r=null;
@@ -7387,11 +7483,12 @@ if(_r.lucky===0&&pid===MY_SEAT)showToast("Lucky Number couldn't help this roll �
 _dbgLog('POWER_LUCKYNUMBER_ROLL',{pid,bestNum:_r.lucky,resultDice:v,source:'server'});
 }
 _dbgLog('DICE_ROLLED_NORMAL',{pid,dice:v,sixesStreakBeforeThisRoll:G.sixes||0,blockSixWasActive:(G.sixes||0)>=2,source:'server'});
+}
 }else{
 v=smartRng(pid);
 _dbgLog('DICE_ROLLED_NORMAL',{pid,dice:v,sixesStreakBeforeThisRoll:G.sixes||0,blockSixWasActive:(G.sixes||0)>=2});
 }
-if(_srvPm&&G.pMeta&&G.pMeta[pid]){
+if(_deferSrv){}else if(_srvPm&&G.pMeta&&G.pMeta[pid]){
 const m=G.pMeta[pid];
 m.lr=_srvPm.lr;m.sr=_srvPm.sr;m.lv=_srvPm.lv;
 if(_srvPts)addPoints(pid,_srvPts,true);
@@ -7409,7 +7506,28 @@ _dbgLog('DICE_ROLLED_SELF',{pid,dice:v,MY_SEAT});
 if(!_isOnline&&ROOM_CODE&&gameRef)gameRef.update({rolled:true,diceVal:v,turn:G.turn,actionBy:pid,timestamp:(window._cpuMode||window._pnpMode?Date.now():firebase.database.ServerValue.TIMESTAMP)}).catch(()=>{});
 navigator.vibrate&&navigator.vibrate(28);
 SFX.play('dice');
+if(_deferSrv){
+animDice(pid,v,async()=>{
+const _r=await _srvPromise;
+if(!(_r&&typeof _r.v==='number')){
+clearTimeout(rollSafety);_rolling=false;G.rolled=false;G.diceVal=null;
+_dbgLog('DICE_ROLL_SERVER_FAILED',{pid,preRoll:true});
+showToast("Roll failed — check connection and try again");
+try{syncUI();}catch(e){}
+return;
+}
+if(_r.pm&&G.pMeta&&G.pMeta[pid]){const m=G.pMeta[pid];m.lr=_r.pm.lr;m.sr=_r.pm.sr;m.lv=_r.pm.lv;if(Number(_r.pts))addPoints(pid,Number(_r.pts),true);}
+if(_r.v!==v){
+_dbgLog('DICE_PREROLL_CORRECTED',{pid,from:v,to:_r.v});
+v=_r.v;G.diceVal=v;
+animDice(pid,v,()=>{clearTimeout(rollSafety);_rolling=false;afterRoll(pid,v);},true);
+return;
+}
+clearTimeout(rollSafety);_rolling=false;afterRoll(pid,v);
+},false);
+}else{
 animDice(pid,v,()=>{clearTimeout(rollSafety);_rolling=false;afterRoll(pid,v);},_isOnline);
+}
 }
 function _hasUsableReversePower(pid,v){
 if(!G.inventory||!G.inventory[pid]||!(G.inventory[pid].reverse>0))return false;
