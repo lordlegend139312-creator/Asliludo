@@ -3128,7 +3128,7 @@ sm:!!_pendingSpecialMode,
 name:MY_NAME,
 photo:(MY_PROFILE&&MY_PROFILE.photoURL)||''
 }});
-if(!_createRes||!_createRes.code){showToast("❌ Room create failed. Check internet & try again.");return;}
+if(!_createRes||!_createRes.code){console.error('TO_CREATE_ROOM_FAILED',{res:_createRes,lastStatus:window._srvLastStatus});showToast("❌ Room create failed ["+(window._srvLastStatus||"no-response")+"]. Check internet & try again.");return;}
 const code=_createRes.code;
 NUM_PLAYERS=numPlayers;
 IS_HOST=true;
