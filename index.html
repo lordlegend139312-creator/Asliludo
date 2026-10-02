@@ -46,8 +46,8 @@ window._srv=function(t,b){
     return u.getIdToken().then(function(tok){
       var ac=(typeof AbortController!=='undefined')?new AbortController():null;
       var tm=ac?setTimeout(function(){ac.abort();},20000):null;
-      return fetch(window._SRV_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},body:JSON.stringify(Object.assign({t:t},b||{})),keepalive:true,signal:ac?ac.signal:undefined}).then(function(r){if(tm)clearTimeout(tm);return r.ok?r.json():null;},function(e){if(tm)clearTimeout(tm);throw e;});
-    }).catch(function(){return null;});
+      return fetch(window._SRV_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},body:JSON.stringify(Object.assign({t:t},b||{})),keepalive:true,signal:ac?ac.signal:undefined}).then(function(r){if(tm)clearTimeout(tm);window._srvLastStatus=t+':'+r.status;if(r.ok)return r.json();if((t==='v'||t==='p')&&(r.status===403||r.status===409)){return r.json().then(function(j){return(j&&j.why)?{e:1,why:j.why}:null;},function(){return null;});}return null;},function(e){if(tm)clearTimeout(tm);throw e;});
+    }).catch(function(e){window._srvLastStatus=t+':ERR:'+(e&&e.name);return null;});
   }catch(e){return Promise.resolve(null);}
 };
 
@@ -55,11 +55,27 @@ window._srv=function(t,b){
 window._srvRaw=window._srv;
 window._srv=function(t,b){
   var w=window._lastCommitP;
-  if(w&&(t==='d'||t==='s'||t==='f'||t==='p'||t==='r'||t==='ln')){
+  if(w&&(t==='d'||t==='dp'||t==='s'||t==='f'||t==='p'||t==='r'||t==='ln')){
     return w.then(function(){return window._srvRaw(t,b);},function(){return window._srvRaw(t,b);});
   }
   return window._srvRaw(t,b);
 };
+/* TO_DBG: log every gameplay server call (request + result) */
+(function(){
+  var _inner=window._srv;
+  window._srv=function(t,b){
+    if(t==='l'||t==='ping'||t==='dp')return _inner(t,b);
+    var t0=Date.now(),id=(window._srvSeq=(window._srvSeq||0)+1),p=(b&&b.p)||{};
+    try{window._dbgLog('TO_SRV_REQ',{id:id,t:t,as:p.as,reroll:p.reroll,tid:p.tid,dv:p.dv,hidden:document.hidden,waitingCommit:!!window._lastCommitP});}catch(e){}
+    return _inner(t,b).then(function(r){
+      try{window._dbgLog('TO_SRV_RES',{id:id,t:t,ms:Date.now()-t0,ok:!!r,v:r&&r.v,why:r&&r.why,turn:r&&r.turn,over:r&&r.over,lastStatus:window._srvLastStatus});}catch(e){}
+      return r;
+    },function(e){
+      try{window._dbgLog('TO_SRV_THROW',{id:id,t:t,ms:Date.now()-t0,msg:e&&e.message});}catch(e2){}
+      throw e;
+    });
+  };
+})();
 
 window._srvWarm=function(){
 try{
@@ -445,7 +461,6 @@ if(btn)btn.addEventListener('click',()=>{SFX.setMuted(!SFX.isMuted());});
 </div><div id="top-bar"><div id="top-bar-left"></div><div id="top-bar-center"><div id="sync-bar"><div id="sync-dot" class="warn"></div><span id="sync-text">Syncing...</span></div></div><div id="top-bar-right"><button id="btn-shop" title="Shop" onclick="window.openShop()" style="display:none;"><span>Shop</span><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 L3 7 V20 a2 2 0 0 0 2 2 H19 a2 2 0 0 0 2-2 V7 L18 2 Z"/><path d="M3 7 H21"/><path d="M9 11 a3 3 0 0 0 6 0"/></svg></button><button id="btn-mute" title="Mute">🔊</button><button id="btn-perf" title="Performance Mode">⚡</button></div>
 </div><div id="game-wrap"><div class="prow" id="top-row" style="align-items:center;"></div><div id="board-wrap"><div id="board"></div><div id="tokens-layer"></div></div><svg width="0" height="0" style="position:absolute;overflow:hidden;"><filter id="frostNoise" x="-20%" y="-20%" width="140%" height="140%"><feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="7" stitchTiles="stitch" result="n"/><feColorMatrix in="n" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.55 0"/></filter></svg><div class="prow bottom" id="bot-row"></div>
 </div>
-<div id="smart-dice-panel" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);backdrop-filter:blur(4px);z-index:500;align-items:center;justify-content:center;flex-direction:column;gap:10px;" onclick="closeSmartDicePanel()" ontouchend="closeSmartDicePanel()"><div style="background:#13132a;border:1.5px solid #333366;border-radius:16px;padding:12px;display:flex;flex-direction:column;align-items:center;gap:8px;width:200px;box-shadow:0 16px 60px rgba(0,0,0,.7);" onclick="event.stopPropagation()" ontouchstart="event.stopPropagation()" ontouchend="event.stopPropagation()"><div style="color:#F5C518;font-size:.78rem;font-weight:800;font-family:'Rajdhani',sans-serif;letter-spacing:2px;">✦ DICE CONTROL ✦</div><div style="width:100%;background:#1a1a35;border-radius:10px;padding:7px 8px;border:1px solid #2a2a55;"><div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;"><span style="color:#F5C518;font-size:.62rem;font-weight:800;font-family:'Rajdhani',sans-serif;letter-spacing:1px;">SMART DICE</span></div><div id="sdp-color-grid" style="display:flex;gap:0;justify-content:center;width:100%;border:1.5px solid #2a2a55;border-radius:8px;overflow:hidden;"></div><div id="sdp-status" style="font-size:.55rem;font-family:'Rajdhani',sans-serif;letter-spacing:.5px;color:rgba(240,240,255,0.35);min-height:10px;text-align:center;margin-top:4px;"></div></div><div style="width:100%;background:#1a1a35;border-radius:10px;padding:7px 8px;border:1px solid #2a2a55;"><div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;"><span style="color:#00AEEF;font-size:.62rem;font-weight:800;font-family:'Rajdhani',sans-serif;letter-spacing:1px;">FORCE ROLL</span></div><div id="sdp-force-grid" style="display:flex;flex-direction:column;gap:4px;width:100%;"></div></div><div style="width:100%;background:#1a1a35;border-radius:10px;padding:7px 8px;border:1px solid #2a2a55;"><div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;"><span style="color:#FFD600;font-size:.62rem;font-weight:800;font-family:'Rajdhani',sans-serif;letter-spacing:1px;">ELDER CONTROL</span></div><div id="sdp-elder-status" style="font-size:.52rem;font-family:'Nunito',sans-serif;color:rgba(240,240,255,0.4);text-align:center;margin-bottom:6px;min-height:12px;"></div><div id="sdp-elder-grid" style="display:flex;gap:4px;justify-content:center;width:100%;flex-wrap:wrap;"></div></div><div style="width:100%;background:#1a1a35;border-radius:10px;padding:7px 8px;border:1px solid #2a2a55;"><div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;"><span style="color:#F5C518;font-size:.62rem;font-weight:800;font-family:'Rajdhani',sans-serif;letter-spacing:1px;">POINTS</span></div><div id="sdp-points-status" style="font-size:.55rem;font-family:'Rajdhani',sans-serif;letter-spacing:.5px;color:rgba(240,240,255,0.35);min-height:10px;text-align:center;margin-bottom:6px;"></div><button id="sdp-add-points-btn" onclick="window._cheatAddPoints()" ontouchend="event.stopPropagation()" style="width:100%;padding:9px 0;border-radius:8px;border:1.5px solid #F5C518;background:rgba(245,197,24,.14);color:#F5C518;font-size:.65rem;font-weight:800;font-family:'Rajdhani',sans-serif;letter-spacing:.5px;cursor:pointer;">⭐ +999 POINTS (ME)</button></div><div id="sdp-debug-wrap" style="display:none;width:100%;background:#1a1a35;border-radius:10px;padding:7px 8px;border:1px solid #2a2a55;"><div style="color:#FF2D78;font-size:.62rem;font-weight:800;font-family:Rajdhani,sans-serif;letter-spacing:1px;margin-bottom:6px;">DEBUG TOOLS</div><div style="display:flex;flex-direction:column;gap:5px;width:100%;"><div style="color:rgba(240,240,255,.35);font-size:.5rem;font-family:Nunito,sans-serif;letter-spacing:.3px;margin-bottom:1px;">TIMER EXPIRE (current turn)</div><div style="display:flex;gap:4px;"><button onclick="_onTurnTimerExpired(G.turn)" style="flex:1;padding:6px 4px;border-radius:7px;border:1.5px solid #FF2D78;background:#1a0a10;color:#FF2D78;font-size:.6rem;font-weight:800;font-family:Rajdhani,sans-serif;letter-spacing:.5px;cursor:pointer;">EXPIRE x1</button><button onclick="_onTurnTimerExpired(G.turn);setTimeout(()=>_onTurnTimerExpired(G.turn),600)" style="flex:1;padding:6px 4px;border-radius:7px;border:1.5px solid #FF2D78;background:#1a0a10;color:#FF2D78;font-size:.6rem;font-weight:800;font-family:Rajdhani,sans-serif;letter-spacing:.5px;cursor:pointer;">EXPIRE x2</button></div><div style="color:rgba(240,240,255,.35);font-size:.5rem;font-family:Nunito,sans-serif;letter-spacing:.3px;margin-top:3px;margin-bottom:1px;">BOT CONTROLS</div><div id="sdp-debug-bot-grid" style="display:flex;flex-direction:column;gap:3px;"></div></div></div><button id="sdp-close-btn" style="margin-top:0;padding:10px 28px;border-radius:8px;border:1.5px solid #333366;background:#1a1a35;color:#f0f0ff;font-size:.62rem;font-family:'Rajdhani',sans-serif;font-weight:700;letter-spacing:1px;cursor:pointer;position:relative;z-index:10;">CLOSE</button></div>
 </div><div id="pause-overlay"><div id="pause-box"><div id="pause-title">Game Paused</div><button class="pause-btn" id="btn-resume">▶ Resume</button><button class="pause-btn secondary" id="btn-leave-pause">🏠 Leave Game</button></div>
 </div>
 <div id="win"><canvas id="win-confetti-canvas"></canvas><div id="win-content"><div id="win-trophy">🏆</div><h1 id="win-msg">You Win!</h1><div id="win-podium"></div><button id="btn-play-again">Back</button></div>
@@ -922,6 +937,7 @@ window._dbgLog&&window._dbgLog('FORCE_RESYNC',{reason,roomCode:ROOM_CODE});
 _resyncInFlight=false;
 }
 document.addEventListener('visibilitychange',function(){
+try{_dbgLog('TO_VISIBILITY',{hidden:document.hidden,MY_SEAT,gTurn:G.turn,gRolled:G.rolled,gWaiting:G.waiting,rolling:_rolling,animating:_animating,botActing:_botActing,elder:amIElderPlayer()});}catch(e){}
 if(document.hidden){_lastHiddenAt=Date.now();}
 else if(_lastHiddenAt&&(Date.now()-_lastHiddenAt>3000)){
 _forceResyncGame('visibility');
@@ -2128,9 +2144,10 @@ renderTokens();_renderFrozenVisuals();_renderAegisVisuals();syncUI();
 function _reconcileOptimisticMove(r,expTurn,pid,tid,v){
 try{
 if(!r||!Array.isArray(r.tokens)){
-_dbgLog('MOVE_COMMIT_SERVER_FAILED',{pid,tid,v,optimistic:true});
-showToast("Sync error — reconnecting...");
-_forceResyncGame('move-commit-failed');
+_dbgLog('MOVE_COMMIT_SERVER_FAILED',{pid,tid,v,optimistic:true,why:(r&&r.why)||null});
+if(r&&r.why==='frozen')showToast("❄️ Opponent ne is token ko Freeze kar diya — move cancel hui, board sync ho raha hai");
+else showToast("Sync error — reconnecting...");
+_forceResyncGame(r&&r.why==='frozen'?'move-frozen':'move-commit-failed');
 return;
 }
 if(G.over)return;
@@ -2179,6 +2196,7 @@ return list.some(sh=>sh&&sh.pid===pid&&sh.tid===tid);
 async function _srvPlace(kind,extra){
 if(!(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode))return true;
 const r=await window._srv('p',{c:ROOM_CODE,p:Object.assign({k:kind},extra||{})});
+window._lastPlaceWhy=(r&&r.why)||null;
 return !!(r&&r.ok);
 }
 function startFreezeTargeting(){
@@ -2235,7 +2253,7 @@ if(!_okP){
 G.inventory[MY_SEAT].freeze+=1;
 G.frozenTokens=(G.frozenTokens||[]).filter(f=>!(f.pid===pid&&f.tid===tid&&f.casterPid===MY_SEAT));
 _renderFrozenVisuals();
-showToast("Freeze failed — couldn't be verified, try again");return;
+if(window._lastPlaceWhy==='moving')showToast("Token pehle hi click ho chuka tha — Freeze nahi laga, tumhari power wapas mil gayi");else showToast("Freeze failed — couldn't be verified, try again");return;
 }
 _dbgLog('POWER_FREEZE_APPLIED',{casterPid:MY_SEAT,targetPid:pid,targetTid:tid,invLeft:G.inventory[MY_SEAT].freeze});
 const _casterP=PLAYERS[MY_SEAT],_victimP=PLAYERS[pid];
@@ -2291,6 +2309,7 @@ els.wrap.appendChild(ring);
 }
 function startAegisTargeting(){
 if(_aegisPend){showToast("Aegis is already applied");return;}
+if(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode&&G.turn!==MY_SEAT){showToast("Aegis can only be used on your own turn");return;}
 if(!G.inventory||!G.inventory[MY_SEAT]||!(G.inventory[MY_SEAT].aegis>0)){showToast("You don't have an Aegis to use");return;}
 window.closeShop();
 cancelPlacement();
@@ -2605,9 +2624,9 @@ return bestVal;
 }
 function _weightedRollWithBoost(boostVal){
 const r=Math.random();
-if(r<(1/3))return boostVal;
+if(r<(2/3))return boostVal;
 const others=[1,2,3,4,5,6].filter(v=>v!==boostVal);
-const idx=Math.min(Math.floor((r-(1/3))/(2/3)*others.length),others.length-1);
+const idx=Math.min(Math.floor((r-(2/3))/(1/3)*others.length),others.length-1);
 return others[idx];
 }
 function startLuckyNumberActivation(){
@@ -2641,7 +2660,7 @@ if(!(_r&&_r.ok)){cancelPlacement();showToast("Lucky Number activate nahi hua —
 if(!G.pMeta)G.pMeta=_defaultPMeta();
 if(!G.pMeta[MY_SEAT])G.pMeta[MY_SEAT]={ks:0,lr:0,sr:0,lv:null,rf:null,luckyActive:false};
 if(!_r.already&&G.inventory[MY_SEAT].luckyNumber>0)G.inventory[MY_SEAT].luckyNumber-=1;
-G.pMeta[MY_SEAT].luckyActive=true;
+G.pMeta[MY_SEAT].luckyActive=true;_luckyArmAt=Date.now();_setLuckyVisual(MY_SEAT,true);
 _dbgLog('POWER_LUCKYNUMBER_ARMED',{pid:MY_SEAT,invLeft:G.inventory[MY_SEAT].luckyNumber,source:'server',already:!!_r.already});
 cancelPlacement();
 showToast(_r.already?"Lucky Number pehle se armed hai":"Lucky Number armed — boosts your next roll!");
@@ -2652,7 +2671,7 @@ return;
 G.inventory[MY_SEAT].luckyNumber-=1;_invDec('luckyNumber',true);
 if(!G.pMeta)G.pMeta=_defaultPMeta();
 if(!G.pMeta[MY_SEAT])G.pMeta[MY_SEAT]={ks:0,lr:0,sr:0,lv:null,rf:null,luckyActive:false};
-G.pMeta[MY_SEAT].luckyActive=true;
+G.pMeta[MY_SEAT].luckyActive=true;_luckyArmAt=Date.now();_setLuckyVisual(MY_SEAT,true);
 _dbgLog('POWER_LUCKYNUMBER_ARMED',{pid:MY_SEAT,invLeft:G.inventory[MY_SEAT].luckyNumber});
 cancelPlacement();
 pushGameState({});
@@ -2857,6 +2876,7 @@ if(_cachedElderOnlineSet===onlineKey&&_cachedElderResult!==null){
 return _cachedElderResult;
 }
 _cachedElderOnlineSet=onlineKey;
+try{_dbgLog('TO_ELDER_RECOMPUTE',{MY_SEAT,excludeSeat:excludeSeat??null,online:[..._onlineSeats],visible:[..._visibleSeats],forced:_forcedElderSeat});}catch(e){}
 
 
 for(const seat of SEAT_LAYOUT_ACTIVE){
@@ -3278,6 +3298,9 @@ if(!_pendingSync.some(p=>p.timestamp===ts))_pendingSync.push(data);
 return;
 }
 if(data&&G.over===false){
+_applyLuckyFlags(data);
+if(data.turn===MY_SEAT){_earlyPrefetch(data);}
+else if(_preKey||_preRoll||_earlyStamp!=null){_preRoll=null;_preKey=null;_preP=null;_earlyStamp=null;}
 syncGameState(data);
 }
 };
@@ -3303,9 +3326,6 @@ clearTimeout(_turnTimeoutTimer);
 _turnTimeoutTimer=null;
 if(amIElderPlayer()&&_gameLoaded&&!G.over&&G.turn!==MY_SEAT){
 resetTurnTimeout();
-}
-if(document.getElementById('smart-dice-panel')?.style.display!=='none'){
-_renderSmartDicePanel();
 }
 };
 elderRef.on('value',cbElder);
@@ -3336,26 +3356,6 @@ updatePlayerList(window._lobbyPlayers||{});
 };
 hostSeatRef.on('value',cbHostSeat);
 _listeners.push(()=>hostSeatRef.off('value',cbHostSeat));
-const forceDiceRef=db.ref(`rooms/${ROOM_CODE}/forceDice`);
-const cbForceDice=snap=>{
-const val=snap.val();
-if(!val)return;
-if(val[MY_SEAT]!=null){
-forceDice[MY_SEAT]=Number(val[MY_SEAT]);
-}
-if(IS_HOST){
-Object.keys(val).forEach(seat=>{
-const s=Number(seat);
-if(val[s]!=null)forceDice[s]=Number(val[s]);
-else forceDice[s]=null;
-});
-}
-if(document.getElementById('smart-dice-panel')?.style.display!=='none'){
-_renderSmartDicePanel();
-}
-};
-forceDiceRef.on('value',cbForceDice);
-_listeners.push(()=>forceDiceRef.off('value',cbForceDice));
 }
 function _onlineTeamModeUpdateUI(numPlayers,isHost,teamOn){
 const wrap=document.getElementById('online-team-wrap');
@@ -3629,8 +3629,9 @@ else if(p.action==="move"&&_pendingMoveBySeat[p.actionBy]==null)_pendingMoveBySe
 }
 function syncGameState(data,_forceApply){
 if(!_gameLoaded){return;}
-if(!_forceApply&&data.actionBy===MY_SEAT)return;
-if(!_forceApply&&data.actionBy!=null&&data.actionBy!==MY_SEAT&&PLAYERS[data.actionBy]?.isBot&&amIElderPlayer())return;
+_dbgLog('TO_SYNC_IN',{actionBy:data.actionBy,action:data.action,reason:data.reason,auto:data.auto,dice:data.dice??data.diceVal,srvTurn:data.turn,srvRolled:data.rolled,srvWaiting:data.waiting,ts:data.timestamp,force:!!_forceApply,MY_SEAT,gTurn:G.turn,gRolled:G.rolled,gWaiting:G.waiting,animPlaying:_syncAnimPlaying,animating:_animating,rolling:_rolling,queued:_syncAnimPending.length});
+if(!_forceApply&&data.actionBy===MY_SEAT){_dbgLog('TO_SYNC_SKIP_OWN_ACTIONBY',{actionBy:data.actionBy,action:data.action,srvTurn:data.turn,gTurn:G.turn,gRolled:G.rolled,note:'if an elder acted FOR me (timeout) this is also skipped -> my screen never learns about it'});return;}
+if(!_forceApply&&data.actionBy!=null&&data.actionBy!==MY_SEAT&&PLAYERS[data.actionBy]?.isBot&&amIElderPlayer()){_dbgLog('TO_SYNC_SKIP_BOT_ELDER',{actionBy:data.actionBy,action:data.action});return;}
 const _rawDice=data.dice??data.diceVal;
 if(data.action==="roll"&&_rawDice!=null)_lastSeenDice[data.actionBy]=_rawDice;
 if(data.action==="move"&&_rawDice==null&&_lastSeenDice[data.actionBy]!=null){
@@ -4210,7 +4211,6 @@ _cachedElderResult=null;_cachedElderOnlineSet='';
 _forcedElderSeat=null;
 SEAT_LAYOUT_ACTIVE=[0,1,2,3];
 _gameLoaded=false;
-smartDice.targetPids.clear();
 Object.keys(_tokEls).forEach(k=>_removeTokEl(k));
 document.getElementById("game-wrap").style.display="none";
 document.getElementById("top-bar").style.display="none";
@@ -5400,7 +5400,6 @@ tokW.className="pbox-tok";
 tokW.id=`ptok-${pid}`;tokW.style[side==="left"?"marginLeft":"marginRight"]="4px";
 tokW.innerHTML=tokIconHTML(displayColor,36,1.65);
 tokW.dataset.rc=displayColor;
-tokW.addEventListener("click",()=>_onSecretTap(pid));
 const diceW=document.createElement("div");
 diceW.className="pbox-dice";
 diceW.id=`pdw-${pid}`;
@@ -5537,7 +5536,7 @@ const _cost=_powerCost(key);
 const canAfford=myPts>=_cost;
 const disabled=boughtOnce||!canAfford;
 const btnLabel=boughtOnce?"Owned":`${_cost} pts · Buy`;
-const useBtn=(key==='ambush'&&owned>0)?`<button onclick="window.startAmbushPlacement()" class="modal-btn secondary" style="padding:7px 0;font-size:.68rem;width:100%;">Use</button>`:(key==='freeze'&&owned>0)?`<button onclick="window.startFreezeTargeting()" class="modal-btn secondary" style="padding:7px 0;font-size:.68rem;width:100%;">Use</button>`:(key==='aegis'&&owned>0&&!_aegisPend)?`<button onclick="window.startAegisTargeting()" class="modal-btn secondary" style="padding:7px 0;font-size:.68rem;width:100%;">Use</button>`:(key==='luckyNumber'&&owned>0)?`<button onclick="window.startLuckyNumberActivation()" class="modal-btn secondary" style="padding:7px 0;font-size:.68rem;width:100%;">Use</button>`:(key==='reroll'&&owned>0)?`<button onclick="window.useReroll()" class="modal-btn secondary" style="padding:7px 0;font-size:.68rem;width:100%;">Use</button>`:(key==='reverse'&&owned>0)?`<button onclick="window.startReverseTargeting()" class="modal-btn secondary" style="padding:7px 0;font-size:.68rem;width:100%;">Use</button>`:``;
+const useBtn=(key==='ambush'&&owned>0)?`<button onclick="window.startAmbushPlacement()" class="modal-btn secondary" style="padding:7px 0;font-size:.68rem;width:100%;">Use</button>`:(key==='freeze'&&owned>0)?`<button onclick="window.startFreezeTargeting()" class="modal-btn secondary" style="padding:7px 0;font-size:.68rem;width:100%;">Use</button>`:(key==='aegis'&&owned>0&&!_aegisPend&&(!(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode)||G.turn===MY_SEAT))?`<button onclick="window.startAegisTargeting()" class="modal-btn secondary" style="padding:7px 0;font-size:.68rem;width:100%;">Use</button>`:(key==='luckyNumber'&&owned>0)?`<button onclick="window.startLuckyNumberActivation()" class="modal-btn secondary" style="padding:7px 0;font-size:.68rem;width:100%;">Use</button>`:(key==='reroll'&&owned>0)?`<button onclick="window.useReroll()" class="modal-btn secondary" style="padding:7px 0;font-size:.68rem;width:100%;">Use</button>`:(key==='reverse'&&owned>0)?`<button onclick="window.startReverseTargeting()" class="modal-btn secondary" style="padding:7px 0;font-size:.68rem;width:100%;">Use</button>`:``;
 return `<div style="display:flex;flex-direction:column;align-items:center;gap:6px;background:var(--surface);border:1.5px solid var(--border);border-radius:14px;padding:12px 8px;">
 <div style="width:52px;height:52px;border-radius:50%;overflow:hidden;">${POWER_ICONS[key]}</div>
 <div style="color:var(--text);font-size:.78rem;font-weight:800;font-family:'Nunito',sans-serif;text-align:center;">${def.name}</div>
@@ -5692,10 +5691,11 @@ turnsSinceSix:{0:0,1:0,2:0,3:0},
 badStreak:{0:0,1:0,2:0,3:0},
 lastTokenStuckTurns:{0:0,1:0,2:0,3:0},
 lastTokenLastStep:{0:null,1:null,2:null,3:null},
+failStreak:{0:0,1:0,2:0,3:0},
 matchBiasMul:1,
 };
 function _sdeReset(){
-[0,1,2,3].forEach(p=>{_sde.recentRolls[p]=[];_sde.biasCooldown[p]=0;_sde.turnsSinceSix[p]=0;_sde.badStreak[p]=0;_sde.lastTokenStuckTurns[p]=0;_sde.lastTokenLastStep[p]=null;});
+[0,1,2,3].forEach(p=>{_sde.recentRolls[p]=[];_sde.biasCooldown[p]=0;_sde.turnsSinceSix[p]=0;_sde.badStreak[p]=0;_sde.lastTokenStuckTurns[p]=0;_sde.lastTokenLastStep[p]=null;_sde.failStreak[p]=0;});
 
 
 _sde.matchBiasMul=0.7+Math.random()*0.6;
@@ -5838,391 +5838,80 @@ const bothFar=progresses.every(p=>p<maxProg*0.6);
 const closeGame=gapAbs/maxProg<0.15;
 return{active:true,bothFar,closeGame};
 }
-function rubberbandRng(pid){
-if(!PLAYERS[pid]||!PLAYERS[pid].active)return null;
-if(_sde.biasCooldown[pid]>0)_sde.biasCooldown[pid]--;
-const blockSix=(G.sixes||0)>=2;
-const myToks=toksOf(pid);
-const debugInfo={playerId:pid,tokensLocked:myToks.filter(t=>t.step===0).length,tokensFinished:myToks.filter(t=>t.step>=STEP_DONE).length,turnsSinceSix:_sde.turnsSinceSix[pid],weightsApplied:[]};
-if(Math.random()<0.40){
-let skipResult=rng();
-if(blockSix){let a=0;while(skipResult===6&&a<20){skipResult=rng();a++;}}
-_sde.recentRolls[pid].push(skipResult);
-if(_sde.recentRolls[pid].length>5)_sde.recentRolls[pid].shift();
-if(skipResult===6){_sde.turnsSinceSix[pid]=0;}
-else if(!blockSix){_sde.turnsSinceSix[pid]++;}
-if(skipResult<=2){_sde.badStreak[pid]++;}
-else{_sde.badStreak[pid]=0;}
-_sdeRecordTelemetry(Object.assign(debugInfo,{skipped:true,diceResult:skipResult}));
-return skipResult;
-}
-const dist=[1/6,1/6,1/6,1/6,1/6,1/6];
-const mul=_sde.matchBiasMul;
-const allLocked=myToks.every(t=>t.step===0);
-
-if(allLocked&&!blockSix){
-const b=8/100*mul;
-dist[5]+=b;
-dist[0]-=b*0.25;dist[1]-=b*0.25;dist[2]-=b*0.25;dist[3]-=b*0.25;
-debugInfo.weightsApplied.push('allLocked');
-}
-
-if(!blockSix){
-const tss=_sde.turnsSinceSix[pid];
-let pity=0;
-if(tss===3)pity=3/100;
-else if(tss===4)pity=5/100;
-else if(tss===5)pity=7/100;
-else if(tss>=6)pity=10/100;
-pity*=mul;
-if(pity>0){
-dist[5]+=pity;
-dist[0]-=pity*0.25;dist[1]-=pity*0.25;dist[2]-=pity*0.25;dist[3]-=pity*0.25;
-debugInfo.weightsApplied.push(`sixPity(${tss})`);
-}
-}
-
-if(_sde.badStreak[pid]>=2){
-const streak=_sde.badStreak[pid];
-let bp=0;
-if(streak===2)bp=3/100;
-else if(streak===3)bp=6/100;
-else if(streak>=4)bp=10/100;
-bp*=mul;
-if(bp>0){
-dist[3]+=bp*0.3;dist[4]+=bp*0.35;if(!blockSix)dist[5]+=bp*0.35;
-dist[0]-=bp*0.4;dist[1]-=bp*0.3;dist[2]-=bp*0.3;
-debugInfo.weightsApplied.push(`badLuckPity(${streak})`);
-}
-}
-
-const entryVal=_rbFindHomeStretchEntryVal(pid,blockSix);
-if(entryVal!==null){
-const b=4/100*mul;
-dist[entryVal-1]+=b;
-dist[0]-=b*0.25;dist[1]-=b*0.25;dist[2]-=b*0.25;dist[3]-=b*0.25;
-debugInfo.weightsApplied.push('homeStretchEntry');
-}
-
-const nearHomeVal=_rbFindExactFinishVal(pid,blockSix);
-if(nearHomeVal!==null){
-const b=8/100*mul;
-dist[nearHomeVal-1]+=b;
-dist[0]-=b*0.25;dist[1]-=b*0.25;dist[2]-=b*0.25;dist[3]-=b*0.25;
-debugInfo.weightsApplied.push('exactFinish');
-}
-
-const killVals=_rbFindKillVals(pid,blockSix);
-if(killVals.length){
-const perVal=(killVals.length>1?4/100:6/100)*mul;
-killVals.forEach(v=>{dist[v-1]+=perVal;});
-const drain=perVal*killVals.length/6;
-for(let i=0;i<6;i++)dist[i]-=drain;
-debugInfo.weightsApplied.push(`kill(${killVals.join(',')})`);
-}
-
-
-const lastTokState=_rbLastTokenState(pid);
-if(lastTokState.active){
-const tok=lastTokState.tok;
-const prevStep=_sde.lastTokenLastStep[pid];
-if(prevStep!==null&&prevStep===tok.step){
-_sde.lastTokenStuckTurns[pid]++;
-}else{
-_sde.lastTokenStuckTurns[pid]=0;
-}
-_sde.lastTokenLastStep[pid]=tok.step;
-const anyMove=[];
+/* SIMPLE DICE v2 - same rules as server rollForSeat (s.js). Server is authoritative; this is the offline/bot/test mirror. */
+const NEAR_HOME_VICTIM_STEP=45,KILL_P=0.30,KILL_P_NEAR_HOME=0.38,SIX_P_WITH_KILL=0.22,STUCK_P6_LADDER=[0.30,0.40,0.50,0.60,0.70,0.80,0.85,0.90,0.95,1.00];
+function _rbKillInfo(pid,blockSix){
+const opponents=PLAYERS.filter(p=>p.active&&p.id!==pid).map(p=>p.id);
+const out=[];
 for(let v=1;v<=6;v++){
 if(blockSix&&v===6)continue;
-if(movable(pid,v).some(t=>t===tok))anyMove.push(v);
+let best=-1;
+for(const tok of movable(pid,v)){
+const toStep=tok.step===0?1:tok.step+v;
+if(toStep>STEP_MAIN_END||toStep<=0)continue;
+const rc=getCell(pid,toStep);
+if(!rc)continue;
+if(SAFE.has(`${rc[0]}-${rc[1]}`))continue;
+for(const op of opponents){
+for(const ot of toksOf(op)){
+if(ot.step<=0||ot.step>=STEP_DONE)continue;
+const orc=getCell(op,ot.step);
+if(orc&&orc[0]===rc[0]&&orc[1]===rc[1])best=Math.max(best,ot.step);
 }
-const stuck=_sde.lastTokenStuckTurns[pid];
-if(stuck>=3&&anyMove.length){
-const boost=Math.min(0.10,0.025*(stuck-2))*mul;
-anyMove.forEach(v=>{dist[v-1]+=boost/anyMove.length;});
-const drain=boost/6;
-for(let i=0;i<6;i++)dist[i]-=drain;
-debugInfo.weightsApplied.push(`lastToken(${stuck})`);
 }
+}
+if(best>=0)out.push({v,victimStep:best});
+}
+return out;
+}
+function _rbNoMoveWithoutSix(pid){
+if(!toksOf(pid).some(t=>t.step<STEP_DONE))return false;
+for(let v=1;v<=5;v++)if(movable(pid,v).length)return false;
+return movable(pid,6).length>0;
+}
+function _rbBuildDist(stuck,failStreak,kills,blockSix){
+let dist=[1/6,1/6,1/6,1/6,1/6,1/6];
+if(stuck){
+const p6=STUCK_P6_LADDER[Math.min(Math.max(0,failStreak|0),STUCK_P6_LADDER.length-1)];
+for(let i=0;i<5;i++)dist[i]=(1-p6)/5;
+dist[5]=p6;
+}else if(kills.length){
+const pick=kills[Math.min(Math.floor(Math.random()*kills.length),kills.length-1)];
+const pickP=pick.victimStep>=NEAR_HOME_VICTIM_STEP?KILL_P_NEAR_HOME:KILL_P;
+if(pick.v===6){
+for(let i=0;i<5;i++)dist[i]=(1-pickP)/5;
+dist[5]=pickP;
 }else{
-_sde.lastTokenLastStep[pid]=null;
-_sde.lastTokenStuckTurns[pid]=0;
-}
-
-const endGame=_rbEndGameState(pid);
-if(endGame.active&&endGame.bothFar&&!endGame.closeGame){
-const usefulVals=new Set([...killVals]);
-if(entryVal!==null)usefulVals.add(entryVal);
-if(nearHomeVal!==null)usefulVals.add(nearHomeVal);
-if(usefulVals.size){
-const b=3/100*mul;
-usefulVals.forEach(v=>{if(!(blockSix&&v===6))dist[v-1]+=b;});
-debugInfo.weightsApplied.push('endGameIntensity');
+const rest=(1-pickP-SIX_P_WITH_KILL)/4;
+for(let i=0;i<6;i++)dist[i]=rest;
+dist[pick.v-1]=pickP;
+dist[5]=SIX_P_WITH_KILL;
 }
 }
-
-_rbStandingBias(pid,dist,blockSix);
-debugInfo.weightsApplied.push('rubberband');
-
-const recent=_sde.recentRolls[pid];
-if(recent.length>=3){
-const last3=[recent[recent.length-1],recent[recent.length-2],recent[recent.length-3]];
-if(last3[0]===last3[1]&&last3[1]===last3[2]){
-dist[last3[0]-1]-=8/100;
-debugInfo.weightsApplied.push('repeatProtection');
-}
-}
-
-for(let i=0;i<6;i++)dist[i]=Math.max(0,dist[i]);
-const finalDist=_sdeClamp(dist);
 if(blockSix){
-finalDist[5]=0;
-const s=finalDist.reduce((a,b)=>a+b,0);
-for(let i=0;i<5;i++)finalDist[i]/=s;
-finalDist[5]=0;
+dist[5]=0;
+const s=dist.reduce((a,b)=>a+b,0);
+dist=s>0?dist.map(x=>x/s):[0.2,0.2,0.2,0.2,0.2,0];
 }
-const result=_sdeSampleDist(finalDist);
+return dist;
+}
+function rubberbandRng(pid){
+if(!PLAYERS[pid]||!PLAYERS[pid].active)return null;
+const blockSix=(G.sixes||0)>=2;
+const stuck=_rbNoMoveWithoutSix(pid);
+const kills=stuck?[]:_rbKillInfo(pid,blockSix);
+const dist=_rbBuildDist(stuck,_sde.failStreak[pid]||0,kills,blockSix);
+const result=_sdeSampleDist(dist);
 _sde.recentRolls[pid].push(result);
 if(_sde.recentRolls[pid].length>5)_sde.recentRolls[pid].shift();
-if(result===6){_sde.turnsSinceSix[pid]=0;}
-else if(!blockSix){_sde.turnsSinceSix[pid]++;}
-if(result<=2){_sde.badStreak[pid]++;}
-else{_sde.badStreak[pid]=0;}
-_sdeRecordTelemetry(Object.assign(debugInfo,{diceResult:result,homeStretchEntryAvailable:entryVal!==null,exactFinishAvailable:nearHomeVal!==null,killAvailable:killVals.length>0,killNumbers:killVals,playerProgress:_rbProgress(pid),finalProbabilityDistribution:finalDist.slice()}));
+if(stuck&&!blockSix)_sde.failStreak[pid]=(result===6)?0:(_sde.failStreak[pid]||0)+1;
+else _sde.failStreak[pid]=0;
+_sdeRecordTelemetry({playerId:pid,stuck,failStreak:_sde.failStreak[pid],killNumbers:kills.map(k=>k.v),diceResult:result});
 return result;
 }
-const smartDice={targetPids:new Set()};
-const forceDice={};
-const _secretTaps={counts:[0,0,0,0],timers:[null,null,null,null]};
-function _onSecretTap(pid){
-try{const _u=window.auth&&window.auth.currentUser;if(!_u||_u.isAnonymous||_u.uid!=='mjGnd06C9Chd20Yc8mIoQEYumDy1')return;}catch(e){return;}
-clearTimeout(_secretTaps.timers[pid]);
-_secretTaps.counts[pid]++;
-if(_secretTaps.counts[pid]>=10){_secretTaps.counts[pid]=0;openSmartDicePanel();return;}
-_secretTaps.timers[pid]=setTimeout(()=>{_secretTaps.counts[pid]=0;},2500);
-}
-function openSmartDicePanel(){
-if(typeof window._cheatSessionValid==='function'&&window._cheatSessionValid()){_openSmartDicePanelActual();return;}
-if(typeof window._askCheatPassword==='function')window._askCheatPassword();
-}
-function _openSmartDicePanelActual(){
-const panel=document.getElementById('smart-dice-panel');
-panel.style.display='flex';
-const btn=document.getElementById('sdp-close-btn');
-if(btn&&!btn._bound){
-btn._bound=true;
-btn.addEventListener('click',function(e){e.stopPropagation();closeSmartDicePanel();});
-btn.addEventListener('touchend',function(e){e.stopPropagation();e.preventDefault();closeSmartDicePanel();},{passive:false});
-}
-_renderSmartDicePanel();
-_scrubShow();
-if(typeof _scrubRender==="function")_scrubRender();
-}
-function closeSmartDicePanel(){
-document.getElementById('smart-dice-panel').style.display='none';
-const op=document.getElementById('smart-dice-panel-offline');
-if(op)op.style.display='none';
-}
-window.closeSmartDicePanel=closeSmartDicePanel;
-function _renderSmartDicePanel(){
-const grid=document.getElementById('sdp-color-grid');
-grid.innerHTML='';
-const activePlayers=PLAYERS.filter(p=>p.active);
-activePlayers.forEach((p,idx)=>{
-const isSelected=smartDice.targetPids.has(p.id);
-const btn=document.createElement('div');
-const isLast=idx===activePlayers.length-1;
-btn.style.cssText=`flex:1;background:${isSelected?p.color+'22':'transparent'};border-right:${isLast?'none':'1.5px solid #2a2a55'};padding:7px 4px 6px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;transition:background 0.15s;`;
-btn.innerHTML=tokIconHTML(p.color,24);
-btn.onclick=()=>{if(smartDice.targetPids.has(p.id))smartDice.targetPids.delete(p.id);else smartDice.targetPids.add(p.id);_renderSmartDicePanel();refreshUI();};
-grid.appendChild(btn);
-});
-const status=document.getElementById('sdp-status');
-if(status){
-if(smartDice.targetPids.size>0){
-const names=[...smartDice.targetPids].map(id=>PLAYERS[id].label.toUpperCase()).join(',');
-const col=smartDice.targetPids.size===1?PLAYERS[[...smartDice.targetPids][0]].color:'#F5C518';
-status.style.color=col;
-status.textContent=`✦ SMART DICE ACTIVE:${names}✦`;
-}else{
-status.style.color='rgba(240,240,255,0.35)';
-status.textContent='No players selected — Smart Dice is off';
-}
-}
-const forceGrid=document.getElementById('sdp-force-grid');
-if(!forceGrid)return;
-forceGrid.innerHTML='';
-PLAYERS.forEach(p=>{
-if(!p.active)return;
-const current=forceDice[p.id]||null;
-const row=document.createElement('div');
-row.style.cssText='display:flex;align-items:center;gap:5px;';
-const lbl=document.createElement('div');
-lbl.style.cssText='width:28px;display:flex;align-items:center;justify-content:center;flex-shrink:0;';
-lbl.innerHTML=tokIconHTML(p.color,22);
-row.appendChild(lbl);
-const nums=document.createElement('div');
-nums.style.cssText='display:flex;gap:3px;flex:1;justify-content:space-between;';
-for(let n=1;n<=6;n++){
-const nb=document.createElement('div');
-const isActive=current===n;
-nb.style.cssText=`width:19px;height:19px;border-radius:4px;border:1.5px solid ${isActive?p.color:'#2a2a55'};background:${isActive?p.color+'33':'#13132a'};display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:.55rem;font-weight:800;color:${isActive?p.color:'rgba(240,240,255,.5)'};font-family:'Rajdhani',sans-serif;transition:all 0.15s;flex-shrink:0;`;
-nb.textContent=n;
-nb.onclick=()=>{const newVal=(forceDice[p.id]===n)?null:n;forceDice[p.id]=newVal;if(ROOM_CODE)window._srv('a',{c:ROOM_CODE,p:{op:'force',seat:p.id,val:newVal}});_renderSmartDicePanel();};
-nums.appendChild(nb);
-}
-row.appendChild(nums);
-if(current!==null){const clr=document.createElement('div');clr.style.cssText='font-size:.6rem;color:rgba(255,80,80,.7);cursor:pointer;font-family:Rajdhani,sans-serif;font-weight:700;flex-shrink:0;padding:2px 4px;border-radius:4px;border:1px solid rgba(255,80,80,.3);';clr.textContent='✕';clr.title='Clear';clr.onclick=()=>{forceDice[p.id]=null;if(ROOM_CODE)window._srv('a',{c:ROOM_CODE,p:{op:'force',seat:p.id,val:null}});_renderSmartDicePanel();};row.appendChild(clr);}
-forceGrid.appendChild(row);
-});
-const elderGrid=document.getElementById('sdp-elder-grid');
-const elderStatus=document.getElementById('sdp-elder-status');
-if(!elderGrid)return;
-const _elderWrap=elderGrid.parentElement&&elderGrid.parentElement.parentElement;
-if(_elderWrap)_elderWrap.style.display=ROOM_CODE?'':'none';
-if(!ROOM_CODE)return;
-elderGrid.innerHTML='';
-const currentElder=(_forcedElderSeat!==null)
-?_forcedElderSeat
-:(()=>{
-for(const seat of SEAT_LAYOUT_ACTIVE){
-if(!PLAYERS[seat]?.active)continue;
-if(_onlineSeats.has(seat))return seat;
-}
-return SEAT_LAYOUT_ACTIVE.find(s=>PLAYERS[s]?.active)??-1;
-})();
-if(elderStatus){
-const isManual=_forcedElderSeat!==null;
-const eName=PLAYERS[currentElder]?.label||`P${currentElder+1}`;
-const eColor=getDisplayColorForSeat(currentElder);
-elderStatus.style.color=eColor;
-elderStatus.textContent=isManual
-?`${eName}(manual)`
-:`${eName}(auto)`;
-}
-const activePlayers2=PLAYERS.filter(p=>p.active);
-activePlayers2.forEach(p=>{
-const isElder=p.id===currentElder;
-const btn=document.createElement('div');
-btn.style.cssText=`
-width:36px;height:36px;border-radius:8px;
-border:2px solid ${isElder?p.color:'#2a2a55'};
-background:${isElder?p.color+'33':'#13132a'};
-display:flex;align-items:center;justify-content:center;
-cursor:pointer;position:relative;transition:all 0.15s;
-box-shadow:${isElder?`0 0 8px ${p.color}88`:'none'};
-`;
-btn.innerHTML=tokIconHTML(p.color,22);
-if(isElder){
-const crown=document.createElement('div');
-crown.style.cssText='position:absolute;top:-7px;left:50%;transform:translateX(-50%);font-size:10px;line-height:1;';
-crown.textContent='👑';
-btn.appendChild(crown);
-}
-btn.onclick=async()=>{
-if(!ROOM_CODE||!gameRef)return;
-const newVal=(p.id===_forcedElderSeat)?null:p.id;
-try{
-await db.ref(`rooms/${ROOM_CODE}/elderSeat`).set(newVal);
-}catch(e){
-}
-};
-elderGrid.appendChild(btn);
-});
-if(_forcedElderSeat!==null){
-const autoBtn=document.createElement('div');
-autoBtn.style.cssText=`
-width:36px;height:36px;border-radius:8px;
-border:1.5px solid #444466;background:#13132a;
-display:flex;align-items:center;justify-content:center;
-cursor:pointer;font-size:9px;color:rgba(240,240,255,0.45);
-font-family:'Rajdhani',sans-serif;font-weight:700;letter-spacing:.5px;
-`;
-autoBtn.textContent='AUTO';
-autoBtn.title='Reset to automatic elder selection';
-autoBtn.onclick=async()=>{
-if(!ROOM_CODE)return;
-try{await db.ref(`rooms/${ROOM_CODE}/elderSeat`).set(null);}catch(e){}
-};
-elderGrid.appendChild(autoBtn);
-}
-_renderCheatPointsStatus();
-}
-function _renderCheatPointsStatus(){
-const el=document.getElementById('sdp-points-status');
-if(!el)return;
-const pts=(MY_SEAT!=null&&G.points&&G.points[MY_SEAT]!=null)?G.points[MY_SEAT]:0;
-el.textContent=`Your points: ${pts}`;
-}
-window._cheatAddPoints=async function(){
-if(MY_SEAT==null)return;
-if(!G.points)G.points={0:0,1:0,2:0,3:0};
-if(_isOnlineRoom()){
-const r=await window._srv('a',{c:ROOM_CODE,p:{op:'points',seat:MY_SEAT,amt:999}});
-if(!r||!r.ok){if(typeof showToast==='function')showToast('❌ Server ne points reject kiye (admin login check karo)');return;}
-G.points[MY_SEAT]=(r.points!=null)?r.points:+((G.points[MY_SEAT]||0)+999).toFixed(2);
-}else{
-G.points[MY_SEAT]=+((G.points[MY_SEAT]||0)+999).toFixed(2);
-}
-_renderCheatPointsStatus();
-if(document.getElementById('modal-shop')&&document.getElementById('modal-shop').classList.contains('show'))renderShop();
-if(typeof showToast==='function')showToast('⭐ +999 points added (just for you)');
-};
-const _scrub={pid:null,tid:null,_holdTimer:null,_holdInterval:null};
-function _scrubIsTest(){return!ROOM_CODE&&!gameRef;}
-function _scrubShow(){
-const w=document.getElementById('sdp-scrubber-wrap');
-if(w)w.style.display=_scrubIsTest()?'block':'none';
-const dw=document.getElementById('sdp-debug-wrap');
-if(dw){dw.style.display='none';}
-_renderDebugBotGrid();
-}
-function _renderDebugBotGrid(){
-const grid=document.getElementById('sdp-debug-bot-grid');
-if(!grid)return;
-grid.innerHTML='';
-SEAT_LAYOUT_ACTIVE.forEach(seat=>{
-if(!PLAYERS[seat]?.active)return;
-const isBot=PLAYERS[seat]?.isBot;
-const color=getDisplayColorForSeat(seat);
-const name=PLAYERS[seat].label;
-const row=document.createElement('div');
-row.style.cssText='display:flex;gap:4px;align-items:center;';
-row.innerHTML=`${tokIconHTML(color,14)}
-<span style="flex:1;font-size:.52rem;font-family:Rajdhani,sans-serif;font-weight:700;color:${color};letter-spacing:.3px;">${name}${seat===MY_SEAT?'(you)':''}</span>`;
-if(seat!==MY_SEAT){
-const btn=document.createElement('button');
-btn.style.cssText=`padding:4px 7px;border-radius:6px;border:1.5px solid ${isBot?'#00C853':'#a855f7'};background:${isBot?'#051a09':'#130a1f'};color:${isBot?'#00C853':'#a855f7'};font-size:.55rem;font-weight:800;font-family:Rajdhani,sans-serif;letter-spacing:.5px;cursor:pointer;`;
-btn.textContent=isBot?'DEACTIVATE':'MAKE BOT';
-btn.onclick=()=>{
-if(isBot){_deactivateBot(seat);}else{_activateBot(seat);}
-setTimeout(_renderDebugBotGrid,100);
-};
-row.appendChild(btn);
-if(!isBot){
-const vBtn=document.createElement('button');
-vBtn.style.cssText='padding:4px 7px;border-radius:6px;border:1.5px solid #FF2D78;background:#1a0510;color:#FF2D78;font-size:.55rem;font-weight:800;font-family:Rajdhani,sans-serif;letter-spacing:.5px;cursor:pointer;';
-vBtn.textContent='VOTE';
-vBtn.onclick=()=>{window.voteForBot(seat);setTimeout(_renderDebugBotGrid,100);};
-row.appendChild(vBtn);
-}
-}
-grid.appendChild(row);
-});
-}
 function smartRng(pid){
-if(forceDice[pid]!=null){const forced=forceDice[pid];forceDice[pid]=null;if(ROOM_CODE)db.ref(`rooms/${ROOM_CODE}/forceDice/${pid}`).set(null);if(document.getElementById('smart-dice-panel').style.display!=='none')_renderSmartDicePanel();_dbgLog('DICE_SOURCE_FORCED_TESTING_PANEL',{pid,forcedValue:forced});return forced;}
 const blockSix=(G.sixes||0)>=2;
-if(!smartDice.targetPids.has(pid)){const rbVal=rubberbandRng(pid);let val=(rbVal!==null)?rbVal:rng();const _rawVal=val;if(blockSix){let a=0;while(val===6&&a<20){val=rng();a++;}if(val===6)_dbgLog('DICE_BLOCKSIX_FAILED_20_TRIES',{pid,rawVal:_rawVal,finalVal:val});}_dbgLog('DICE_SOURCE_RUBBERBAND',{pid,source:rbVal!==null?'rubberband':'random_rng',rawVal:_rawVal,finalVal:val,blockSixActive:blockSix});return val;}
-const enemyCkSet=new Set();
-G.tokens.forEach(o=>{if(o.pid===pid||o.step===0||o.step>=STEP_DONE)return;if(!PLAYERS[o.pid].active)return;const rc=getCell(o.pid,o.step);if(rc)enemyCkSet.add(`${rc[0]}-${rc[1]}`);});
-for(let v=1;v<=6;v++){if(blockSix&&v===6)continue;const mv=movable(pid,v);if(mv.some(t=>(t.step===0?1:t.step+v)>=STEP_DONE)){_dbgLog('DICE_SOURCE_SMART_FINISH',{pid,val:v,blockSixActive:blockSix});return v;}}
-for(let v=1;v<=6;v++){if(blockSix&&v===6)continue;const mv=movable(pid,v);for(const tok of mv){const toStep=tok.step===0?1:tok.step+v;if(toStep>STEP_MAIN_END)continue;const rc=getCell(pid,toStep);if(!rc)continue;const ck=`${rc[0]}-${rc[1]}`;if(!SAFE.has(ck)&&enemyCkSet.has(ck)){_dbgLog('DICE_SOURCE_SMART_CAPTURE',{pid,val:v,blockSixActive:blockSix});return v;}}}
-let bestVal=null,bestToStep=-1;
-for(let v=1;v<=6;v++){if(blockSix&&v===6)continue;const mv=movable(pid,v);if(!mv.length)continue;for(const tok of mv){const toStep=tok.step===0?1:tok.step+v;if(toStep>bestToStep){bestToStep=toStep;bestVal=v;}}}
-if(bestVal!==null){_dbgLog('DICE_SOURCE_SMART_BEST_PROGRESS',{pid,val:bestVal,blockSixActive:blockSix});return bestVal;}
-let fb=rng();const _rawFb=fb;if(blockSix){let a=0;while(fb===6&&a<20){fb=rng();a++;}}_dbgLog('DICE_SOURCE_FALLBACK_RANDOM',{pid,rawVal:_rawFb,finalVal:fb,blockSixActive:blockSix});return fb;
+const rbVal=rubberbandRng(pid);let val=(rbVal!==null)?rbVal:rng();const _rawVal=val;if(blockSix){let a=0;while(val===6&&a<20){val=rng();a++;}if(val===6)_dbgLog('DICE_BLOCKSIX_FAILED_20_TRIES',{pid,rawVal:_rawVal,finalVal:val});}_dbgLog('DICE_SOURCE_RUBBERBAND',{pid,source:rbVal!==null?'rubberband':'random_rng',rawVal:_rawVal,finalVal:val,blockSixActive:blockSix});return val;
 }
 function eio(t){return t<.5?4*t*t*t:(t-1)*(2*t-2)*(2*t-2)+1;}
 function lerp(a,b,t){return a+(b-a)*t;}
@@ -6997,6 +6686,7 @@ if(data&&typeof data.timestamp==='number'&&data.timestamp>0){
 t=_srvTsToLocal(data.timestamp);
 if(!forceApply)t=Math.max(t,Date.now()-(TURN_TIMER_SEC-3)*1000);
 }
+_dbgLog('TO_STAMP_TURN',{rawTs:data&&data.timestamp,stamped:t,ageMs:Date.now()-t,force:!!forceApply,prevTs:G.timestamp,gTurn:G.turn,srvTurn:data&&data.turn,MY_SEAT});
 G.timestamp=t;
 _lastTimerTurn=-1;
 }
@@ -7004,6 +6694,7 @@ let _lastTimerTurn=-1;
 let _turnExpiryHandled=false;
 function updateTurnBanner(){
 if(G.turn!==_lastTimerTurn){
+_dbgLog('TO_TURN_CHANGED',{turn:G.turn,MY_SEAT,rolled:G.rolled,waiting:G.waiting,ts:G.timestamp,ageMs:Date.now()-(G.timestamp||Date.now()),isBot:!!PLAYERS[G.turn]?.isBot,elder:amIElderPlayer()});
 _lastTimerTurn=G.turn;
 _turnExpiryHandled=false;
 resetTurnTimeout();
@@ -7013,40 +6704,80 @@ const _botSeat=G.turn;
 setTimeout(()=>{if(!G.over&&G.turn===_botSeat&&PLAYERS[_botSeat]?.isBot&&!G.rolled)_doBotTurn(_botSeat);},700);
 }
 }
-if(
-ROOM_CODE&&
-G.turn!==MY_SEAT&&
-!G.rolled&&
-!G.over&&
-!_animating&&
-!_rolling&&
-amIElderPlayer()&&
-smartDice.targetPids.has(G.turn)
-){
-const _targetSeat=G.turn;
-setTimeout(()=>{
-if(G.turn!==_targetSeat||G.rolled||G.over||_animating||_rolling)return;
-_doBotTurn(_targetSeat);
-},300);
 }
-}
-let _preRoll=null,_preKey=null;
-function _prefetchRoll(seat){
+let _preRoll=null,_preKey=null,_preP=null,_earlyStamp=null;
+// early = server stamp (srvTs) of the committed state that gave me the turn. Passed only from
+// _earlyPrefetch (Firebase snapshot with server-written turn===MY_SEAT), so G may still be on the
+// previous turn (queued animation) and the G.turn/G.rolled guards are skipped in that mode.
+function _prefetchRoll(seat,early,_try,_lkIn){
 try{
-if(seat!==MY_SEAT||!ROOM_CODE||!gameRef||window._cpuMode||window._pnpMode||G.over||G.rolled||G.turn!==seat)return;
-const lk=!!(G.specialMode&&G.pMeta&&G.pMeta[seat]&&G.pMeta[seat].luckyActive);
-const key=seat+':'+G.timestamp+':'+(lk?1:0);
+if(seat!==MY_SEAT||!ROOM_CODE||!gameRef||window._cpuMode||window._pnpMode||G.over)return;
+if(early==null&&(G.rolled||G.turn!==seat))return;
+const lk=(early!=null&&_lkIn!==undefined)?!!_lkIn:!!(G.specialMode&&G.pMeta&&G.pMeta[seat]&&G.pMeta[seat].luckyActive);
+const stamp=(early!=null)?early:((_earlyStamp!=null)?_earlyStamp:('g'+G.timestamp));
+const key=seat+':'+stamp+':'+(lk?1:0);
 if(_preKey===key)return;
 _preKey=key;_preRoll=null;
+const tryN=_try||0;
 const _pl=lk?{c:ROOM_CODE,p:{lucky:true}}:{c:ROOM_CODE};
-window._srv('dp',_pl).then(function(r){
+_preP=window._srv('dp',_pl).then(function(r){
 if(_preKey!==key)return;
-if(r&&typeof r.v==='number'&&r.v>=1&&r.v<=6)_preRoll={seat:seat,v:r.v,at:Date.now(),lk:r.lk===1,lucky:(r.lucky==null?null:r.lucky)};
-else _preKey=null;
-}).catch(function(){
-if(_preKey===key){_preKey=null;
-if(lk)setTimeout(function(){if(G.turn===seat&&!G.rolled&&!_rolling)_prefetchRoll(seat);},1700);}
+if(r&&typeof r.v==='number'&&r.v>=1&&r.v<=6){_preRoll={seat:seat,v:r.v,at:Date.now(),lk:r.lk===1,lucky:(r.lucky==null?null:r.lucky),key:key};return;}
+_preKey=null;
+if(tryN<3)setTimeout(function(){
+if(_preKey!==null||_rolling||G.over)return;
+if(early!=null){if(_earlyStamp!==early)return;}
+else if(G.turn!==seat||G.rolled)return;
+_prefetchRoll(seat,early,tryN+1,lk);
+},1700);
+}).catch(function(){if(_preKey===key)_preKey=null;});
+}catch(e){}
+}
+/* Lucky Number glow: armed -> EVERY screen shows it at once, consumed/cancelled -> EVERY screen hides it.
+   _setLuckyVisual flips the 4 DOM bits directly (no full refreshUI). _applyLuckyFlags reads the raw server
+   snapshot before syncGameState (which drops snapshots whose actionBy is me, and t:'ln' doesn't change actionBy). */
+let _luckyArmAt=0;
+function _setLuckyVisual(seat,on){
+try{
+const a=document.getElementById('lnbadge-'+seat);if(a)a.classList.toggle('show',on);
+const b=document.getElementById('pbg-'+seat);if(b)b.classList.toggle('lucky-glow',on);
+const c=document.getElementById('pluckyring-'+seat);if(c)c.classList.toggle('show',on);
+const d=document.getElementById('d3d-'+seat);if(d)d.classList.toggle('lucky-armed',on);
+}catch(e){}
+}
+function _applyLuckyFlags(data){
+try{
+if(!data||!data.pMeta||!G.pMeta||!_gameLoaded)return;
+Object.keys(data.pMeta).forEach(function(k){
+const st=+k,m=data.pMeta[k];
+if(!m||!G.pMeta[st])return;
+const on=m.luckyActive===true;
+if(st===MY_SEAT){
+/* own seat: OFF only (e.g. consumed by a proxy roll). Never ON from a snapshot - it could be stale
+   right after my own roll cleared it locally. 4s grace after arming so an older snapshot can't undo it. */
+if(on||!G.pMeta[st].luckyActive||Date.now()-_luckyArmAt<4000)return;
+G.pMeta[st].luckyActive=false;_setLuckyVisual(st,false);
+return;
+}
+if(!!G.pMeta[st].luckyActive===on)return;
+G.pMeta[st].luckyActive=on;
+_setLuckyVisual(st,on);
 });
+}catch(e){}
+}
+// Called from the Firebase game listener BEFORE syncGameState. Uses ONLY server-written fields:
+// `turn` is written by the server's t:'v' / 's' commit (online pushGameState strips turn), so if the
+// mover got an extra turn (six / kill / step done) the snapshot still says turn===mover and we skip.
+function _earlyPrefetch(data){
+try{
+if(MY_SEAT==null||!_gameLoaded||!ROOM_CODE||!gameRef||window._cpuMode||window._pnpMode)return;
+if(data.over||data.turn!==MY_SEAT||data.rolled===true||data.diceVal!=null||data.actionBy===MY_SEAT)return;
+const st=data.srvTs||data.timestamp;
+if(typeof st!=='number'||!st)return;
+_earlyStamp=st;
+if(window._srvWarm)window._srvWarm();
+const _lk=!!(data.specialMode===true&&data.pMeta&&data.pMeta[MY_SEAT]&&data.pMeta[MY_SEAT].luckyActive===true);
+_prefetchRoll(MY_SEAT,st,0,_lk);
 }catch(e){}
 }
 const TURN_TIMER_SEC=43;
@@ -7062,6 +6793,7 @@ if(seat===MY_SEAT&&ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode){windo
 
 _timerStart=(typeof G.timestamp==='number'&&G.timestamp>0)?G.timestamp:Date.now();
 const _elapsedAtStart=(Date.now()-_timerStart)/1000;
+_dbgLog('TO_TIMER_START',{build:'to-dbg1',seat,MY_SEAT,elapsedSec:+_elapsedAtStart.toFixed(1),gTs:G.timestamp,hidden:document.hidden,elder:amIElderPlayer(),rolled:G.rolled});
 if(_elapsedAtStart>=TURN_TIMER_SEC){
 _dbgLog('TIMER_EXPIRE_CATCHUP',{seat,elapsedSec:+_elapsedAtStart.toFixed(1)});
 setTimeout(()=>{if(_timerSeat===seat)_onTurnTimerExpired(seat);},0);
@@ -7091,6 +6823,7 @@ _timerInterval=setInterval(()=>{
 const elapsed=(Date.now()-_timerStart)/1000;
 const remaining=TURN_TIMER_SEC-elapsed;
 if(remaining<=0){
+_dbgLog('TO_TIMER_INTERVAL_FIRE',{seat:_capturedSeat,MY_SEAT,gTurn:G.turn,elapsed:+elapsed.toFixed(1),hidden:document.hidden});
 stopTurnTimer();
 _onTurnTimerExpired(_capturedSeat);
 return;
@@ -7153,6 +6886,7 @@ async function _claimExpiredTurn(seat,turnTs){
 if(!ROOM_CODE||!gameRef)return true;
 try{
 const lockKey=`${seat}_${Math.round(turnTs||0)}`;
+_dbgLog('TO_CLAIM_TRY',{seat,lockKey,turnTs,MY_SEAT,gTs:G.timestamp});
 const lockRef=db.ref(`rooms/${ROOM_CODE}/turnLocks/${lockKey}`);
 const result=await lockRef.transaction(cur=>{
 if(cur)return;
@@ -7170,6 +6904,7 @@ return true;
 }
 }
 async function _onTurnTimerExpired(seat){
+_dbgLog('TO_EXPIRE_STATE',{seat,MY_SEAT,gTurn:G.turn,rolled:G.rolled,waiting:G.waiting,diceVal:G.diceVal,rolling:_rolling,animating:_animating,botActing:_botActing,isBotSeat:!!PLAYERS[seat]?.isBot,hidden:document.hidden,ts:G.timestamp,ageMs:Date.now()-(G.timestamp||Date.now()),elder:amIElderPlayer(seat),forcedElder:_forcedElderSeat,pendingAutoRoll:_pendingAutoRoll,expiryHandled:_turnExpiryHandled});
 _dbgLog('TIMER_EXPIRE_CALLED',{seat,MY_SEAT,gTurn:G.turn,gOver:G.over,gRolled:G.rolled,gWaiting:G.waiting,turnExpiryHandled:_turnExpiryHandled});
 if(G.over||G.turn!==seat){_dbgLog('TIMER_EXPIRE_BAIL_STALE',{seat,gTurn:G.turn,gOver:G.over});return;}
 if(G.rolled&&!G.waiting){_dbgLog('TIMER_EXPIRE_BAIL_ROLLED',{seat,gRolled:G.rolled,gWaiting:G.waiting});return;}
@@ -7184,7 +6919,7 @@ _dbgLog('TIMER_EXPIRE_COUNT_INC',{seat,newCount:_timerExpireCount[seat]});
 _dbgLog('ELDER_CHECK_AT_EXPIRY',{seat,MY_SEAT,amIElder:amIElderPlayer(seat),onlineSeats:[..._onlineSeats],visibleSeats:[..._visibleSeats]});
 if(seat===MY_SEAT&&_placingPower){_dbgLog('TIMER_EXPIRE_CANCEL_PENDING_POWER',{seat,power:_placingPower});cancelPlacement();}
 if(seat===MY_SEAT&&!G.rolled){
-if(_rolling||_animating)return;
+if(_rolling||_animating){_dbgLog('TO_EXPIRE_ME_BLOCKED',{seat,rolling:_rolling,animating:_animating});return;}
 _dbgLog('TIMER_EXPIRE_FORCE_AUTOROLL',{seat,rerollWindowActiveAtForce:_rerollWindowActive});
 if(!(await _claimExpiredTurn(seat,G.timestamp)))return;
 if(G.over||G.turn!==seat||G.rolled||_rolling||_animating)return;
@@ -7193,8 +6928,8 @@ doRoll(seat);
 return;
 }
 if(seat===MY_SEAT&&G.waiting&&G.rolled&&G.diceVal!=null){
-if(_animating||_rolling)return;
-if(G.turn!==MY_SEAT||!G.rolled||!G.waiting)return;
+if(_animating||_rolling){_dbgLog('TO_EXPIRE_ME_MOVE_BLOCKED',{seat,rolling:_rolling,animating:_animating});return;}
+if(G.turn!==MY_SEAT||!G.rolled||!G.waiting){_dbgLog('TO_EXPIRE_ME_MOVE_STALE',{seat,gTurn:G.turn,rolled:G.rolled,waiting:G.waiting});return;}
 const savedDice=G.diceVal;
 const mv=teamMovable(seat,savedDice);
 _dbgLog('TIMER_EXPIRE_FORCE_MOVE_OR_SKIP',{seat,savedDice,hasLegalMove:mv.length>0});
@@ -7325,7 +7060,7 @@ if(G.over||G.turn!==seat){_dbgLog('BOTTURN_BAIL',{seat,reason:'stale_after_think
 let v;
 if(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode){
 const _br=await window._srv('d',{c:ROOM_CODE,p:(seat!==MY_SEAT?{as:seat}:{})});
-if(!_br||typeof _br.v!=='number'){_dbgLog('BOTTURN_BAIL',{seat,reason:'server_roll_failed'});return;}
+if(!_br||typeof _br.v!=='number'){_dbgLog('BOTTURN_BAIL',{seat,reason:'server_roll_failed',resp:_br,lastStatus:window._srvLastStatus,MY_SEAT,forceAfk:!!forceAfk,gTurn:G.turn,gRolled:G.rolled});return;}
 v=_br.v;
 }else{
 v=smartRng(seat);
@@ -7382,6 +7117,7 @@ nextTurn(false);_applySrvSkip(_ff);
 pushGameState({action:"skip",dice:0,reason:"botError",auto:true},seat).catch(()=>{});
 }
 }finally{
+_dbgLog('TO_BOT_END',{seat,gTurn:G.turn,gRolled:G.rolled,gWaiting:G.waiting,gDice:G.diceVal,animating:_animating,rolling:_rolling,note:'gRolled=true here with no move after = stuck flag'});
 _botActing=false;
 }
 }
@@ -7400,12 +7136,14 @@ _turnTimeoutTimer=setTimeout(()=>{if(!G.over&&PLAYERS[G.turn]?.isBot)_doBotTurn(
 }
 return;
 }
-if(!amIElderPlayer()||!ROOM_CODE)return;
+if(!amIElderPlayer()||!ROOM_CODE){_dbgLog('TO_RESETTO_SKIP_NOT_ELDER',{turn:G.turn,MY_SEAT});return;}
 
 
 const _elapsedMs=Date.now()-((typeof G.timestamp==='number'&&G.timestamp>0)?G.timestamp:Date.now());
 const _remainingMs=Math.max(0,TURN_TIMEOUT_MS-_elapsedMs);
+_dbgLog('TO_RESETTO_SCHEDULED',{turn:G.turn,remainingMs:_remainingMs,elapsedMs:_elapsedMs,MY_SEAT});
 _turnTimeoutTimer=setTimeout(()=>{
+_dbgLog('TO_RESETTO_FIRED',{turn:G.turn,MY_SEAT,gOver:G.over,gRolled:G.rolled,gWaiting:G.waiting});
 if(G.over||G.turn===MY_SEAT)return;
 if(PLAYERS[G.turn]?.isBot)return;
 _onTurnTimerExpired(G.turn);
@@ -7422,10 +7160,10 @@ doRoll(G.turn);
 }
 async function doRoll(pid){
 if(_rolling){_dbgLog('DICE_ROLL_BLOCKED_ALREADY_ROLLING',{pid});return;}
-_dbgLog('DICE_ROLL_START',{pid,sixesStreakBefore:G.sixes||0,forcedPending:forceDice&&forceDice[pid]!=null,luckyActivePending:!!(G.pMeta&&G.pMeta[pid]&&G.pMeta[pid].luckyActive)});
+_dbgLog('DICE_ROLL_START',{pid,sixesStreakBefore:G.sixes||0,luckyActivePending:!!(G.pMeta&&G.pMeta[pid]&&G.pMeta[pid].luckyActive)});
 _cancelRerollWindow();
 _rolling=true;
-let rollSafety=setTimeout(()=>{_rolling=false;},DICE_DUR_MS+300);
+let rollSafety=setTimeout(()=>{_dbgLog('TO_ROLLING_SAFETY_RESET',{pid,gTurn:G.turn,gRolled:G.rolled});_rolling=false;},DICE_DUR_MS+300);
 const d3d=document.getElementById(`d3d-${pid}`);
 
 
@@ -7445,23 +7183,24 @@ v=smartRng(pid);
 _dbgLog('POWER_LUCKYNUMBER_NO_BEST_NUM',{pid,fallbackDice:v});
 if(pid===MY_SEAT)showToast("Lucky Number couldn't help this roll — no favorable move available");
 }
-G.pMeta[pid].luckyActive=false;
+G.pMeta[pid].luckyActive=false;_setLuckyVisual(pid,false);
 }else if(_isOnline){
 const _wasReroll=!!window._pendingRerollCharge;
 window._pendingRerollCharge=false;
 const _wantLucky=!!(G.specialMode&&G.pMeta&&G.pMeta[pid]&&G.pMeta[pid].luckyActive);
 const _dp={};if(_wasReroll)_dp.reroll=true;
+if(!_wasReroll&&pid===MY_SEAT&&!_preRoll&&_preP&&_preKey){try{await Promise.race([_preP,new Promise(function(r){setTimeout(r,350);})]);}catch(e){}}
 const _pre=(!_wasReroll&&pid===MY_SEAT&&_preRoll&&_preRoll.seat===pid&&_preRoll.lk===_wantLucky&&Date.now()-_preRoll.at<100000)?_preRoll:null;
-_preRoll=null;
+_preRoll=null;_preKey=null;_preP=null;_earlyStamp=null;
 if(_pre){
 v=_pre.v;_dp.pre=true;_dp.pv=_pre.v;
-if(_wantLucky){G.pMeta[pid].luckyActive=false;if(_pre.lucky===0&&pid===MY_SEAT)showToast("Lucky Number couldn't help this roll — no favorable move available");_dbgLog('POWER_LUCKYNUMBER_ROLL',{pid,bestNum:_pre.lucky,resultDice:v,source:'preroll'});}
+if(_wantLucky){G.pMeta[pid].luckyActive=false;_setLuckyVisual(pid,false);if(_pre.lucky===0&&pid===MY_SEAT)showToast("Lucky Number couldn't help this roll — no favorable move available");_dbgLog('POWER_LUCKYNUMBER_ROLL',{pid,bestNum:_pre.lucky,resultDice:v,source:'preroll'});}
 _deferSrv=true;
 _srvPromise=window._srv('d',{c:ROOM_CODE,p:_dp}).catch(function(){return null;});
-clearTimeout(rollSafety);rollSafety=setTimeout(()=>{_rolling=false;},23000);
+clearTimeout(rollSafety);rollSafety=setTimeout(()=>{_dbgLog('TO_ROLLING_SAFETY_RESET',{pid,gTurn:G.turn,gRolled:G.rolled});_rolling=false;},23000);
 _dbgLog('DICE_ROLLED_NORMAL',{pid,dice:v,source:'preroll'});
 }else{
-clearTimeout(rollSafety);rollSafety=setTimeout(()=>{_rolling=false;},23000);
+clearTimeout(rollSafety);rollSafety=setTimeout(()=>{_dbgLog('TO_ROLLING_SAFETY_RESET',{pid,gTurn:G.turn,gRolled:G.rolled});_rolling=false;},23000);
 const _spin=_dicePreSpin(pid);
 let _r=null;
 try{_r=await window._srv('d',{c:ROOM_CODE,p:_dp});}catch(e){_r=null;}
@@ -7470,15 +7209,15 @@ _spin(!_okRoll);
 if(!_okRoll){
 clearTimeout(rollSafety);_rolling=false;
 if(_wasReroll&&G.inventory&&G.inventory[pid])G.inventory[pid].reroll=(G.inventory[pid].reroll||0)+1;
-_dbgLog('DICE_ROLL_SERVER_FAILED',{pid,wasReroll:_wasReroll});
+_dbgLog('DICE_ROLL_SERVER_FAILED',{pid,wasReroll:_wasReroll,resp:_r,lastStatus:window._srvLastStatus,MY_SEAT,gTurn:G.turn,gRolled:G.rolled,hidden:document.hidden,wasAuto:!!_pendingAutoRoll});
 showToast("Roll failed — check connection and try again");
 return;
 }
 v=_r.v;
-clearTimeout(rollSafety);rollSafety=setTimeout(()=>{_rolling=false;},DICE_DUR_MS+300);
+clearTimeout(rollSafety);rollSafety=setTimeout(()=>{_dbgLog('TO_ROLLING_SAFETY_RESET',{pid,gTurn:G.turn,gRolled:G.rolled});_rolling=false;},DICE_DUR_MS+300);
 if(_r.pm){_srvPm=_r.pm;_srvPts=Number(_r.pts)||0;}
 if(_wantLucky){
-G.pMeta[pid].luckyActive=false;
+G.pMeta[pid].luckyActive=false;_setLuckyVisual(pid,false);
 if(_r.lucky===0&&pid===MY_SEAT)showToast("Lucky Number couldn't help this roll — no favorable move available");
 _dbgLog('POWER_LUCKYNUMBER_ROLL',{pid,bestNum:_r.lucky,resultDice:v,source:'server'});
 }
@@ -8014,14 +7753,23 @@ let _commitP=null;
 function _fireCommit(){
 if(!_isOnlineMove||_commitP)return;
 _commitP=window._srv('v',{c:ROOM_CODE,p:{tid,dv:v,as:(_actorSeat!==MY_SEAT?_actorSeat:undefined),of:(pid!==_actorSeat?pid:undefined)}});
+if(_actorSeat===MY_SEAT){_commitP.then(function(_cr){try{
+/* extra turn (six / kill / home): server already parked the next roll, fetch it now instead of after the move animation */
+if(_cr&&Array.isArray(_cr.tokens)&&_cr.turn===MY_SEAT&&!_cr.over&&!G.over){
+_earlyStamp='m'+Date.now();
+if(window._srvWarm)window._srvWarm();
+_prefetchRoll(MY_SEAT,_earlyStamp,0);
+}
+}catch(e){}}).catch(function(){});}
 }
 async function _commitMoveToServer(){
 if(!_isOnlineMove)return true;
 _fireCommit();
 const _r=await _commitP;
 if(!_r||!Array.isArray(_r.tokens)){
-_dbgLog('MOVE_COMMIT_SERVER_FAILED',{pid,tid,v});
-showToast("Sync error — reconnecting...");
+_dbgLog('MOVE_COMMIT_SERVER_FAILED',{pid,tid,v,why:(_r&&_r.why)||null,resp:_r,lastStatus:window._srvLastStatus,actor:_actorSeat,MY_SEAT,gTurn:G.turn,gRolled:G.rolled});
+if(_r&&_r.why==='frozen'){showToast("❄️ Opponent ne is token ko Freeze kar diya — move cancel hui, dusra token chuno");try{_forceResyncGame('move-frozen');}catch(e){}}
+else showToast("Sync error — reconnecting...");
 return false;
 }
 G.tokens=_r.tokens;
@@ -8030,11 +7778,11 @@ if(_r.placements)G.placements=_r.placements;
 return true;
 }
 const tok=tokOf(pid,tid);
-if(!tok){_animating=false;return;}
+if(!tok){_dbgLog('TO_DOMOVE_REJECT',{why:'no_token',pid,tid,v});_animating=false;return;}
 _dbgLog('DOMOVE_STEP_BEFORE',{pid,tid,v,stepBefore:tok.step});
 const allowed=movable(pid,v);
-if(!allowed.find(t=>t.tid===tid)){_animating=false;return;}
-if(tok.step>=STEP_STRETCH_START&&tok.step+v>STEP_DONE){_animating=false;return;}
+if(!allowed.find(t=>t.tid===tid)){_dbgLog('TO_DOMOVE_REJECT',{why:'not_movable',pid,tid,v,allowed:allowed.map(t=>t.tid),gTurn:G.turn,gRolled:G.rolled,gWaiting:G.waiting,note:'returns without clearing G.rolled/waiting -> possible stuck turn'});_animating=false;return;}
+if(tok.step>=STEP_STRETCH_START&&tok.step+v>STEP_DONE){_dbgLog('TO_DOMOVE_REJECT',{why:'overshoot',pid,tid,v,step:tok.step});_animating=false;return;}
 _fireCommit();
 let bonus=false;
 const diceWasSix=(v===6);
@@ -8272,6 +8020,7 @@ const nextSeat=layout[nextIdx];
 const p=PLAYERS[nextSeat];
 if(p&&p.active&&!toksOf(nextSeat).every(t=>t.step>=STEP_DONE)){
 G.turn=nextSeat;
+_dbgLog('TO_NEXTTURN_SET',{newTurn:nextSeat,same:!!same,MY_SEAT,ts:G.timestamp});
 break;
 }
 nextIdx=(nextIdx+1)% layout.length;
@@ -9418,144 +9167,7 @@ function hsShowHomeScreen(){}
 
 
 
-</script><div id="cheat-pw-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);backdrop-filter:blur(4px);z-index:9500;align-items:center;justify-content:center;"><div style="background:#1a1a35;border:1.5px solid #333366;border-radius:20px;padding:28px 24px;display:flex;flex-direction:column;align-items:center;gap:14px;width:300px;box-shadow:0 16px 60px rgba(0,0,0,.7);"><div style="font-size:1.8rem;">🔐</div><div style="color:white;font-size:1.1rem;font-weight:800;letter-spacing:.5px;font-family:'Rajdhani',sans-serif;">Cheat Panel</div><div style="width:100%;display:flex;flex-direction:column;gap:10px;"><input id="cheat-pass-input" type="password" placeholder="Password" autocomplete="current-password"
-        style="width:100%;padding:13px 16px;background:#13132a;border:1.5px solid #333366;border-radius:12px;color:white;font-size:1rem;font-family:'Nunito',sans-serif;font-weight:700;letter-spacing:2px;text-align:center;outline:none;box-sizing:border-box;"
-        onfocus="this.style.borderColor='#F5C518'" onblur="this.style.borderColor='#333366'"
-        onkeydown="if(event.key==='Enter')window._cheatLogin()"/><button onclick="window._cheatLogin()" id="cheat-login-btn" style="width:100%;padding:14px 0;font-size:.9rem;font-weight:800;border:none;border-radius:12px;cursor:pointer;background:#F5C518;color:#000;letter-spacing:.5px;font-family:'Nunito',sans-serif;">Unlock 🔓</button></div><div id="cheat-pw-err" style="color:#FF2D78;font-size:12px;font-family:'Nunito',sans-serif;min-height:16px;text-align:center;width:100%;"></div><button onclick="window._closeCheatPwModal()" style="width:100%;padding:12px 0;font-size:.85rem;font-weight:800;border:1.5px solid #333366;border-radius:12px;cursor:pointer;background:#13132a;color:rgba(240,240,255,.7);letter-spacing:.5px;font-family:'Nunito',sans-serif;">Cancel</button></div>
-</div>
-<script>(function(){
-const _cheatOv=document.getElementById('cheat-pw-overlay');
-if(_cheatOv&&_cheatOv.parentNode)_cheatOv.parentNode.removeChild(_cheatOv);
-let _cheatPwVerifiedAt=0;
-const _CHEAT_SESSION_MS=60*60*1000;
-let _cheatWrongStreak=0;
-let _cheatLockoutSeconds=0;
-let _cheatLockoutUntil=0;
-let _cheatLockoutInterval=null;
-function _cheatSessionValid(){
-return _cheatPwVerifiedAt>0&&(Date.now()-_cheatPwVerifiedAt)<_CHEAT_SESSION_MS;
-}
-window._cheatSessionValid=_cheatSessionValid;
-function _cheatResetLockout(){
-_cheatWrongStreak=0;
-_cheatLockoutSeconds=0;
-_cheatLockoutUntil=0;
-if(_cheatLockoutInterval){clearInterval(_cheatLockoutInterval);_cheatLockoutInterval=null;}
-}
-function _cheatStartLockoutUI(){
-const inp=document.getElementById('cheat-pass-input');
-const btn=document.getElementById('cheat-login-btn');
-const err=document.getElementById('cheat-pw-err');
-if(inp)inp.disabled=true;
-if(btn)btn.disabled=true;
-if(_cheatLockoutInterval)clearInterval(_cheatLockoutInterval);
-const tick=()=>{
-const remain=Math.max(0,Math.ceil((_cheatLockoutUntil-Date.now())/1000));
-if(remain<=0){
-clearInterval(_cheatLockoutInterval);
-_cheatLockoutInterval=null;
-if(inp)inp.disabled=false;
-if(btn)btn.disabled=false;
-if(err)err.textContent='';
-if(inp)inp.focus();
-return;
-}
-if(err){err.style.color='#FF2D78';err.textContent='⏳ Bahut galat attempts — '+remain+'s baad try karo';}
-};
-tick();
-_cheatLockoutInterval=setInterval(tick,1000);
-}
-function _registerWrongCheatAttempt(){
-_cheatWrongStreak++;
-if(_cheatLockoutSeconds===0){
-if(_cheatWrongStreak>=3){
-_cheatLockoutSeconds=30;
-_cheatLockoutUntil=Date.now()+_cheatLockoutSeconds*1000;
-_cheatStartLockoutUI();
-return true;
-}
-return false;
-}
-_cheatLockoutSeconds=_cheatLockoutSeconds*2;
-_cheatLockoutUntil=Date.now()+_cheatLockoutSeconds*1000;
-_cheatStartLockoutUI();
-return true;
-}
-const _V_UID='mjGnd06C9Chd20Yc8mIoQEYumDy1';
-const VERIFY_URL='https://asliludo.vercel.app/api/verify-password';
-function _askCheatPassword(){
-const ov=_cheatOv;
-if(!ov)return;
-if(!ov.parentNode)document.body.appendChild(ov);
-document.getElementById('cheat-pw-err').textContent='';
-const inp=document.getElementById('cheat-pass-input');
-const btn=document.getElementById('cheat-login-btn');
-if(inp){inp.value='';inp.disabled=false;}
-if(btn)btn.disabled=false;
-ov.style.display='flex';
-if(_cheatLockoutUntil>Date.now()){
-_cheatStartLockoutUI();
-}else if(inp){
-setTimeout(()=>inp.focus(),100);
-}
-}
-window._askCheatPassword=_askCheatPassword;
-window._closeCheatPwModal=function(){
-const ov=_cheatOv;
-if(ov){ov.style.display='none';if(ov.parentNode)ov.parentNode.removeChild(ov);}
-};
-window._cheatLogin=async function(){
-if(_cheatLockoutUntil>Date.now())return;
-const inp=document.getElementById('cheat-pass-input');
-const err=document.getElementById('cheat-pw-err');
-const btn=document.getElementById('cheat-login-btn');
-const pw=inp?inp.value:'';
-err.style.color='#FF2D78';
-err.textContent='';
-if(!pw){err.textContent='⚠️ Password daalo';return;}
-btn.disabled=true;
-btn.textContent='⏳ Checking...';
-try{
-const verifyPromise=fetch(VERIFY_URL,{
-method:'POST',
-headers:{'Content-Type':'application/json'},
-body:JSON.stringify({password:pw})
-});
-const timeoutPromise=new Promise((_,reject)=>setTimeout(()=>reject({code:'timeout'}),12000));
-const resp=await Promise.race([verifyPromise,timeoutPromise]);
-const data=await resp.json();
-if(!resp.ok||!data.token){
-throw {code:data.error||'server-error'};
-}
-await window.auth.signInWithCustomToken(data.token);
-btn.disabled=false;
-btn.textContent='Unlock 🔓';
-if(inp)inp.value='';
-_cheatPwVerifiedAt=Date.now();
-_cheatResetLockout();
-window._closeCheatPwModal();
-_openSmartDicePanelActual();
-}catch(e){
-btn.disabled=false;
-btn.textContent='Unlock 🔓';
-if(e&&e.code==='timeout'){
-err.textContent='❌ Response nahi mila 12s mein — internet check karo';
-}else if(e&&e.code==='invalid-credential'){
-const locked=_registerWrongCheatAttempt();
-if(!locked){
-const left=3-_cheatWrongStreak;
-err.textContent='❌ Galat password'+(left>0?(' ('+left+' try left)'):'');
-}
-}else if(e instanceof TypeError){
-err.textContent='❌ Server tak pahunch nahi paya — internet check karo';
-}else{
-err.textContent='❌ '+((e&&(e.code||e.message))||'Unknown error');
-}
-if(inp)inp.value='';
-if(!(_cheatLockoutUntil>Date.now())&&inp)inp.focus();
-}
-};
-})();</script>
+</script>
 <script>
 (function(){
 const GUIDE_TOPICS=[{"title": "Features", "sub": "What makes this Ludo different", "html": "<p>This game includes the following features beyond standard Ludo.</p><h3>Online Multiplayer</h3><p>Play with 2, 3, or 4 players. The host creates a room and shares the 6-character room code (tap the code to copy it), and friends join by entering it. The waiting room shows who has joined and whether each player is online or away. The host can start the match once at least two players have joined, or turn on Auto Start to begin as soon as the room is full. A room that is not started within 15 minutes expires.</p><h3>Special Mode</h3><p>The host can enable Special Mode when creating a room. In this mode you earn points for actions such as capturing tokens, and you can spend them in the Shop on six powers: Ambush, Freeze, Aegis, Lucky Number, Re-roll, and Reverse. The Shop button appears in the top bar only in this mode.</p><h3>Team Mode</h3><p>Team Mode is available in 4-player rooms and is enabled by the host when creating the room. The teams are Pink and Green versus Yellow and Blue. In the lobby, the host can change the teams by tapping one player and then another to swap their colors, and therefore their teams. Each player's team is shown beside their name during the match. Teammates have a private Team chat, which is also available in the lobby while teams are being arranged. When only one opponent is still in play, you can also move your teammate's tokens on your turn.</p><h3>Shield System</h3><p>Two of your tokens on the same cell form a Normal shield, which opponents cannot land on. Three or more form a Super shield, which also stops opponents from passing through. You can choose the design of each shield.</p><h3>Turn Timer and Bot Takeover</h3><p>Each turn has a 43-second timer, shown as a bar around the player's panel. If it runs out, the game rolls and moves for you automatically. If a player misses three turns in a row, an AFK badge appears on their panel. The other players can tap the badge to vote, and once two-thirds of them have voted, a bot plays on that player's behalf so the match keeps moving. The player can take control back by tapping \"Stop auto-play\" on their panel.</p><h3>Rejoin and Rematch</h3><p>If your connection drops or you close the app, \"Rejoin Game\" on the home screen returns you to your room, as long as the room is still active. You can also rejoin after leaving with the Home button. The game reconnects automatically, and a status indicator in the top bar shows whether you are Synced, Syncing, or Disconnected. When a match ends, the button on the results screen creates a new room with the same settings and moves the other players into it automatically.</p><h3>Customization</h3><p>Choose from four board themes (with a preview), 20 shield designs, and five token designs. Normal and Super shields are set separately, and they must be different. Your choices are saved on your device.</p><h3>Chat and Reactions</h3><p>Every room has a General chat. In Team Mode, a separate Team chat is available to teammates. Swipe a message to reply to it. New messages appear as a bubble above the sender's panel, and you can mute these popups from the chat window. You can also send one of ten reactions to any player by tapping the three-dot menu on their panel. Sending reactions requires you to sign in.</p><h3>Profile and Stats</h3><p>You can play as a guest with any name (up to 12 characters), or sign in with Google to save your kills, wins, and losses to your account, so your record is kept even if you clear your browser data. You can edit your name from your profile. Tap the three-dot menu on a signed-in player's panel to view their stats.</p><h3>Effects, Sound, and Performance Mode</h3><p>Tokens move cell by cell with a 3D dice roll. The game includes sound effects, vibration feedback on supported devices, and visual effects such as bomb blasts, freeze effects, an Aegis glow, and a win celebration. Use the sound button in the top bar to mute, and turn on Performance Mode (the lightning-bolt button) on slower devices to reduce effects and keep the game smooth.</p>"}, {"title": "Rules", "sub": "How to play, step by step", "html": "<h3>Objective</h3><p>Bring all four of your tokens from your home base, around the board, and into the home at the center. The first player to bring all four tokens home wins. The match continues until only one player is left, and the order in which players finish decides the rankings.</p><h3>Turns</h3><p>Turns pass clockwise around the board. Players who have already finished are skipped. On your turn, tap your dice to roll it, then tap one of the highlighted tokens to move it by the number rolled.</p><h3>Leaving Home</h3><p>A token can leave home only when you roll a 6. It is placed on your start cell, and each 6 brings out one token.</p><h3>Movement</h3><p>After leaving home, a token travels along the main track and then enters its own home stretch, which leads to the center. To enter home, you must roll the exact number needed. If the roll is larger than the steps remaining, that token cannot move.</p><h3>Extra Turns</h3><p>You roll again after any of the following:</p><ul><li>Rolling a 6</li><li>Capturing a token</li><li>Bringing a token home</li></ul><h3>Three Sixes</h3><p>If you roll three sixes in a row, the third six is not played and your turn passes to the next player.</p><h3>No Legal Move</h3><p>If none of your tokens can move with the number rolled, your turn passes automatically.</p><h3>Automatic Moves</h3><p>If only one move is possible, or all possible moves end on the same cell, the game plays it for you. In Special Mode, this does not apply while you own a Re-roll, or when Reverse can be used, so that you have time to decide.</p><h3>Safe Cells</h3><p>The eight star cells (the four start cells and the four grey stars) and all home stretch cells are safe. A token on a safe cell cannot be captured, and tokens of different players can share it.</p><h3>Capturing</h3><p>If you land on a cell that is not safe and an opponent has a single token there, that token is captured and sent back home. It needs a 6 to leave home again. Your own tokens are never captured, and they can share a cell.</p><h3>Shields</h3><ul><li>Two or more tokens of the same player on one cell form a shield, and tokens in a shield cannot be captured.</li><li>An opponent cannot land on a cell with a two-token shield, but can pass over it.</li><li>Three or more tokens form a Super shield. Opponents can neither land on it nor pass through it.</li><li>Shields apply on the main track only. On safe cells, every token is already protected.</li></ul><h3>Turn Timer</h3><p>You have 43 seconds to roll, and a fresh 43 seconds to choose a token after rolling. If the time runs out, the game plays for you: it rolls the dice, moves a token, or passes the turn if no move is possible. If you miss three turns in a row, an AFK badge appears on your panel. Once two-thirds of the other players vote, a bot plays for you until you tap \"Stop auto-play\".</p><h3>Team Mode</h3><ul><li>Team Mode is played with four players: Pink and Green versus Yellow and Blue.</li><li>The team of the first player to bring all four tokens home wins.</li><li>When only one opponent is still in play, you can move your teammate's tokens as well as your own on your turn.</li><li>Your teammate's tokens are not protected from you. If you land on a cell that is not safe and your teammate has a single token there, that token is captured and sent home, exactly like an opponent's token. The same applies in reverse.</li><li>A teammate's shield (two or more tokens) cannot be captured, because you cannot land on it. You can, however, pass through it, including a Super shield.</li></ul><h3>Rooms</h3><ul><li>Only the host can start the match, and at least two players must have joined.</li><li>A match cannot be joined once it has started. A player who was already in the match can return with \"Rejoin Game\".</li><li>A room that is not started within 15 minutes expires. A running room also expires after 15 minutes of inactivity or once everyone has left.</li></ul>"}, {"title": "Shield System", "sub": "Protecting tokens and blocking paths", "html": "<p>Shields let you protect your tokens and block your opponents' paths on the main track.</p><h3>How a Shield Forms</h3><p>When two or more of your tokens stand on the same cell, they form a shield. A shield icon appears above the stack. Only tokens of the same player form a shield, and all four of your tokens can stack on one cell.</p><h3>Normal Shield (2 tokens)</h3><ul><li>The tokens cannot be captured.</li><li>Opponents cannot land on the cell.</li><li>Opponents can pass over the cell.</li></ul><h3>Super Shield (3 or more tokens)</h3><ul><li>The tokens cannot be captured.</li><li>Opponents can neither land on the cell nor pass through it, so it blocks the path completely.</li></ul><h3>Where Shields Work</h3><p>Shields apply on the main track only. On safe cells (the star cells and the home stretch), every token is already protected, so no shield icon appears. Your own tokens are never blocked by your own shield.</p><h3>Breaking a Shield</h3><p>A shield lasts only while the tokens stay together. If one token moves away, a Normal shield is gone, and a Super shield becomes a Normal shield. The remaining tokens can then be captured like any others.</p><h3>Blocked Moves</h3><p>If shields block every move you could make, the turn passes automatically, as with any other turn without a legal move.</p><h3>Team Mode</h3><p>A token of yours and a token of your teammate on the same cell do not form a shield. A teammate's shield does not block you from passing, but you cannot land on it.</p><h3>Shield Designs</h3><p>You can choose the design of your Normal and Super shields under Customize, then Shield Style. There are 20 designs, and the two shields must use different designs. The designs are a display preference: you see every shield on the board in the designs you selected. Your choice is saved on your device.</p><h3>Special Mode</h3><ul><li>A token protected by the Aegis power is not blocked by shields. It can pass through an opponent's shield and land on it, but it cannot land on a cell that contains another Aegis-protected token.</li><li>If Aegis wears off while the token is still on a cell held by an opponent's shield, the token is sent home, unless it is part of a shield of its own.</li><li>The Reverse power follows the same shield rules as normal movement.</li></ul>"}, {"title": "Special Mode", "sub": "Points, the Shop, and powers", "html": "<p>Special Mode adds points, a Shop, and six powers to the standard game, so every match becomes a mix of luck and strategy.</p><h3>Enabling Special Mode</h3><p>The host turns on Special Mode when creating the room. It applies to every player for the whole match, works in 2, 3, and 4-player rooms, and can be combined with Team Mode. It cannot be changed after the room is created, and a rematch keeps the same setting.</p><h3>Points</h3><p>You earn points as you play, for example by capturing tokens and bringing tokens home. Each player has a personal balance that starts at zero in every match. Your balance is shown at the top of the Shop, and other players' balances are not displayed. Points are used only to buy powers and do not affect the final ranking. The Point System section lists every way to earn points.</p><h3>The Shop</h3><ul><li>Open the Shop with the button in the top bar. It appears only in Special Mode.</li><li>Each power shows its price. Tap Buy when you have enough points.</li><li>You can open the Shop and buy powers at any time, not only on your turn.</li><li>You can hold several copies of a power. Aegis can be bought only once per match.</li><li>Tap Use on a power you own to activate it. Re-roll also has a button next to your name.</li><li>Prices are lower in 2-player rooms.</li></ul><h3>Powers and Prices</h3><p>The price in a 2-player room is shown in brackets.</p><ul><li><b>Ambush:</b> 15 points (10). Plant a hidden trap on a cell. The first token that lands on it, including your own, is sent home.</li><li><b>Freeze:</b> 10 points (7). Freeze an opponent's token so that it cannot move on its owner's next turn.</li><li><b>Aegis:</b> 20 points (15). Protect one of your tokens from capture for three of your turns. Once per match.</li><li><b>Lucky Number:</b> 5 points (3). Raises the chance that your next roll gives the number that helps you most.</li><li><b>Re-roll:</b> 7 points (5). Within 15 seconds of rolling, discard your roll and roll again.</li><li><b>Reverse:</b> 15 points (10). After rolling, move one of your tokens backward by the number rolled. Your turn then ends, unless you rolled a 6.</li></ul><h3>When You Can Use Powers</h3><ul><li>Ambush, Freeze, and Aegis can be used from the Shop whenever you choose.</li><li>Lucky Number: activate it before you roll. It applies to your next roll.</li><li>Re-roll: only within 15 seconds after you roll.</li><li>Reverse: only on your turn, after you have rolled.</li></ul><h3>What Other Players See</h3><ul><li>Every purchase is announced to all players.</li><li>Using Freeze, Aegis, or Reverse is also announced. When an Ambush is placed, everyone is told that one was planted, but only the player who placed it can see where.</li></ul><h3>Bots</h3><p>A bot that plays for an AFK player does not buy or use powers.</p>"}, {"title": "Point System", "sub": "Every way to earn points", "html": "<h3>General</h3><ul><li>Points are earned only in Special Mode. Each player has a personal balance that starts at zero in every match, including in Team Mode.</li><li>Points are added the moment the event happens, and they can be fractions.</li><li>Points are spent only in the Shop and never affect the final ranking.</li><li>If several tokens are captured in one move, points are awarded for each captured token.</li></ul><h3>Capturing Tokens</h3><p>Points go to the player who makes the capture.</p><ul><li><b>Capture (1 point):</b> you land on a cell that is not safe and an opponent has a single token there.</li><li><b>Capture before the home stretch (3 points instead of 1):</b> the captured token was on the last cell of its main track, just before its own home stretch.</li><li><b>Spawn kill (2 bonus points):</b> the capture is made with the first move you make after bringing a token out of home. That move can be made with any of your tokens. The bonus is lost if that move does not capture, or when your turn ends.</li><li><b>Revenge (2 bonus points):</b> you capture a token belonging to the player who most recently captured one of yours. You must do it during your very next turn, including extra rolls. The chance ends after that turn or once you have taken revenge.</li><li><b>Kill streak (1 bonus point):</b> awarded when your captured-token count reaches three, after which the count restarts. Any move that does not capture, including bringing a token out of home, resets the count to zero.</li></ul><p>Bonuses stack. For example, capturing a token on the last cell of its main track as your first move after bringing a token out of home earns 3 + 2 = 5 points.</p><h3>Having Your Token Captured</h3><ul><li><b>0.5 points:</b> you receive this when one of your tokens is sent home by a capture.</li><li><b>1 point instead:</b> if the token was on the last cell of its main track.</li><li>This applies to every capture, including those made by powers and by the expiry of Aegis.</li></ul><h3>Progress</h3><ul><li><b>Token enters its home stretch (0.2 points):</b> awarded once for each token, on the move that takes it onto or past the first home stretch cell. Moving further inside the home stretch gives no additional points.</li><li><b>Star cell (0.2 points):</b> a move ends on a star cell. Bringing a token out of home and Reverse moves do not count.</li><li><b>Token reaches home (1 point):</b> awarded when a token reaches home at the center.</li><li><b>Flawless run (3 bonus points):</b> the token that reaches home was never sent home during the match. A flawless token therefore earns 1 + 3 = 4 points in total.</li></ul><h3>Dice</h3><p>Every roll you make counts, including rolls made with Re-roll, and streaks continue across turns.</p><ul><li><b>Low rolls (0.3 points):</b> three rolls in a row, each 1 or 2. The count restarts after the award, or as soon as you roll 3 or higher.</li><li><b>Same rolls (0.3 points):</b> three identical rolls in a row, and again for every further three in a row. Three sixes count, even though the third six is not played.</li><li><b>No legal move (0.2 points):</b> each time your turn passes because none of your tokens can move. This includes the timer running out with no move available, and an unused Re-roll window with no move available.</li></ul><h3>Powers</h3><ul><li><b>Power kill (1 bonus point):</b> added to the normal capture points (1 or 3) when a token is sent home by a power. Power kills do not count toward the Kill streak or the Spawn kill bonus.<ul><li><b>Reverse:</b> a Reverse move captures a token. Revenge also applies.</li><li><b>Ambush:</b> a token triggers your trap. The trap owner earns these points whichever token triggers it. If the token is protected by Aegis, it survives and no points are awarded.</li><li><b>Aegis strike:</b> after any move, an Aegis-protected token shares a cell with exactly one opponent token that is not protected by Aegis. That opponent token is sent home, and the Aegis owner earns the points.</li></ul></li><li><b>Aegis expiry (1 point):</b> when an Aegis wears off while its token is inside an opponent's shield, the token is sent home and the shield's owner earns 1 point, without the power kill bonus.</li></ul>"}, {"title": "Powers", "sub": "How each power works", "html": "<h3>Using a Power</h3><ul><li>Open the Shop and tap Use on a power you own. The Shop closes and an instruction banner appears at the top of the screen.</li><li>Tap the close button on the banner to cancel. A power is spent only when you complete its action, so cancelling costs nothing.</li><li>Starting a different power cancels the current one.</li><li>If a power has no valid target, you see a message and nothing is spent.</li><li>Re-roll and Lucky Number work slightly differently and are explained below.</li></ul><h3>Ambush</h3><ul><li><b>Effect:</b> plants a hidden trap. The first token that ends its move on that cell is sent home, and the trap is used up. This applies to any token, including your own.</li><li><b>Where:</b> any cell of the main track that is not a star cell, is not part of a home stretch, has no token on it, and has no trap already. You can plant several traps, one per cell.</li><li><b>Visibility:</b> only you can see your traps, and your teammate cannot see them either. Everyone is told that an Ambush was planted, but not where.</li><li><b>Triggering:</b> a trap is triggered when a token ends a move on it, whether that move is a forward move or a Reverse move. Passing over a trap does not trigger it. A trap stays until it is triggered.</li><li><b>Aegis:</b> a token protected by Aegis survives the blast, and the trap is still used up.</li></ul><h3>Freeze</h3><ul><li><b>Effect:</b> a frozen token cannot be moved until the end of its owner's turn. If you freeze a token during another player's turn, it stays frozen through its owner's next turn.</li><li><b>Targets:</b> any token of another player (in Team Mode, this includes your teammate) that is on the main track, not on a star cell, not in a home stretch, not already frozen, and not protected by Aegis.</li><li><b>Other tokens:</b> the owner's other tokens can move normally. If every token that could move is frozen, the owner's turn passes.</li><li><b>No protection:</b> a frozen token can still be captured, and it still counts toward shields. Being sent home ends the freeze.</li></ul><h3>Aegis</h3><ul><li><b>Effect:</b> protects one of your tokens for three of your turns. It can be bought only once per match.</li><li><b>Targets:</b> any of your tokens on the board (not at home, not finished) that is not already protected and does not share a cell with an opponent's Aegis-protected token. Only your own tokens can be chosen.</li><li><b>Duration:</b> it ends at the end of your third turn, counting from when you apply it. A turn that continues because of a 6, a capture, or a token reaching home counts as one turn. If you apply it during your own turn, that turn is the first.</li><li><b>Protection:</b> opponents cannot land on the token's cell, so it cannot be captured. It cannot be frozen, and applying Aegis to a frozen token unfreezes it. It survives an Ambush blast. It is also not blocked by shields, as described under Shield System.</li><li><b>Aegis strike:</b> after any move, if a protected token shares a cell with exactly one opponent token that is not protected by Aegis, that opponent token is sent home.</li><li><b>Expiry:</b> if Aegis wears off while the token is inside an opponent's shield, the token is sent home, unless it is part of a shield of its own.</li></ul><h3>Lucky Number</h3><ul><li><b>Activation:</b> tap Use, then tap your own player box. One Lucky Number is spent, and your dice glows while it is armed.</li><li><b>Effect:</b> it applies to your next roll only, whenever that roll comes. The game picks the number that helps you most, and that number gets a 1 in 3 chance of being rolled. The other five numbers share the remaining chance equally.</li><li><b>How the number is chosen</b> (first match wins):<ol><li>A number that captures an opponent's token</li><li>A number that brings a token home</li><li>A 6, if a 6 can be played</li><li>After two sixes in a row: a number that lands on a star cell</li><li>Otherwise, the number that moves a token furthest</li></ol></li><li><b>Limits:</b> after two sixes in a row, Lucky Number never gives a third six. If no number gives you a move, it cannot help and is still used up.</li></ul><h3>Re-roll</h3><ul><li><b>Effect:</b> discards your current roll and rolls again. The new roll must be accepted, unless you have another Re-roll and use it in the same way.</li><li><b>When:</b> within 15 seconds after any roll, whether you have no move, one move, or several. If you have no legal move and do not re-roll, your turn passes when the 15 seconds end.</li><li><b>How:</b> tap the Re-roll button next to your name, which shows a countdown, or tap Use in the Shop. Making a move ends the window.</li><li><b>Automatic moves:</b> while you own a Re-roll, the game does not play a single possible move for you. Tap the token to move, or use the Re-roll.</li><li><b>Sixes:</b> a discarded 6 gives no extra turn and does not count toward three sixes in a row.</li></ul><h3>Reverse</h3><ul><li><b>Effect:</b> moves one of your tokens backward by exactly the number you rolled, instead of playing that roll normally.</li><li><b>When:</b> on your turn, after you have rolled and once the current move has finished. When Reverse is possible, the game does not auto-play your roll, so you can choose.</li><li><b>Targets:</b> your tokens on the main track, except a token on your start cell. The token cannot go back past your start cell, and the same shield rules as forward movement apply to its path and landing cell.</li><li><b>Capture:</b> if it lands on a cell that is not safe and an opponent has a single token there, that token is captured.</li><li><b>Ambush:</b> if it lands on an Ambush trap, the trap is triggered like on any other move.</li><li><b>After Reverse:</b> if you rolled a 6, you get your extra turn as usual. Otherwise your turn ends, even if a token was captured. Reverse moves do not earn star cell points.</li><li><b>No target:</b> if no token can be reversed with your roll, you see a message and nothing is spent.</li></ul>"}, {"title": "Turn Timer, AFK, and Bot", "sub": "Timeouts, voting, and auto-play", "html": "<h3>Turn Timer</h3><ul><li>Every turn has a 43-second timer, shown as a bar that drains around the edge of the active player's panel, in that player's color. The bar turns yellow when fewer than 25 seconds remain, and pink when fewer than 10 seconds remain.</li><li>The timer restarts at each stage: when your turn begins, after you roll (giving you 43 seconds to choose a token), and at the start of every extra turn.</li><li>The timer keeps running if you leave the game. When you rejoin, it shows the real remaining time. If it has already run out, the game plays the turn immediately.</li></ul><h3>When the Timer Runs Out</h3><ul><li>If you have not rolled, the game rolls for you.</li><li>If you have rolled and must choose a token, the game picks a move for you, using the same strategy as a bot (see Bot Mode). If no move is possible, the turn passes.</li><li>If you were choosing a target for a power, that selection is cancelled.</li><li>The turn is played by your own device or, if your device is inactive, in the background, or offline, by another player's device. A match never waits for an absent player.</li></ul><h3>Missed Turns and the AFK Badge</h3><ul><li>Every turn that ends because the timer ran out counts as a missed turn.</li><li>After three missed turns in a row, an AFK badge appears on that player's panel on every other player's screen. The player does not see the badge on their own panel.</li><li>The badge is based on missed turns only. Being offline or disconnected does not show it until three turns have been missed.</li><li>Until a bot takes over, the game keeps playing that player's turns automatically each time the timer runs out.</li><li>When the player rolls or moves by themselves, the missed-turn count resets and the badge disappears. Automatic plays do not reset it.</li></ul><h3>Voting for a Bot</h3><ul><li>Tap the AFK badge on the player's panel to vote. It changes to \"Voted\" and lists who has voted, for example \"Blue, Pink voted (1/2)\".</li><li>The votes needed are two-thirds of the other players in the match, rounded up: 1 vote in a 2-player match, 2 votes in a 3-player match, and 2 votes in a 4-player match. Bots count toward the total but cannot vote.</li><li>Each player can vote once for each AFK player. A vote cannot be withdrawn, and you cannot vote for yourself or for a bot.</li><li>When enough votes are cast, everyone is told that the player is now a bot. Their panel shows \"BOT MODE\" and \"Auto-playing\".</li></ul><h3>Bot Mode</h3><ul><li>The bot rolls and moves for that player quickly, so the match keeps its pace. It follows all normal rules, including the three-sixes rule, and uses the same dice as every other player. In Team Mode, it can also move the teammate's tokens when Team Control applies.</li><li>The bot generally prefers moves in this order, with a small random factor: bring a token home, move a token into its home stretch, capture an opponent's token, bring a token out of home, land on a safe cell. Otherwise it prefers the move that leaves a token further along the track.</li><li>In Special Mode, a bot never buys or uses powers.</li></ul><h3>Taking Control Back</h3><ul><li>Tap \"Stop auto-play\" on your own panel. You are back in control immediately, even if the bot is in the middle of a turn, the badge and votes are cleared, and everyone is told that the bot was removed.</li><li>The missed-turn count is not reset by taking control back. It resets only when you roll or move yourself, so if you miss another turn before doing so, the AFK badge returns right away.</li></ul><h3>Connection Problems</h3><p>A player who disconnects or closes the app is handled in the same way: their turns are played automatically, and after three missed turns the others can vote for a bot. They can return at any time with \"Rejoin Game\". As a safety net, if a turn stays stuck for more than 100 seconds, another player's device plays it automatically.</p>"}, {"title": "Rejoin, Connection, and Settings", "sub": "Returning to a match, and options", "html": "<h3>Rejoin Game</h3><ul><li>When you create or join a room, your device saves the room code, your seat, and your name. While a saved room exists, the home screen shows a \"Rejoin Game\" card with the room code and your name. Tap it to return.</li><li>Rejoin works in the waiting room and during a match. It works only on the same device and browser, and clearing your browser data removes the saved room.</li><li>Leaving with the Home button during a match, or with \"Leave Room\" in the waiting room, keeps the card, so you can come back.</li><li>While you are away from a match, your turns are played automatically when the timer runs out. See Turn Timer, AFK, and Bot.</li><li>On rejoining, the current state is loaded from the server, so you see the board exactly as it is now.</li><li>The saved room is removed, and the card disappears, when the match ends, when the room expires, or when rejoining fails.</li></ul><h3>When Rejoin Fails</h3><p>You see one of these messages, and the card is removed:</p><ul><li>\"Room no longer exists\"</li><li>\"Room expired — not started within 15 min\"</li><li>\"That game has already ended\"</li><li>\"Room expired — everyone left\"</li><li>\"Room expired — inactive for 15 min\"</li><li>\"Seat no longer available\"</li></ul><h3>Room Expiry</h3><ul><li>A waiting room that is not started within 15 minutes expires.</li><li>A running match expires after 15 minutes without any active player, either because everyone has been offline or because the room has been inactive.</li><li>Once a match has ended, its room cannot be rejoined.</li></ul><h3>Connection</h3><ul><li>The home screen shows \"Server connected\" in green, or \"No server connection\" in pink.</li><li>A full-screen message reads \"Connecting to server...\" when the game starts, or \"Reconnecting to server...\" if the connection is lost. It disappears when the connection returns.</li><li>During a match, the status indicator in the top bar shows Synced, Syncing, or Disconnected. When the connection returns, you see \"Reconnected!\".</li><li>Brief interruptions of under 5 seconds are ignored. After a longer drop, the game state is refreshed from the server.</li><li>If you leave the app and return after more than 3 seconds, the board and chat are refreshed from the server. As a safety net, the game also refreshes itself every 15 seconds.</li></ul><h3>Rematch</h3><ul><li>When a match ends, the results screen shows a button (labelled \"Back\"). When any player taps it, a new room is created and all the players from the match are moved into it automatically.</li><li>The new room keeps the same number of players, Team Mode, Special Mode, and colors. Players return to their previous seats when possible.</li><li>Everyone waits in the new room's waiting room, and the host starts the match again. Auto Start is not carried over, so it must be turned on again if you want it. The new room expires if it is not started within 15 minutes.</li><li>If the new room cannot be created, the button becomes available again after a few seconds, so you can tap it again.</li><li>If you do not want to play again, leave from the waiting room, or use the Home button at the top left of the results screen.</li></ul><h3>Settings</h3><ul><li><b>Sound:</b> the speaker button in the top bar mutes and unmutes all game sounds. Sound is back on when you reload the game.</li><li><b>Vibration:</b> on supported devices, the game gives short vibrations, for example when you roll the dice. The sound button does not affect it, and there is no setting to turn it off.</li><li><b>Performance Mode:</b> the lightning-bolt button in the top bar turns it on or off, and your choice is saved on your device. It turns off most visual effects: token trails, sparkles, glows, token shadows, animation transitions, and landing and spawn animations. The highlight on tokens you can move and the shield icons stay visible, but without animation.</li><li><b>Customization:</b> your board theme, shield designs, and token designs are saved on your device.</li><li><b>Chat popups:</b> you can mute the chat bubbles from the chat window, and this choice is also saved on your device.</li></ul>"}];
