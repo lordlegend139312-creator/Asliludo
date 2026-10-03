@@ -2106,6 +2106,50 @@ els.frost._fzInitDone=true;
 });
 }
 function _isOnlineRoom(){return !!(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode);}
+/* WATCHDOG: if the shared game state has not changed for ~57s (turn timer is 45s, elder normally acts well before),
+   ANY visible player asks the server to force-pass the turn (t:'f' + wd). Server re-checks idle>=55s on its own clock,
+   so a skewed/abusive client can't skip live turns. Backstop for a dead/backgrounded elder tab. */
+let _wdSig='',_wdAt=Date.now(),_wdBusy=false;
+function _wdNote(data){
+try{
+const sig=[data&&data.turn,data&&data.rolled,data&&data.diceVal,data&&data.timestamp,data&&data.srvTs,data&&data.over].join('|');
+if(sig!==_wdSig){_wdSig=sig;_wdAt=Date.now();}
+}catch(e){}
+}
+setInterval(async function(){
+try{
+if(_wdBusy||!_gameLoaded||!_isOnlineRoom()||MY_SEAT===null||document.hidden)return;
+if(G.over||G.turn==null)return;
+if(Date.now()-_wdAt<57000)return;
+_wdBusy=true;
+const seat=G.turn;
+_dbgLog('WATCHDOG_TRY',{seat,MY_SEAT,idleLocalMs:Date.now()-_wdAt,gRolled:G.rolled,rolling:_rolling,animating:_animating});
+const r=await window._srv('f',{c:ROOM_CODE,p:{as:(seat!==MY_SEAT?seat:undefined),wd:true}});
+_dbgLog('WATCHDOG_RESULT',{seat,ok:!!r,turn:r&&r.turn});
+if(r){_rolling=false;_animating=false;_wdAt=Date.now();try{await _forceResyncGame('watchdog');}catch(e){}}
+else{_wdAt=Date.now()-47000;} /* retry in ~10s */
+}catch(e){}
+finally{_wdBusy=false;}
+},5000);
+/* Desync recovery: server says turn=me & rolled=true but my screen has no roll (e.g. an earlier skip was rejected).
+   Seen twice, >=6s apart, with nothing pending -> replay the roll; server 'd' returns the already-committed value
+   (dup) or has auto-skipped, and the normal afterRoll flow takes over. */
+let _desyncSeen=null;
+function _recoverRolledDesync(data){
+try{
+if(!data||!_isOnlineRoom()||MY_SEAT===null||document.hidden){_desyncSeen=null;return;}
+const dv=Number(data.diceVal);
+const bad=data.over!==true&&data.turn===MY_SEAT&&data.rolled===true&&dv>=1&&dv<=6
+&&G.turn===MY_SEAT&&!G.rolled&&!G.waiting&&!_rolling&&!_animating&&!_syncAnimPlaying&&!window._lastCommitP&&!_rerollWindowActive;
+if(!bad){_desyncSeen=null;return;}
+const key=String(data.timestamp||'')+':'+dv,now=Date.now();
+if(!_desyncSeen||_desyncSeen.key!==key){_desyncSeen={key,at:now};return;}
+if(now-_desyncSeen.at<6000)return;
+_desyncSeen=null;
+_dbgLog('DESYNC_RECOVER_ROLLED',{MY_SEAT,srvDice:dv,gTurn:G.turn,gRolled:G.rolled});
+doRoll(MY_SEAT);
+}catch(e){}
+}
 /* FIX: preroll path me 'd' (roll commit) background me jaata hai. Agar 's'/'f' uske commit hone se
    pehle server pe pahunch jaye to server 403 deta hai (rolled!==true) aur baad me 'd' commit hota hai
    -> server pe turn=me, rolled=true, koi legal move nahi, aur skip dobara kabhi nahi jata (stuck).
@@ -2116,6 +2160,9 @@ try{const rc=window._rollCommitP;if(rc)await Promise.race([rc.catch(function(){}
 async function _srvSkip(pid){
 if(!_isOnlineRoom())return null;
 await _waitRollCommit();
+/* server 'd' may already have done the skip (noMove) in the same commit -> do NOT call 's' (turn is already passed) */
+const _dm=window._dNoMove;
+if(_dm&&_dm.pid===pid&&Date.now()-_dm.at<120000&&_dm.r&&typeof _dm.r.turn==='number'){window._dNoMove=null;return _dm.r;}
 const r=await window._srv('s',{c:ROOM_CODE,p:{as:(pid!==MY_SEAT?pid:undefined)}});
 return (r&&typeof r.turn==='number')?r:null;
 }
@@ -3638,6 +3685,8 @@ else if(p.action==="move"&&_pendingMoveBySeat[p.actionBy]==null)_pendingMoveBySe
 }
 function syncGameState(data,_forceApply){
 if(!_gameLoaded){return;}
+_wdNote(data);
+_recoverRolledDesync(data);
 _dbgLog('TO_SYNC_IN',{actionBy:data.actionBy,action:data.action,reason:data.reason,auto:data.auto,dice:data.dice??data.diceVal,srvTurn:data.turn,srvRolled:data.rolled,srvWaiting:data.waiting,ts:data.timestamp,force:!!_forceApply,MY_SEAT,gTurn:G.turn,gRolled:G.rolled,gWaiting:G.waiting,animPlaying:_syncAnimPlaying,animating:_animating,rolling:_rolling,queued:_syncAnimPending.length});
 if(!_forceApply&&data.actionBy===MY_SEAT){_dbgLog('TO_SYNC_SKIP_OWN_ACTIONBY',{actionBy:data.actionBy,action:data.action,srvTurn:data.turn,gTurn:G.turn,gRolled:G.rolled,note:'if an elder acted FOR me (timeout) this is also skipped -> my screen never learns about it'});return;}
 if(!_forceApply&&data.actionBy!=null&&data.actionBy!==MY_SEAT&&PLAYERS[data.actionBy]?.isBot&&amIElderPlayer()){_dbgLog('TO_SYNC_SKIP_BOT_ELDER',{actionBy:data.actionBy,action:data.action});return;}
@@ -5849,7 +5898,7 @@ const closeGame=gapAbs/maxProg<0.15;
 return{active:true,bothFar,closeGame};
 }
 /* SIMPLE DICE v2 - same rules as server rollForSeat (s.js). Server is authoritative; this is the offline/bot/test mirror. */
-const NEAR_HOME_VICTIM_STEP=45,KILL_P=0.30,KILL_P_NEAR_HOME=0.38,SIX_P_WITH_KILL=0.22,STUCK_P6_LADDER=[0.30,0.40,0.50,0.60,0.70,0.80,0.85,0.90,0.95,1.00];
+const NEAR_HOME_VICTIM_STEP=45,KILL_P=0.30,KILL_P_NEAR_HOME=0.38,SIX_P_WITH_KILL=0.22,STUCK_P6_LADDER=[0.20,0.30,0.40,0.50,0.60,0.70,0.80,0.85,0.90,0.95,1.00];
 function _rbKillInfo(pid,blockSix){
 const opponents=PLAYERS.filter(p=>p.active&&p.id!==pid).map(p=>p.id);
 const out=[];
@@ -7172,6 +7221,7 @@ async function doRoll(pid){
 if(_rolling){_dbgLog('DICE_ROLL_BLOCKED_ALREADY_ROLLING',{pid});return;}
 _dbgLog('DICE_ROLL_START',{pid,sixesStreakBefore:G.sixes||0,luckyActivePending:!!(G.pMeta&&G.pMeta[pid]&&G.pMeta[pid].luckyActive)});
 _cancelRerollWindow();
+window._dNoMove=null;
 _rolling=true;
 let rollSafety=setTimeout(()=>{_dbgLog('TO_ROLLING_SAFETY_RESET',{pid,gTurn:G.turn,gRolled:G.rolled});_rolling=false;},DICE_DUR_MS+300);
 const d3d=document.getElementById(`d3d-${pid}`);
@@ -7212,7 +7262,7 @@ if(_earlySpin){_earlySpin(false);_earlySpin=null;}
 v=_pre.v;_dp.pre=true;_dp.pv=_pre.v;
 if(_wantLucky){G.pMeta[pid].luckyActive=false;_setLuckyVisual(pid,false);if(_pre.lucky===0&&pid===MY_SEAT)showToast("Lucky Number couldn't help this roll — no favorable move available");_dbgLog('POWER_LUCKYNUMBER_ROLL',{pid,bestNum:_pre.lucky,resultDice:v,source:'preroll'});}
 _deferSrv=true;
-_srvPromise=window._srv('d',{c:ROOM_CODE,p:_dp}).catch(function(){return null;});
+_srvPromise=window._srv('d',{c:ROOM_CODE,p:_dp}).then(function(_x){if(_x&&_x.noMove)window._dNoMove={pid:pid,r:_x,at:Date.now()};return _x;}).catch(function(){return null;});
 window._rollCommitP=_srvPromise;
 clearTimeout(rollSafety);rollSafety=setTimeout(()=>{_dbgLog('TO_ROLLING_SAFETY_RESET',{pid,gTurn:G.turn,gRolled:G.rolled});_rolling=false;},23000);
 _dbgLog('DICE_ROLLED_NORMAL',{pid,dice:v,source:'preroll'});
@@ -7222,6 +7272,7 @@ const _spin=_earlySpin||_dicePreSpin(pid);
 let _r=null;
 try{_r=await window._srv('d',{c:ROOM_CODE,p:_dp});}catch(e){_r=null;}
 const _okRoll=!!(_r&&typeof _r.v==='number');
+if(_okRoll&&_r.noMove)window._dNoMove={pid:pid,r:_r,at:Date.now()};
 _spin(!_okRoll);
 if(!_okRoll){
 clearTimeout(rollSafety);_rolling=false;
