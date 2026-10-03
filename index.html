@@ -67,7 +67,12 @@ window._srv=function(t,b){
     if(t==='l'||t==='ping'||t==='dp')return _inner(t,b);
     var t0=Date.now(),id=(window._srvSeq=(window._srvSeq||0)+1),p=(b&&b.p)||{};
     try{window._dbgLog('TO_SRV_REQ',{id:id,t:t,as:p.as,reroll:p.reroll,tid:p.tid,dv:p.dv,hidden:document.hidden,waitingCommit:!!window._lastCommitP});}catch(e){}
+    var _t0srv=Date.now();
     return _inner(t,b).then(function(r){
+      try{
+        if((t==='d'||t==='v'||t==='s')&&r&&!r.e&&typeof _serverOffset==='number'){window._ownCommitSrvTs=_t0srv+_serverOffset;}
+        if((t==='d'||t==='v'||t==='s')&&window._srvLastStatus===t+':403'){setTimeout(function(){try{_forceResyncGame('deny403');}catch(e){}},0);}
+      }catch(e){}
       try{window._dbgLog('TO_SRV_RES',{id:id,t:t,ms:Date.now()-t0,ok:!!r,v:r&&r.v,why:r&&r.why,turn:r&&r.turn,over:r&&r.over,lastStatus:window._srvLastStatus});}catch(e){}
       return r;
     },function(e){
@@ -3690,6 +3695,11 @@ _recoverRolledDesync(data);
 _dbgLog('TO_SYNC_IN',{actionBy:data.actionBy,action:data.action,reason:data.reason,auto:data.auto,dice:data.dice??data.diceVal,srvTurn:data.turn,srvRolled:data.rolled,srvWaiting:data.waiting,ts:data.timestamp,force:!!_forceApply,MY_SEAT,gTurn:G.turn,gRolled:G.rolled,gWaiting:G.waiting,animPlaying:_syncAnimPlaying,animating:_animating,rolling:_rolling,queued:_syncAnimPending.length});
 if(!_forceApply&&data.actionBy===MY_SEAT){_dbgLog('TO_SYNC_SKIP_OWN_ACTIONBY',{actionBy:data.actionBy,action:data.action,srvTurn:data.turn,gTurn:G.turn,gRolled:G.rolled,note:'if an elder acted FOR me (timeout) this is also skipped -> my screen never learns about it'});return;}
 if(!_forceApply&&data.actionBy!=null&&data.actionBy!==MY_SEAT&&PLAYERS[data.actionBy]?.isBot&&amIElderPlayer()){_dbgLog('TO_SYNC_SKIP_BOT_ELDER',{actionBy:data.actionBy,action:data.action});return;}
+if(!_forceApply&&typeof data.timestamp==='number'&&data.actionBy!==MY_SEAT){
+const _own=window._ownCommitSrvTs||0,_mx=window._maxSeenSrvTs||0;
+if((_own&&data.timestamp<_own)||(_mx&&data.timestamp<_mx)){_dbgLog('SYNC_DROP_STALE',{actionBy:data.actionBy,action:data.action,ts:data.timestamp,ownCommit:_own,maxSeen:_mx,incomingTurn:data.turn,gTurn:G.turn});return;}
+}
+if(typeof data.timestamp==='number'&&data.timestamp>(window._maxSeenSrvTs||0))window._maxSeenSrvTs=data.timestamp;
 const _rawDice=data.dice??data.diceVal;
 if(data.action==="roll"&&_rawDice!=null)_lastSeenDice[data.actionBy]=_rawDice;
 if(data.action==="move"&&_rawDice==null&&_lastSeenDice[data.actionBy]!=null){
@@ -7278,7 +7288,7 @@ if(!_okRoll){
 clearTimeout(rollSafety);_rolling=false;
 if(_wasReroll&&G.inventory&&G.inventory[pid])G.inventory[pid].reroll=(G.inventory[pid].reroll||0)+1;
 _dbgLog('DICE_ROLL_SERVER_FAILED',{pid,wasReroll:_wasReroll,resp:_r,lastStatus:window._srvLastStatus,MY_SEAT,gTurn:G.turn,gRolled:G.rolled,hidden:document.hidden,wasAuto:!!_pendingAutoRoll});
-showToast("Roll failed — check connection and try again");
+showToast((window._srvLastStatus==="d:403")?"Turn sync ho raha hai, dobara try karo":"Roll failed — check connection and try again");
 return;
 }
 v=_r.v;
@@ -7321,7 +7331,7 @@ _srvPromise.then(function(_r){
 try{
 if(!(_r&&typeof _r.v==='number')){
 _dbgLog('DICE_ROLL_SERVER_FAILED',{pid,preRoll:true});
-if(!_animating&&G.turn===pid&&G.rolled){G.rolled=false;G.diceVal=null;G.waiting=false;G.sixes=Math.max(0,(G.sixes||0)-(_shownV===6?1:0));_rolling=false;showToast("Roll failed — check connection and try again");try{syncUI();}catch(e){}}
+if(!_animating&&G.turn===pid&&G.rolled){G.rolled=false;G.diceVal=null;G.waiting=false;G.sixes=Math.max(0,(G.sixes||0)-(_shownV===6?1:0));_rolling=false;showToast((window._srvLastStatus==="d:403")?"Turn sync ho raha hai, dobara try karo":"Roll failed — check connection and try again");try{syncUI();}catch(e){}}
 return;
 }
 if(_r.pm&&G.pMeta&&G.pMeta[pid]){const m=G.pMeta[pid];m.lr=_r.pm.lr;m.sr=_r.pm.sr;m.lv=_r.pm.lv;if(Number(_r.pts))addPoints(pid,Number(_r.pts),true);}
