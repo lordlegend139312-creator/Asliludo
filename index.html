@@ -2696,7 +2696,7 @@ G.diceVal=null;
 window._pendingRerollCharge=true;
 pushGameState({});
 showToast("Rerolling...");
-setTimeout(()=>{if(G.turn===MY_SEAT)doRoll(MY_SEAT);},250);
+if(G.turn===MY_SEAT)doRoll(MY_SEAT); /* no 250ms delay: dice spins + server 'd' fires immediately */
 }
 window.useReroll=useReroll;
 function startAmbushPlacement(){
@@ -4327,6 +4327,7 @@ function _maybeStartRerollWindow(pid,v,hasMove){
 if(pid!==MY_SEAT||PLAYERS[pid]?.isBot)return false;
 if(!G.inventory||!G.inventory[pid]||!(G.inventory[pid].reroll>0))return false;
 _rerollWindowActive=true;
+try{if(window._srvWarm)window._srvWarm();}catch(e){}
 _dbgLog('REROLL_WINDOW_STARTED',{pid,dice:v,hasMove});
 _renderRerollBox();
 clearTimeout(_rerollWindowTimer);
@@ -6729,7 +6730,7 @@ if(_preKey!==null||_rolling||G.over)return;
 if(early!=null){if(_earlyStamp!==early)return;}
 else if(G.turn!==seat||G.rolled)return;
 _prefetchRoll(seat,early,tryN+1,lk);
-},1700);
+},500);
 }).catch(function(){if(_preKey===key)_preKey=null;});
 }catch(e){}
 }
@@ -7189,19 +7190,26 @@ const _wasReroll=!!window._pendingRerollCharge;
 window._pendingRerollCharge=false;
 const _wantLucky=!!(G.specialMode&&G.pMeta&&G.pMeta[pid]&&G.pMeta[pid].luckyActive);
 const _dp={};if(_wasReroll)_dp.reroll=true;
-if(!_wasReroll&&pid===MY_SEAT&&!_preRoll&&_preP&&_preKey){try{await Promise.race([_preP,new Promise(function(r){setTimeout(r,350);})]);}catch(e){}}
+let _earlySpin=null;
+if(!_wasReroll&&pid===MY_SEAT&&!_preRoll&&_preP&&_preKey){
+_earlySpin=_dicePreSpin(pid);
+clearTimeout(rollSafety);rollSafety=setTimeout(()=>{_rolling=false;},23000);
+try{await Promise.race([_preP,new Promise(function(r){setTimeout(r,900);})]);}catch(e){}
+}
 const _pre=(!_wasReroll&&pid===MY_SEAT&&_preRoll&&_preRoll.seat===pid&&_preRoll.lk===_wantLucky&&Date.now()-_preRoll.at<100000)?_preRoll:null;
 _preRoll=null;_preKey=null;_preP=null;_earlyStamp=null;
 if(_pre){
+if(_earlySpin){_earlySpin(false);_earlySpin=null;}
 v=_pre.v;_dp.pre=true;_dp.pv=_pre.v;
 if(_wantLucky){G.pMeta[pid].luckyActive=false;_setLuckyVisual(pid,false);if(_pre.lucky===0&&pid===MY_SEAT)showToast("Lucky Number couldn't help this roll — no favorable move available");_dbgLog('POWER_LUCKYNUMBER_ROLL',{pid,bestNum:_pre.lucky,resultDice:v,source:'preroll'});}
 _deferSrv=true;
 _srvPromise=window._srv('d',{c:ROOM_CODE,p:_dp}).catch(function(){return null;});
+window._rollCommitP=_srvPromise;
 clearTimeout(rollSafety);rollSafety=setTimeout(()=>{_dbgLog('TO_ROLLING_SAFETY_RESET',{pid,gTurn:G.turn,gRolled:G.rolled});_rolling=false;},23000);
 _dbgLog('DICE_ROLLED_NORMAL',{pid,dice:v,source:'preroll'});
 }else{
 clearTimeout(rollSafety);rollSafety=setTimeout(()=>{_dbgLog('TO_ROLLING_SAFETY_RESET',{pid,gTurn:G.turn,gRolled:G.rolled});_rolling=false;},23000);
-const _spin=_dicePreSpin(pid);
+const _spin=_earlySpin||_dicePreSpin(pid);
 let _r=null;
 try{_r=await window._srv('d',{c:ROOM_CODE,p:_dp});}catch(e){_r=null;}
 const _okRoll=!!(_r&&typeof _r.v==='number');
@@ -7246,24 +7254,27 @@ if(!_isOnline&&ROOM_CODE&&gameRef)gameRef.update({rolled:true,diceVal:v,turn:G.t
 navigator.vibrate&&navigator.vibrate(28);
 SFX.play('dice');
 if(_deferSrv){
-animDice(pid,v,async()=>{
-const _r=await _srvPromise;
+animDice(pid,v,()=>{clearTimeout(rollSafety);_rolling=false;afterRoll(pid,v);},false);
+/* server confirm background me: UI turant aage badhta hai, 'v' commit _rollCommitP ke baad hi jata hai */
+const _shownV=v;
+_srvPromise.then(function(_r){
+try{
 if(!(_r&&typeof _r.v==='number')){
-clearTimeout(rollSafety);_rolling=false;G.rolled=false;G.diceVal=null;
 _dbgLog('DICE_ROLL_SERVER_FAILED',{pid,preRoll:true});
-showToast("Roll failed — check connection and try again");
-try{syncUI();}catch(e){}
+if(!_animating&&G.turn===pid&&G.rolled){G.rolled=false;G.diceVal=null;G.waiting=false;G.sixes=Math.max(0,(G.sixes||0)-(_shownV===6?1:0));_rolling=false;showToast("Roll failed — check connection and try again");try{syncUI();}catch(e){}}
 return;
 }
 if(_r.pm&&G.pMeta&&G.pMeta[pid]){const m=G.pMeta[pid];m.lr=_r.pm.lr;m.sr=_r.pm.sr;m.lv=_r.pm.lv;if(Number(_r.pts))addPoints(pid,Number(_r.pts),true);}
-if(_r.v!==v){
-_dbgLog('DICE_PREROLL_CORRECTED',{pid,from:v,to:_r.v});
-v=_r.v;G.diceVal=v;
-animDice(pid,v,()=>{clearTimeout(rollSafety);_rolling=false;afterRoll(pid,v);},true);
-return;
+if(_r.v!==_shownV){
+_dbgLog('DICE_PREROLL_CORRECTED',{pid,from:_shownV,to:_r.v});
+if(!_animating&&G.turn===pid&&G.rolled&&G.diceVal===_shownV){
+if(_shownV===6)G.sixes=Math.max(0,(G.sixes||0)-1);
+G.waiting=false;G.diceVal=_r.v;
+animDice(pid,_r.v,()=>{afterRoll(pid,_r.v);},true);
 }
-clearTimeout(rollSafety);_rolling=false;afterRoll(pid,v);
-},false);
+}
+}catch(e){}
+});
 }else{
 animDice(pid,v,()=>{clearTimeout(rollSafety);_rolling=false;afterRoll(pid,v);},_isOnline);
 }
@@ -7752,7 +7763,7 @@ const _isOnlineMove=!!(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode);
 let _commitP=null;
 function _fireCommit(){
 if(!_isOnlineMove||_commitP)return;
-_commitP=window._srv('v',{c:ROOM_CODE,p:{tid,dv:v,as:(_actorSeat!==MY_SEAT?_actorSeat:undefined),of:(pid!==_actorSeat?pid:undefined)}});
+_commitP=(window._rollCommitP||Promise.resolve()).then(function(){return window._srv('v',{c:ROOM_CODE,p:{tid,dv:v,as:(_actorSeat!==MY_SEAT?_actorSeat:undefined),of:(pid!==_actorSeat?pid:undefined)}});});
 if(_actorSeat===MY_SEAT){_commitP.then(function(_cr){try{
 /* extra turn (six / kill / home): server already parked the next roll, fetch it now instead of after the move animation */
 if(_cr&&Array.isArray(_cr.tokens)&&_cr.turn===MY_SEAT&&!_cr.over&&!G.over){
