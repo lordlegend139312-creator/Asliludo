@@ -2106,13 +2106,22 @@ els.frost._fzInitDone=true;
 });
 }
 function _isOnlineRoom(){return !!(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode);}
+/* FIX: preroll path me 'd' (roll commit) background me jaata hai. Agar 's'/'f' uske commit hone se
+   pehle server pe pahunch jaye to server 403 deta hai (rolled!==true) aur baad me 'd' commit hota hai
+   -> server pe turn=me, rolled=true, koi legal move nahi, aur skip dobara kabhi nahi jata (stuck).
+   Isliye skip/forfeit hamesha pending roll-commit ke BAAD bhejo. */
+async function _waitRollCommit(){
+try{const rc=window._rollCommitP;if(rc)await Promise.race([rc.catch(function(){}),new Promise(function(r){setTimeout(r,20000);})]);}catch(e){}
+}
 async function _srvSkip(pid){
 if(!_isOnlineRoom())return null;
+await _waitRollCommit();
 const r=await window._srv('s',{c:ROOM_CODE,p:{as:(pid!==MY_SEAT?pid:undefined)}});
 return (r&&typeof r.turn==='number')?r:null;
 }
 async function _srvForfeit(pid){
 if(!_isOnlineRoom())return null;
+await _waitRollCommit();
 try{const r=await window._srv('f',{c:ROOM_CODE,p:{as:(pid!==MY_SEAT?pid:undefined)}});
 return (r&&typeof r.turn==='number')?r:null;}catch(e){return null;}
 }
