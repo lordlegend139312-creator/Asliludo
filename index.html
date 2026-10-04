@@ -4140,6 +4140,7 @@ if(ft.step===0){
 const lt=tokOf(ft.pid,ft.tid);
 if(lt&&lt.step>0){
 const _isTrapVictim=!!(primaryMove&&primaryMove.trapCell&&ft.pid===primaryMove.pid&&ft.tid===primaryMove.tid);
+if(!_isTrapVictim&&primaryMove&&ft.pid===primaryMove.pid&&ft.tid===primaryMove.tid){_dbgLog('CAPTURE_SELF_IGNORED',{pid:ft.pid,tid:ft.tid,localStep:lt.step,note:'stale incoming tokens: mover own token cannot be captured by its own move'});return;}
 capturePromises.push(sendHomeFast(lt,_isTrapVictim));
 }
 }
@@ -7121,6 +7122,13 @@ bar.style.stroke='none';
 }
 
 
+function _adoptSrvTokens(srv){
+if(!srv||!Array.isArray(srv.tokens))return false;
+let changed=false;
+srv.tokens.forEach(ip=>{const cur=G.tokens.find(t=>t.pid===ip.pid&&t.tid===ip.tid);if(cur&&cur.step!==ip.step){cur.step=ip.step;changed=true;}});
+if(changed){try{_invalidateStackedTokenCache(G.tokens);}catch(e){}renderTokens();}
+return changed;
+}
 async function _elderViewIsStale(seat){
 if(!ROOM_CODE||!gameRef)return false;
 try{
@@ -7128,6 +7136,12 @@ const snap=await gameRef.once('value');
 const srv=snap&&snap.val();
 if(!srv)return false;
 const srvTurn=(srv.turn!=null)?Number(srv.turn):null;
+if(srvTurn===seat&&srv.rolled===true&&!G.rolled&&!G.waiting){
+/* server pe is seat ka roll pada hai jo kisi ne play nahi kiya (e.g. skip 403 ke baad). Stale mat maano: server tokens adopt karo, bot 'd' se wahi dice wapas lega aur chal dega */
+_dbgLog('ELDER_PENDING_ROLL_ADOPT',{seat,dice:srv.diceVal,localTurn:G.turn});
+_adoptSrvTokens(srv);
+return false;
+}
 if((srvTurn!=null&&srvTurn!==seat)||srv.rolled===true){
 _dbgLog('ELDER_STALE_VIEW',{seat,localTurn:G.turn,serverTurn:srvTurn,serverRolled:srv.rolled});
 if(!_resyncUnsafeNow()&&_syncAnimPending.length===0)syncGameState(srv,true);
@@ -7332,7 +7346,16 @@ if(G.sixes>=3){const _ffP=_trackCommit(_srvForfeit(seat));G.sixes=0;G.rolled=fal
 _dbgLog('BOTTURN_3SIXES',{seat});
 pushGameState({action:"skip",dice:v,reason:"3sixes",auto:true},seat);return;}
 }else{G.sixes=0;}
-const mv=teamMovable(seat,v);
+let mv=teamMovable(seat,v);
+if(mv.length===0&&ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode){
+try{
+const _vs=await gameRef.once('value');const _sv=_vs&&_vs.val();
+if(_sv&&Number(_sv.turn)===seat&&G.turn===seat&&_adoptSrvTokens(_sv)){
+mv=teamMovable(seat,v);
+_dbgLog('BOTTURN_TOKENS_REFRESHED',{seat,dice:v,movable:mv.map(t=>t.tid)});
+}
+}catch(e){}
+}
 if(mv.length===0){
 await new Promise(res=>setTimeout(res,150));
 if(!PLAYERS[seat]?.isBot&&!forceAfk){G.rolled=false;G.diceVal=null;_dbgLog('BOTTURN_BAIL',{seat,reason:'reclaimed_no_moves'});return;}
