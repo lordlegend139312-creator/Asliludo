@@ -46,7 +46,7 @@ window._srv=function(t,b){
     return u.getIdToken().then(function(tok){
       var ac=(typeof AbortController!=='undefined')?new AbortController():null;
       var tm=ac?setTimeout(function(){ac.abort();},20000):null;
-      return fetch(window._SRV_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},body:JSON.stringify(Object.assign({t:t},b||{})),keepalive:true,signal:ac?ac.signal:undefined}).then(function(r){if(tm)clearTimeout(tm);window._srvLastStatus=t+':'+r.status;(window._srvStatusBy=window._srvStatusBy||{})[t]=r.status;if(r.ok)return r.json();if((t==='v'||t==='p')&&(r.status===403||r.status===409)){return r.json().then(function(j){return(j&&j.why)?{e:1,why:j.why}:null;},function(){return null;});}return null;},function(e){if(tm)clearTimeout(tm);throw e;});
+      return fetch(window._SRV_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},body:JSON.stringify(Object.assign({t:t},b||{})),keepalive:true,signal:ac?ac.signal:undefined}).then(function(r){if(tm)clearTimeout(tm);if(t!=='l'&&t!=='lb')window._srvLastStatus=t+':'+r.status;(window._srvStatusBy=window._srvStatusBy||{})[t]=r.status;if(r.ok)return r.json();if((t==='v'||t==='p')&&(r.status===403||r.status===409)){return r.json().then(function(j){return(j&&j.why)?{e:1,why:j.why}:null;},function(){return null;});}return null;},function(e){if(tm)clearTimeout(tm);throw e;});
     }).catch(function(e){window._srvLastStatus=t+':ERR:'+(e&&e.name);return null;});
   }catch(e){return Promise.resolve(null);}
 };
@@ -64,14 +64,14 @@ window._srv=function(t,b){
 (function(){
   var _inner=window._srv;
   window._srv=function(t,b){
-    if(t==='l'||t==='ping'||t==='dp')return _inner(t,b);
+    if(t==='l'||t==='lb'||t==='ping'||t==='dp')return _inner(t,b);
     var t0=Date.now(),id=(window._srvSeq=(window._srvSeq||0)+1),p=(b&&b.p)||{};
     try{window._dbgLog('TO_SRV_REQ',{id:id,t:t,as:p.as,reroll:p.reroll,tid:p.tid,dv:p.dv,hidden:document.hidden,waitingCommit:!!window._lastCommitP});}catch(e){}
     var _t0srv=Date.now();
     return _inner(t,b).then(function(r){
       try{
         if((t==='d'||t==='v'||t==='s')&&r&&!r.e&&typeof _serverOffset==='number'){window._ownCommitSrvTs=_t0srv+_serverOffset;}
-        if((t==='d'||t==='v'||t==='s')&&(window._srvStatusBy&&window._srvStatusBy[t]===403)){setTimeout(function(){try{_forceResyncGame('deny403');}catch(e){}},0);}
+        if((t==='d'||t==='v'||t==='s')&&(window._srvStatusBy&&window._srvStatusBy[t]===403)){try{window._dbgLog('BH_DENY403',{t:t,why:r&&r.why,ctx:(typeof _bhCtx==='function'?_bhCtx():null)});}catch(e){}setTimeout(function(){try{_forceResyncGame('deny403');}catch(e){}},0);}
       }catch(e){}
       try{window._dbgLog('TO_SRV_RES',{id:id,t:t,ms:Date.now()-t0,ok:!!r,v:r&&r.v,why:r&&r.why,turn:r&&r.turn,over:r&&r.over,lastStatus:window._srvLastStatus});}catch(e){}
       return r;
@@ -105,8 +105,32 @@ try{
 }catch(e){window._dbg=window._dbg||[];}
 window._dbgLastGroupSig=window._dbgLastGroupSig||"";
 window._dbgLastOverlapCheck=0;
-window._dbgPersist=function(){
+window._dbgPersistNow=function(){
   try{localStorage.setItem(window._dbgStoreKey,JSON.stringify(window._dbg));}catch(e){}
+};
+window._dbgPersist=function(){
+  if(window._dbgPT)return;
+  window._dbgPT=setTimeout(function(){window._dbgPT=null;window._dbgPersistNow();},1000);
+};
+try{window.addEventListener('pagehide',function(){try{window._dbgPersistNow();}catch(e){}try{window._lbFlush();}catch(e){}});}catch(e){}
+window._lbQ=[];window._lbT=null;window._lbBroken=false;
+window._lbFlush=function(){
+  try{
+    if(window._lbT){clearTimeout(window._lbT);window._lbT=null;}
+    var q=window._lbQ;if(!q.length)return;
+    var rc=q[0].room,batch=[],rest=[];
+    q.forEach(function(e){if(e.room===rc&&batch.length<60)batch.push(e);else rest.push(e);});
+    window._lbQ=rest;
+    if(!rc||typeof window._srv!=='function')return;
+    window._srv('lb',{c:rc,es:batch}).then(function(r){
+      if(r&&!r.e)return;
+      var st=window._srvStatusBy&&window._srvStatusBy.lb;
+      if(st===400||st===404){window._lbBroken=true;batch.forEach(function(e){try{window._srv('l',{c:rc,e:e});}catch(x){}});return;}
+      batch._try=(batch._try||0)+1;
+      if(batch._try<=3){window._lbQ=batch.concat(window._lbQ);if(!window._lbT)window._lbT=setTimeout(window._lbFlush,1500);}
+    }).catch(function(){});
+    if(window._lbQ.length&&!window._lbT)window._lbT=setTimeout(window._lbFlush,700);
+  }catch(e){}
 };
 window._dbgLog=function(tag,data){
   try{
@@ -122,7 +146,10 @@ window._dbgLog=function(tag,data){
     window._dbgPersist();
 
     try{
-      if(_rc&&typeof window._srv==='function')window._srv('l',{c:_rc,e:_entry});
+      if(_rc&&typeof window._srv==='function'){
+        if(window._lbBroken){window._srv('l',{c:_rc,e:_entry});}
+        else{window._lbQ.push(_entry);if(!window._lbT)window._lbT=setTimeout(window._lbFlush,700);}
+      }
     }catch(e3){}
   }catch(e){}
 };
@@ -911,13 +938,14 @@ return _rolling||_animating||_syncAnimPlaying||_pendingAutoRoll||_pendingAutoMov
 async function _forceResyncGame(reason){
 if(_resyncInFlight)return;
 if(!ROOM_CODE||!gameRef||!_gameLoaded||(typeof G!=='undefined'&&G&&G.over))return;
-if(_resyncUnsafeNow())return;
+if(_resyncUnsafeNow()){try{_dbgLog('BH_RESYNC_SKIPPED_UNSAFE',{reason,ctx:_bhCtx()});}catch(e){}return;}
 _resyncInFlight=true;
 try{
 const gSnap=await gameRef.once('value').catch(()=>null);
 const gData=gSnap&&gSnap.val();
 
 
+try{_dbgLog('BH_RESYNC_FETCHED',{reason,srv:{turn:gData&&gData.turn,rolled:gData&&gData.rolled,dice:gData&&gData.diceVal,by:gData&&gData.actionBy,act:gData&&gData.action,ver:gData&&gData.ver,tk:gData&&Array.isArray(gData.tokens)?gData.tokens.map(function(t){return t.pid+''+t.tid+':'+t.step;}).join(','):null},willApply:!!(gData&&!_resyncUnsafeNow()&&_syncAnimPending.length===0&&(!G||!G.over)),ctx:_bhCtx()});}catch(e){}
 if(gData&&!_resyncUnsafeNow()&&_syncAnimPending.length===0&&(!G||!G.over)){
 syncGameState(gData,true);
 }
@@ -2210,6 +2238,7 @@ renderTokens();_renderFrozenVisuals();_renderAegisVisuals();syncUI();
 }
 function _reconcileOptimisticMove(r,expTurn,pid,tid,v){
 try{
+try{_dbgLog('BH_RECON_IN',{pid,tid,v,expTurn,okTokens:!!(r&&Array.isArray(r.tokens)),why:r&&r.why,srvTurn:r&&r.turn,ctx:_bhCtx()});}catch(e){}
 if(!r||!Array.isArray(r.tokens)){
 _dbgLog('MOVE_COMMIT_SERVER_FAILED',{pid,tid,v,optimistic:true,why:(r&&r.why)||null});
 if(r&&r.why==='frozen')showToast("❄️ Opponent ne is token ko Freeze kar diya — move cancel hui, board sync ho raha hai");
@@ -2220,7 +2249,7 @@ return;
 if(G.over)return;
 if(r.placements)G.placements=r.placements;
 // only correct local state if nothing has progressed since our optimistic nextTurn
-if(G.turn!==expTurn||G.rolled||G.diceVal!=null||_animating||_rolling)return;
+if(G.turn!==expTurn||G.rolled||G.diceVal!=null||_animating||_rolling){try{_dbgLog('BH_RECON_SKIPPED_PROGRESSED',{expTurn,srvTurn:r&&r.turn,ctx:_bhCtx()});}catch(e){}return;}
 const _sig=a=>a.map(t=>t.pid+'-'+t.tid+':'+t.step).sort().join(',');
 const _tokDiff=_sig(r.tokens)!==_sig(G.tokens);
 const _turnDiff=(typeof r.turn==='number'&&r.turn!==G.turn);
@@ -3352,6 +3381,7 @@ const _processedTsLocal=new Set();
 const cb3=snap=>{
 if(!snap.exists())return;
 const data=snap.val();
+try{_bhSnap(data);}catch(e){}
 if(_lmRef!==gameRef){_turnHoldInit(data);}
 if(data&&!_gameStarted&&!_gameStartLock&&data.tokens){
 _gameStartLock=true;
@@ -3669,6 +3699,7 @@ function _flushSyncPending(){
 if(_syncAnimPending.length===0)return;
 const next=_syncAnimPending.shift();
 _syncPendingRebuildIndex();
+try{_dbgLog('BH_FLUSH',{act:next.action,by:next.actionBy,turn:next.turn,mid:next.mid,left:_syncAnimPending.length,gT:G.turn});}catch(e){}
 syncGameState(next);
 }
 let _syncAnimPending=[];
@@ -3695,10 +3726,13 @@ else if(p.action==="skip"&&_pendingSkipBySeat[p.actionBy]==null)_pendingSkipBySe
 else if(p.action==="move"&&_pendingMoveBySeat[p.actionBy]==null)_pendingMoveBySeat[p.actionBy]=i;
 }
 }
+window._ownMids=window._ownMids||new Set();
+function _regOwnMid(m){try{window._ownMids.add(m);if(window._ownMids.size>100){window._ownMids.delete(window._ownMids.values().next().value);}}catch(e){}}
 const _midSeen=new Map();
 function _midDup(data){
 try{
 if(!data||(data.action||data.lastAction)!=='move'||!data.mid||data.rolled===true)return false;
+if(window._ownMids&&window._ownMids.has(data.mid))return true;
 const k=data.mid+'|'+data.actionBy+'|'+data.turn;
 if(_midSeen.has(k))return true;
 _midSeen.set(k,Date.now());
@@ -4598,6 +4632,61 @@ let _diagInterval=null;
 let _diagPlacingPowerSince=0;
 let _diagLastSnapSig=null;
 let _diagNoElderSince=0;
+/* ===================== BUGHUNT instrumentation (all tags start with BH_) ===================== */
+function _bhCtx(){
+try{return {gT:G.turn,gR:G.rolled,gW:G.waiting,gD:G.diceVal,gS:G.sixes,over:G.over,
+anim:!!_animating,roll:!!_rolling,sAP:!!_syncAnimPlaying,pAR:!!_pendingAutoRoll,pAM:!!_pendingAutoMove,
+rrw:(typeof _rerollWindowActive!=='undefined')?!!_rerollWindowActive:null,
+q:_syncAnimPending.length,qh:_syncAnimPending.slice(0,3).map(function(x){return (x.action||'?')+'/'+x.actionBy+'/'+x.turn;}),
+th:!!window._TH,lc:!!window._lastCommitP,pre:!!_preRoll,preK:!!_preKey,tS:_timerSeat,hid:document.hidden,my:MY_SEAT,
+el:(function(){try{return amIElderPlayer();}catch(e){return null;}})(),st:window._srvLastStatus};}catch(e){return {err:String(e)};}
+}
+function _bhStack(){
+try{return (new Error().stack||'').split('\n').slice(3,9).map(function(l){
+var m=l.match(/at\s+(?:async\s+)?([^\s(]+)\s*\(?.*?:(\d+):(\d+)\)?\s*$/)||l.match(/^\s*([^@\s]*)@.*:(\d+):(\d+)\s*$/);
+return m?(m[1]+':'+m[2]):l.trim().slice(0,50);}).join(' < ');}catch(e){return '';}
+}
+/* every change of G.turn / G.rolled / G.waiting / G.diceVal is logged with WHO wrote it (call stack) */
+function _bhWatchG(){
+try{
+if(!G||G.__bhW)return;
+['turn','rolled','waiting','diceVal'].forEach(function(k){
+var val=G[k];
+Object.defineProperty(G,k,{configurable:true,enumerable:true,get:function(){return val;},set:function(nv){
+if(nv!==val){try{if(window._dbgIsOn&&window._dbgIsOn())_dbgLog('BH_G_WRITE',{k:k,from:val,to:nv,st:_bhStack(),ctx:_bhCtx()});}catch(e){}}
+val=nv;}});
+});
+Object.defineProperty(G,'__bhW',{value:true,enumerable:false,configurable:true});
+}catch(e){}
+}
+let _bhSnapN=0;
+function _bhSnap(d){
+try{
+if(!d||!(window._dbgIsOn&&window._dbgIsOn()))return;
+_bhWatchG();_bhSnapN++;
+var tk=Array.isArray(d.tokens)?d.tokens.map(function(t){return t.pid+''+t.tid+':'+t.step;}).join(','):null;
+var mv=Array.isArray(d.moves)?d.moves.map(function(m){return m.pid+''+m.tid+':'+m.type+'>'+m.finalStep;}).join(','):null;
+_dbgLog('BH_SNAP',{n:_bhSnapN,turn:d.turn,rolled:d.rolled,dice:d.diceVal,d2:d.dice,act:d.action||d.lastAction,by:d.actionBy,mid:d.mid,ts:d.timestamp,srvTs:d.srvTs,ver:d.ver,wait:d.waiting,over:d.over,lm:(d.lastMove&&d.lastMove.until)||null,rollTs:d.rollTs,mv:mv,tk:tk,ctx:_bhCtx()});
+}catch(e){}
+}
+/* state heartbeat: logs whenever the combined local state changes; every 8s while something looks "busy" (stuck candidates) */
+let _bhSig='',_bhSigAt=Date.now(),_bhBusyLogAt=0;
+setInterval(function(){
+try{
+if(!(window._dbgIsOn&&window._dbgIsOn())||!_gameLoaded)return;
+_bhWatchG();
+var c=_bhCtx(),sig=JSON.stringify(c),now=Date.now();
+if(sig!==_bhSig){_bhSig=sig;_bhSigAt=now;_bhBusyLogAt=now;_dbgLog('BH_STATE',c);return;}
+var busy=c.anim||c.roll||c.sAP||c.pAR||c.pAM||c.q>0||c.th||c.lc;
+if(busy&&now-_bhBusyLogAt>=8000){_bhBusyLogAt=now;_dbgLog('BH_STATE_STUCK_CANDIDATE',Object.assign({stableMs:now-_bhSigAt},c));}
+}catch(e){}
+},1000);
+try{
+window.addEventListener('online',function(){_dbgLog('BH_NET',{ev:'online',ctx:_bhCtx()});});
+window.addEventListener('offline',function(){_dbgLog('BH_NET',{ev:'offline',ctx:_bhCtx()});});
+window.addEventListener('pageshow',function(e){_dbgLog('BH_PAGESHOW',{persisted:!!e.persisted});});
+}catch(e){}
+/* ===================== /BUGHUNT ===================== */
 function _runDiagWatchdog(){
 const now=performance.now();
 if(typeof _animating!=='undefined'){
@@ -6880,7 +6969,9 @@ if(_preKey===key)return;
 _preKey=key;_preRoll=null;
 const tryN=_try||0;
 const _pl=lk?{c:ROOM_CODE,p:{lucky:true}}:{c:ROOM_CODE};
+const _dpT0=Date.now();try{_dbgLog('BH_DP_REQ',{key,early:early!=null,tryN,gT:G.turn,gR:G.rolled});}catch(e){}
 _preP=window._srv('dp',_pl).then(function(r){
+try{_dbgLog('BH_DP_RES',{key,ms:Date.now()-_dpT0,ok:!!(r&&typeof r.v==='number'),v:r&&r.v,why:r&&r.why,st:window._srvStatusBy&&window._srvStatusBy.dp,stale:_preKey!==key});}catch(e){}
 if(_preKey!==key)return;
 if(r&&typeof r.v==='number'&&r.v>=1&&r.v<=6){_preRoll={seat:seat,v:r.v,at:Date.now(),lk:r.lk===1,lucky:(r.lucky==null?null:r.lucky),key:key};return;}
 _preKey=null;
@@ -7321,6 +7412,7 @@ doRoll(G.turn);
 async function doRoll(pid){
 if(_rolling){_dbgLog('DICE_ROLL_BLOCKED_ALREADY_ROLLING',{pid});return;}
 _dbgLog('DICE_ROLL_START',{pid,sixesStreakBefore:G.sixes||0,luckyActivePending:!!(G.pMeta&&G.pMeta[pid]&&G.pMeta[pid].luckyActive)});
+try{_dbgLog('BH_ROLL_ENTER',{pid,preReady:!!_preRoll,preInFlight:!!(_preP&&_preKey),ctx:_bhCtx()});}catch(e){}
 _cancelRerollWindow();
 window._dNoMove=null;
 _rolling=true;
@@ -7353,8 +7445,10 @@ const _dp={};if(_wasReroll)_dp.reroll=true;
 let _earlySpin=null;
 if(!_wasReroll&&pid===MY_SEAT&&!_preRoll&&_preP&&_preKey){
 _earlySpin=_dicePreSpin(pid);
+const _spT0=Date.now();try{_dbgLog('BH_ROLL_PRESPIN_START',{pid,ctx:_bhCtx()});}catch(e){}
 clearTimeout(rollSafety);rollSafety=setTimeout(()=>{_rolling=false;},23000);
 try{await Promise.race([_preP,new Promise(function(r){setTimeout(r,900);})]);}catch(e){}
+try{_dbgLog('BH_ROLL_PRESPIN_WAITED',{pid,ms:Date.now()-_spT0,preReady:!!_preRoll,ctx:_bhCtx()});}catch(e){}
 }
 const _pre=(!_wasReroll&&pid===MY_SEAT&&_preRoll&&_preRoll.seat===pid&&_preRoll.lk===_wantLucky&&Date.now()-_preRoll.at<100000)?_preRoll:null;
 _preRoll=null;_preKey=null;_preP=null;_earlyStamp=null;
@@ -7937,9 +8031,14 @@ try{
 const _actorSeat=G.turn;
 const _isOnlineMove=!!(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode);
 let _commitP=null;
+const _myMid=Date.now().toString(36)+'-'+(MY_SEAT==null?'x':MY_SEAT)+'-'+Math.random().toString(36).slice(2,8);
 function _fireCommit(){
 if(!_isOnlineMove||_commitP)return;
-_commitP=(window._rollCommitP||Promise.resolve()).then(function(){return window._srv('v',{c:ROOM_CODE,p:{tid,dv:v,auto:(_wasAutoMove?true:undefined),as:(_actorSeat!==MY_SEAT?_actorSeat:undefined),of:(pid!==_actorSeat?pid:undefined)}});});
+_regOwnMid(_myMid);
+try{_dbgLog('BH_V_FIRE',{pid,tid,v,actor:_actorSeat,mid:_myMid,auto:!!_wasAutoMove,ctx:_bhCtx()});}catch(e){}
+const _vT0=Date.now();
+_commitP=(window._rollCommitP||Promise.resolve()).then(function(){return window._srv('v',{c:ROOM_CODE,p:{tid,dv:v,mid:_myMid,auto:(_wasAutoMove?true:undefined),as:(_actorSeat!==MY_SEAT?_actorSeat:undefined),of:(pid!==_actorSeat?pid:undefined)}});});
+_commitP.then(function(_r){try{_dbgLog('BH_V_DONE',{mid:_myMid,ms:Date.now()-_vT0,ok:!!(_r&&Array.isArray(_r.tokens)),why:_r&&_r.why,turn:_r&&_r.turn,mw:_r&&_r.mw,bonus:_r&&_r.bonus,over:_r&&_r.over,stV:window._srvStatusBy&&window._srvStatusBy.v,ctx:_bhCtx()});}catch(e){}},function(e){try{_dbgLog('BH_V_THROW',{mid:_myMid,ms:Date.now()-_vT0,msg:e&&e.message});}catch(e2){}});
 if(_actorSeat===MY_SEAT){_commitP.then(function(_cr){try{
 /* extra turn (six / kill / home): server already parked the next roll, fetch it now instead of after the move animation */
 if(_cr&&Array.isArray(_cr.tokens)&&_cr.turn===MY_SEAT&&!_cr.over&&!G.over){
@@ -8140,8 +8239,10 @@ await _checkAegisShieldKills();
 if(_isOnlineMove){
 _fireCommit();
 const _optP=_trackCommit(_commitP);
+try{_dbgLog('BH_DOMOVE_PRE_NEXTTURN',{pid,tid,v,bonus,diceWasSix,ctx:_bhCtx()});}catch(e){}
 nextTurn(bonus,diceWasSix);
 const _optTurn=G.turn;
+try{_dbgLog('BH_DOMOVE_OPT_TURN',{optTurn:_optTurn,bonus,ctx:_bhCtx()});}catch(e){}
 _optP.then(function(_r){
 _reconcileOptimisticMove(_r,_optTurn,pid,tid,v);
 });
@@ -9164,7 +9265,7 @@ window._setCacheValid=function(v){_cacheValid=v;};
 window._getGameLoaded=function(){return _gameLoaded;};
 window._setGameLoaded=function(v){_gameLoaded=v;};
 window._getG=function(){return G;};
-window._setG=function(v){G=v;};
+window._setG=function(v){G=v;try{_bhWatchG();}catch(e){}};
 window._getPLAYERS=function(){return PLAYERS;};
 window._setPLAYERS=function(v){PLAYERS=v;};
 window._getMY_SEAT=function(){return MY_SEAT;};
