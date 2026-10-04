@@ -906,7 +906,7 @@ let _disconnectedAt=0;
 let _resyncInFlight=false;
 function _resyncUnsafeNow(){
 
-return _rolling||_animating||_syncAnimPlaying||_pendingAutoRoll||_pendingAutoMove;
+return _rolling||_animating||_syncAnimPlaying||_pendingAutoRoll||_pendingAutoMove||!!window._TH;
 }
 async function _forceResyncGame(reason){
 if(_resyncInFlight)return;
@@ -3352,6 +3352,7 @@ const _processedTsLocal=new Set();
 const cb3=snap=>{
 if(!snap.exists())return;
 const data=snap.val();
+if(_lmRef!==gameRef){_turnHoldInit(data);}
 if(data&&!_gameStarted&&!_gameStartLock&&data.tokens){
 _gameStartLock=true;
 _gameStarted=true;
@@ -3694,8 +3695,65 @@ else if(p.action==="skip"&&_pendingSkipBySeat[p.actionBy]==null)_pendingSkipBySe
 else if(p.action==="move"&&_pendingMoveBySeat[p.actionBy]==null)_pendingMoveBySeat[p.actionBy]=i;
 }
 }
+const _midSeen=new Map();
+function _midDup(data){
+try{
+if(!data||(data.action||data.lastAction)!=='move'||!data.mid||data.rolled===true)return false;
+const k=data.mid+'|'+data.actionBy+'|'+data.turn;
+if(_midSeen.has(k))return true;
+_midSeen.set(k,Date.now());
+if(_midSeen.size>200){const k0=_midSeen.keys().next().value;_midSeen.delete(k0);}
+}catch(e){}
+return false;
+}
 const _syncSeenKeys=new Map();let _syncDupCount=0;
 function _syncDupKey(d){return(d&&typeof d.timestamp==='number'&&d.actionBy!=null&&d.action)?(d.actionBy+'|'+d.action+'|'+d.timestamp):null;}
+/* TURN-HOLD (opponent move landing).
+   Server t:'v' commit writes turn=next, final tokens, lastMove{until} into the node. The mover's own 'move' payload
+   (pushGameState) is a SEPARATE write. If the commit snapshot (A) reaches me BEFORE the move payload (B), A still carries
+   the previous action ('roll') -> the roll branch did G.turn=me while the opponent token was still walking on my screen
+   (glow + timer + dice on my box, roll click blocked by _animating).
+   Fix: A is held (not applied). _earlyPrefetch already ran on it (pre-roll is fetched in background as before).
+   B then walks the token and applyFinalState() hands the turn over exactly after landing. Fallback replays A if B never comes. */
+window._TH=null;
+let _lmRef=null,_lmSeen=0,_mvSigSeen='',_lastMoveRollTs={};
+function _mvSig(d){try{return JSON.stringify([d&&d.actionBy,d&&d.moves,d&&d.dice,d&&d.rollTs,d&&d.mid]);}catch(e){return '';}}
+function _turnHoldRelease(){const h=window._TH;if(h){try{clearTimeout(h.tm);}catch(e){}window._TH=null;}}
+function _turnHoldInit(data){
+_lmRef=gameRef;_turnHoldRelease();
+_lmSeen=(data&&data.lastMove&&typeof data.lastMove.until==='number')?data.lastMove.until:0;
+_mvSigSeen=_mvSig(data);_lastMoveRollTs={};
+if(data&&data.actionBy!=null&&data.rollTs!=null)_lastMoveRollTs[data.actionBy]=data.rollTs;
+}
+function _turnHoldTick(){
+const h=window._TH;if(!h)return;
+const age=Date.now()-h.at;
+const busy=_animating||_syncAnimPlaying||_syncAnimPending.length>0;
+if(age<2500||(busy&&age<12000)){h.tm=setTimeout(_turnHoldTick,300);return;}
+window._TH=null;
+_dbgLog('TURNHOLD_FALLBACK_REPLAY',{ageMs:age,seat:h.seat,gTurn:G.turn,srvTurn:h.echo&&h.echo.turn});
+try{syncGameState(h.echo);}catch(e){}
+}
+function _turnHoldCheck(data,noHold){
+try{
+const lm=data&&data.lastMove;
+const act=data.action||data.lastAction;
+const sig=_mvSig(data);
+const fresh=(act==='move'&&sig!==_mvSigSeen);
+let hold=false;
+if(lm&&typeof lm.until==='number'&&data.actionBy!=null&&data.actionBy!==MY_SEAT&&!data.over&&_isOnlineRoom()){
+const newLm=(_lmSeen!==lm.until);
+if(!fresh&&!noHold){
+if(newLm&&data.rollTs!=null&&_lastMoveRollTs[data.actionBy]!==data.rollTs)hold=true;
+else if(!newLm&&window._TH&&window._TH.until===lm.until)hold=true;
+}
+if(newLm)_lmSeen=lm.until;
+if(hold&&!window._TH){window._TH={seat:data.actionBy,until:lm.until,at:Date.now(),echo:data,tm:null};window._TH.tm=setTimeout(_turnHoldTick,300);}
+}
+if(fresh){_mvSigSeen=sig;if(data.rollTs!=null&&data.actionBy!=null)_lastMoveRollTs[data.actionBy]=data.rollTs;}
+return hold;
+}catch(e){return false;}
+}
 function syncGameState(data,_forceApply){
 if(!_gameLoaded){return;}
 _wdNote(data);
@@ -3707,6 +3765,7 @@ if(!_forceApply&&typeof data.timestamp==='number'&&data.actionBy!==MY_SEAT){
 const _own=window._ownCommitSrvTs||0,_mx=window._maxSeenSrvTs||0;
 if((_own&&data.timestamp<_own)||(_mx&&data.timestamp<_mx)){_dbgLog('SYNC_DROP_STALE',{actionBy:data.actionBy,action:data.action,ts:data.timestamp,ownCommit:_own,maxSeen:_mx,incomingTurn:data.turn,gTurn:G.turn});return;}
 }
+if(_turnHoldCheck(data,!!_forceApply)){_dbgLog('TURNHOLD_ECHO_HELD',{seat:data.actionBy,srvTurn:data.turn,gTurn:G.turn,ts:data.timestamp,animating:_animating,animPlaying:_syncAnimPlaying});return;}
 if(typeof data.timestamp==='number'&&data.timestamp>(window._maxSeenSrvTs||0))window._maxSeenSrvTs=data.timestamp;
 if(!_forceApply){
 const _dk=_syncDupKey(data);
@@ -3716,6 +3775,7 @@ _syncSeenKeys.set(_dk,Date.now());
 if(_syncSeenKeys.size>400){const _k0=_syncSeenKeys.keys().next().value;_syncSeenKeys.delete(_k0);}
 }
 }
+if(!_forceApply&&_midDup(data)){_dbgLog('SYNC_DUP_MID_DROPPED',{actionBy:data.actionBy,mid:data.mid,srvTurn:data.turn,gTurn:G.turn});return;}
 const _rawDice=data.dice??data.diceVal;
 if(data.action==="roll"&&_rawDice!=null)_lastSeenDice[data.actionBy]=_rawDice;
 if(data.action==="move"&&_rawDice==null&&_lastSeenDice[data.actionBy]!=null){
@@ -3780,6 +3840,7 @@ _applySyncGameState(data,_forceApply);
 let _syncAnimPlaying=false;
 let _lastRollAnimBy=-1;
 function _applySyncGameState(data,_forceApply){
+if(window._TH&&data&&data.turn!=null&&G.turn!=null&&data.turn!==G.turn){const _pa=data.action||data.lastAction;if(_pa!=='move'&&_pa!=='skip'&&_pa!=='noMove'&&_pa!=='skip3six'){_dbgLog('TURNHOLD_TURN_PINNED',{from:data.turn,to:G.turn,action:_pa});data=Object.assign({},data,{turn:G.turn});}}
 try{if(G.rolled&&G.turn===MY_SEAT&&data&&data.turn===MY_SEAT&&data.rolled!==true&&!data.over){_dbgLog('ROLLED_RESET_RISK',{action:data.action,actionBy:data.actionBy,ts:data.timestamp,force:!!_forceApply,gDice:G.diceVal,MY_SEAT,rolling:_rolling,animating:_animating,commitPending:!!window._lastCommitP});}}catch(e){}
 setSyncStatus("ok");
 _dbgLog('SYNC_APPLY_STATE',{actionBy:data.actionBy,action:data.action,incomingTurn:data.turn,incomingDice:data.diceVal,incomingSixes:data.sixes,localSixesBefore:G.sixes,localDiceBefore:G.diceVal,localTurnBefore:G.turn,localRolledBefore:G.rolled,srvRolledIn:data.rolled,force:!!_forceApply,rollingNow:_rolling,incomingPoints:data.points,incomingInventoryForActor:data.inventory&&data.actionBy!=null?data.inventory[data.actionBy]:undefined});
@@ -3872,12 +3933,15 @@ if(rolledBy!==null&&rolledBy!==undefined&&!data.auto){
 _timerExpireCount[rolledBy]=0;
 _updateOfflineBadge(rolledBy,false);
 }
+const _kRoll=(G.turn===MY_SEAT&&G.rolled===true&&data.turn===MY_SEAT&&rolledBy!==MY_SEAT&&!_forceApply&&!data.over&&_isOnlineRoom())?{w:G.waiting,d:G.diceVal}:null;
 G.turn=data.turn;
 G.diceVal=dice;
 G.rolled=true;
 G.sixes=data.sixes||0;
 G.waiting=(rolledBy===MY_SEAT&&G.turn===MY_SEAT&&data.waiting===true);
+try{if(G.turn===MY_SEAT&&rolledBy!==MY_SEAT)_dbgLog('ROLL_STATE_WIPED',{site:'roll',action:action,actionBy:rolledBy,srvRolled:data.rolled,srvDice:data.diceVal,srvTs:data.timestamp,gDice:G.diceVal,rolling:_rolling,animating:_animating,force:!!_forceApply,MY_SEAT});}catch(e){}
 if(G.turn===MY_SEAT&&rolledBy!==MY_SEAT){G.rolled=false;G.diceVal=null;}
+if(_kRoll){G.turn=MY_SEAT;G.rolled=true;G.waiting=_kRoll.w;G.diceVal=_kRoll.d;try{_dbgLog('ROLL_WIPE_BLOCKED',{site:'roll',action:'roll',actionBy:data.actionBy,srvRolled:data.rolled,srvTs:data.timestamp,keptDice:_kRoll.d,keptWaiting:_kRoll.w,rolling:_rolling,animating:_animating,MY_SEAT});}catch(e){}syncUI();_flushSyncPending();return;}
 if(rolledBy===MY_SEAT){
 syncUI();
 _flushSyncPending();
@@ -3914,6 +3978,7 @@ _timerExpireCount[rolledBy]=0;
 _updateOfflineBadge(rolledBy,false);
 }
 const applyFinalState=()=>{
+_turnHoldRelease();
 const prevTurn=G.turn;
 const hasPendingMoves=rolledBy!=null&&_syncAnimPending.some(p=>p.action==="move"&&p.actionBy===rolledBy);
 if(data.tokens&&!hasPendingMoves){
@@ -3929,9 +3994,12 @@ _invalidateStackedTokenCache(G.tokens);
 }else if(hasPendingMoves){
 }
 G.turn=data.turn;
+try{if(prevTurn===MY_SEAT&&data.turn===MY_SEAT&&data.actionBy!==MY_SEAT&&(G.rolled||G.waiting))_dbgLog('ROLL_STATE_WIPED',{site:'move',action:action,actionBy:data.actionBy,srvRolled:data.rolled,srvDice:data.diceVal,srvTs:data.timestamp,gDice:G.diceVal,gRolled:G.rolled,gWaiting:G.waiting,rolling:_rolling,animating:_animating,force:!!_forceApply,MY_SEAT});}catch(e){}
+const _kRoll=(prevTurn===MY_SEAT&&G.rolled===true&&data.turn===MY_SEAT&&data.actionBy!==MY_SEAT&&!_forceApply&&!data.over&&_isOnlineRoom())?{w:G.waiting,d:G.diceVal}:null;
 G.rolled=false;
 G.waiting=false;
 G.diceVal=null;
+if(_kRoll){G.rolled=true;G.waiting=_kRoll.w;G.diceVal=_kRoll.d;try{_dbgLog('ROLL_WIPE_BLOCKED',{site:'skip',action:action,actionBy:data.actionBy,srvRolled:data.rolled,srvTs:data.timestamp,keptDice:_kRoll.d,keptWaiting:_kRoll.w,rolling:_rolling,animating:_animating,MY_SEAT});}catch(e){}}
 G.sixes=data.sixes||0;
 _applyPlacements(data.placements);
 G.over=data.over||false;
@@ -4064,9 +4132,12 @@ return;
 if(action==="skip"||action==="noMove"||action==="skip3six"){
 const prevTurn=G.turn;
 G.turn=data.turn;
+try{if(prevTurn===MY_SEAT&&data.turn===MY_SEAT&&data.actionBy!==MY_SEAT&&(G.rolled||G.waiting))_dbgLog('ROLL_STATE_WIPED',{site:'move',action:action,actionBy:data.actionBy,srvRolled:data.rolled,srvDice:data.diceVal,srvTs:data.timestamp,gDice:G.diceVal,gRolled:G.rolled,gWaiting:G.waiting,rolling:_rolling,animating:_animating,force:!!_forceApply,MY_SEAT});}catch(e){}
+const _kRoll=(prevTurn===MY_SEAT&&G.rolled===true&&data.turn===MY_SEAT&&data.actionBy!==MY_SEAT&&!_forceApply&&!data.over&&_isOnlineRoom())?{w:G.waiting,d:G.diceVal}:null;
 G.rolled=false;
 G.waiting=false;
 G.diceVal=null;
+if(_kRoll){G.rolled=true;G.waiting=_kRoll.w;G.diceVal=_kRoll.d;try{_dbgLog('ROLL_WIPE_BLOCKED',{site:'skip',action:action,actionBy:data.actionBy,srvRolled:data.rolled,srvTs:data.timestamp,keptDice:_kRoll.d,keptWaiting:_kRoll.w,rolling:_rolling,animating:_animating,MY_SEAT});}catch(e){}}
 G.sixes=data.sixes||0;
 _applyPlacements(data.placements);
 if(G.turn!==prevTurn)_stampRemoteTurnWindow(data,_forceApply);
@@ -4099,9 +4170,12 @@ return;
 }
 const _fbPrevTurn=G.turn;
 G.turn=data.turn;
+try{if(_fbPrevTurn===MY_SEAT&&data.turn===MY_SEAT&&data.actionBy!==MY_SEAT&&(G.rolled||G.waiting))_dbgLog('ROLL_STATE_WIPED',{site:'other',action:action,actionBy:data.actionBy,srvRolled:data.rolled,srvDice:data.diceVal,srvTs:data.timestamp,gDice:G.diceVal,gRolled:G.rolled,gWaiting:G.waiting,rolling:_rolling,animating:_animating,force:!!_forceApply,MY_SEAT});}catch(e){}
+const _kRoll=(_fbPrevTurn===MY_SEAT&&G.rolled===true&&data.turn===MY_SEAT&&data.actionBy!==MY_SEAT&&!_forceApply&&!data.over&&_isOnlineRoom())?{w:G.waiting,d:G.diceVal}:null;
 G.rolled=false;
 G.waiting=false;
 G.diceVal=null;
+if(_kRoll){G.rolled=true;G.waiting=_kRoll.w;G.diceVal=_kRoll.d;try{_dbgLog('ROLL_WIPE_BLOCKED',{site:'fallback',action:action,actionBy:data.actionBy,srvRolled:data.rolled,srvTs:data.timestamp,keptDice:_kRoll.d,keptWaiting:_kRoll.w,rolling:_rolling,animating:_animating,MY_SEAT});}catch(e){}}
 G.sixes=data.sixes||0;
 _applyPlacements(data.placements);
 if(G.turn!==_fbPrevTurn||data.action==="reverse")_stampRemoteTurnWindow(data,_forceApply);
@@ -7865,7 +7939,7 @@ const _isOnlineMove=!!(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode);
 let _commitP=null;
 function _fireCommit(){
 if(!_isOnlineMove||_commitP)return;
-_commitP=(window._rollCommitP||Promise.resolve()).then(function(){return window._srv('v',{c:ROOM_CODE,p:{tid,dv:v,as:(_actorSeat!==MY_SEAT?_actorSeat:undefined),of:(pid!==_actorSeat?pid:undefined)}});});
+_commitP=(window._rollCommitP||Promise.resolve()).then(function(){return window._srv('v',{c:ROOM_CODE,p:{tid,dv:v,auto:(_wasAutoMove?true:undefined),as:(_actorSeat!==MY_SEAT?_actorSeat:undefined),of:(pid!==_actorSeat?pid:undefined)}});});
 if(_actorSeat===MY_SEAT){_commitP.then(function(_cr){try{
 /* extra turn (six / kill / home): server already parked the next roll, fetch it now instead of after the move animation */
 if(_cr&&Array.isArray(_cr.tokens)&&_cr.turn===MY_SEAT&&!_cr.over&&!G.over){
@@ -8075,14 +8149,18 @@ _reconcileOptimisticMove(_r,_optTurn,pid,tid,v);
 if(!(await _commitMoveToServer())){_animating=false;return;}
 nextTurn(bonus,diceWasSix);
 }
-pushGameState({
+const _pushMoveMsg=function(){return pushGameState({
 action:"move",
 dice:v,
 moves:movesPayload,
 movedPid:pid,
 movedTid:tid,
 auto:_wasAutoMove
-},pid).catch(e=>{_animating=false;});
+},pid).catch(e=>{_animating=false;});};
+/* MOVE-IN-COMMIT: new server writes action/moves/dice inside the same atomic commit as turn+tokens (response mw:1) ->
+   do NOT push it again. Old server / failed commit -> push as before (receivers dedupe by mid, hold logic covers the race). */
+if(_isOnlineMove&&_commitP){_commitP.then(function(_mr){if(_mr&&_mr.mw===1){_dbgLog('MOVE_PUSH_SKIPPED_SERVER_WROTE',{pid,tid,v});return;}_pushMoveMsg();},function(){_pushMoveMsg();});}
+else _pushMoveMsg();
 }catch(err){
 
 
