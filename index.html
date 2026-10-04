@@ -53,22 +53,23 @@ window._srv=function(t,b){
 
 
 window._srvRaw=window._srv;
-window._srv=function(t,b){
-  var w=window._lastCommitP;
+window._srv=function(t,b,o){
+  var w=(o&&o.noWait)?null:window._lastCommitP;
   if(w&&(t==='d'||t==='dp'||t==='s'||t==='f'||t==='p'||t==='r'||t==='ln')){
-    return w.then(function(){return window._srvRaw(t,b);},function(){return window._srvRaw(t,b);});
+    var cap=new Promise(function(r){setTimeout(r,15000);});
+    return Promise.race([w.catch(function(){}),cap]).then(function(){return window._srvRaw(t,b);});
   }
   return window._srvRaw(t,b);
 };
 /* TO_DBG: log every gameplay server call (request + result) */
 (function(){
   var _inner=window._srv;
-  window._srv=function(t,b){
-    if(t==='l'||t==='lb'||t==='ping'||t==='dp')return _inner(t,b);
+  window._srv=function(t,b,o){
+    if(t==='l'||t==='lb'||t==='ping'||t==='dp')return _inner(t,b,o);
     var t0=Date.now(),id=(window._srvSeq=(window._srvSeq||0)+1),p=(b&&b.p)||{};
     try{window._dbgLog('TO_SRV_REQ',{id:id,t:t,as:p.as,reroll:p.reroll,tid:p.tid,dv:p.dv,hidden:document.hidden,waitingCommit:!!window._lastCommitP});}catch(e){}
     var _t0srv=Date.now();
-    return _inner(t,b).then(function(r){
+    return _inner(t,b,o).then(function(r){
       try{
         if((t==='d'||t==='v'||t==='s')&&r&&!r.e&&typeof _serverOffset==='number'){window._ownCommitSrvTs=_t0srv+_serverOffset;}
         if((t==='d'||t==='v'||t==='s')&&(window._srvStatusBy&&window._srvStatusBy[t]===403)){try{window._dbgLog('BH_DENY403',{t:t,why:r&&r.why,ctx:(typeof _bhCtx==='function'?_bhCtx():null)});}catch(e){}setTimeout(function(){try{_forceResyncGame('deny403');}catch(e){}},0);}
@@ -2198,17 +2199,21 @@ try{const rc=window._rollCommitP;if(rc)await Promise.race([rc.catch(function(){}
 }
 async function _srvSkip(pid){
 if(!_isOnlineRoom())return null;
+const _prev=window._lastCommitP;
 await _waitRollCommit();
+if(_prev)await Promise.race([_prev.catch(function(){}),new Promise(function(r){setTimeout(r,15000);})]);
 /* server 'd' may already have done the skip (noMove) in the same commit -> do NOT call 's' (turn is already passed) */
 const _dm=window._dNoMove;
 if(_dm&&_dm.pid===pid&&Date.now()-_dm.at<120000&&_dm.r&&typeof _dm.r.turn==='number'){window._dNoMove=null;return _dm.r;}
-const r=await window._srv('s',{c:ROOM_CODE,p:{as:(pid!==MY_SEAT?pid:undefined)}});
+const r=await window._srv('s',{c:ROOM_CODE,p:{as:(pid!==MY_SEAT?pid:undefined)}},{noWait:true});
 return (r&&typeof r.turn==='number')?r:null;
 }
 async function _srvForfeit(pid){
 if(!_isOnlineRoom())return null;
+const _prev=window._lastCommitP;
 await _waitRollCommit();
-try{const r=await window._srv('f',{c:ROOM_CODE,p:{as:(pid!==MY_SEAT?pid:undefined)}});
+if(_prev)await Promise.race([_prev.catch(function(){}),new Promise(function(r){setTimeout(r,15000);})]);
+try{const r=await window._srv('f',{c:ROOM_CODE,p:{as:(pid!==MY_SEAT?pid:undefined)}},{noWait:true});
 return (r&&typeof r.turn==='number')?r:null;}catch(e){return null;}
 }
 function _trackCommit(p){
