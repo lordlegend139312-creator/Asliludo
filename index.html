@@ -7302,6 +7302,7 @@ if(_botActing){_dbgLog('BOTTURN_BAIL',{seat,reason:'bot_already_acting'});return
 
 if(!PLAYERS[seat]?.isBot&&!forceAfk){_dbgLog('BOTTURN_BAIL',{seat,reason:'not_bot_no_force'});return;}
 _botActing=true;
+let _contBonus=false;
 if(G.over||G.turn!==seat||G.rolled){_dbgLog('BOTTURN_BAIL',{seat,reason:'stale_after_lock'});_botActing=false;return;}
 try{
 const diff=typeof _cpuDifficulty!=='undefined'?_cpuDifficulty:'normal';
@@ -7362,6 +7363,7 @@ _pendingAutoMove=true;
 _dbgLog('BOTTURN_MOVE_PICKED',{seat,dice:v,tid:best.tid,forceAfk:!!forceAfk});
 await doMove(seat,best.tid,v);
 _dbgLog('BOTTURN_MOVE_DONE',{seat});
+if(forceAfk&&!G.over&&G.turn===seat&&!G.rolled&&!G.waiting&&PLAYERS[seat]&&!PLAYERS[seat].isBot&&amIElderPlayer(seat))_contBonus=true;
 }catch(err){
 
 console.error('[BOT-RECOVER] _doBotTurn failed, forcing recovery:',err);
@@ -7375,6 +7377,7 @@ pushGameState({action:"skip",dice:0,reason:"botError",auto:true},seat).catch(()=
 }finally{
 _dbgLog('TO_BOT_END',{seat,gTurn:G.turn,gRolled:G.rolled,gWaiting:G.waiting,gDice:G.diceVal,animating:_animating,rolling:_rolling,note:'gRolled=true here with no move after = stuck flag'});
 _botActing=false;
+if(_contBonus){setTimeout(function(){try{if(!G.over&&G.turn===seat&&!G.rolled&&!G.waiting&&!_rolling&&!_animating&&amIElderPlayer(seat)){_dbgLog('BOTTURN_BONUS_CONTINUE',{seat});_doBotTurn(seat,true);}}catch(e){}},700);}
 }
 }
 let _turnTimeoutTimer=null;
