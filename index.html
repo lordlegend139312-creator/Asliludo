@@ -247,6 +247,7 @@ window.addEventListener('error',function(e){
 })();
 </script>
 <meta charset="UTF-8"/>
+<meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="mobile-web-app-capable" content="yes"/>
@@ -466,6 +467,8 @@ if(btn)btn.addEventListener('click',()=>{SFX.setMuted(!SFX.isMuted());});
       style="letter-spacing:1px;"><button class="modal-btn" id="btn-confirm-name">Continue</button><button class="modal-btn secondary" id="btn-cancel-name" style="margin-top:2px;color:#f0f0ff;">Back</button></div>
 </div>
 <div class="modal-overlay" id="modal-home-confirm"><div class="modal-box"><div style="font-size:2rem;">🏠</div><div class="modal-title">Leave Game?</div><div class="modal-sub">You'll leave this match and return to the lobby. Other players will continue without you.</div><button class="modal-btn" id="btn-home-confirm-yes" style="background:#FF2D78;color:#fff;">Yes, Leave</button><button class="modal-btn secondary" id="btn-home-confirm-no">Cancel</button></div>
+</div>
+<div class="modal-overlay" id="modal-rejoin-choose"><div class="modal-box" style="width:min(340px,92vw);"><div class="modal-title">Choose a Room</div><div class="modal-sub">Pick the room you want to enter. The other room will be removed from your Rejoin list permanently.</div><div id="rejoin-choose-list" style="display:flex;flex-direction:column;gap:10px;width:100%;"></div><button class="modal-btn secondary" onclick="document.getElementById('modal-rejoin-choose').classList.remove('show')">Cancel</button></div>
 </div>
 <div class="modal-overlay" id="modal-player-menu"><div class="modal-box" style="gap:14px;"><div class="modal-title" id="player-menu-title">Player</div><div id="player-menu-body"></div><button class="modal-btn secondary" id="player-menu-close">Close</button></div></div>
 <div class="modal-overlay" id="modal-shop"><div class="modal-box" style="width:320px;gap:14px;"><div class="modal-title">Shop</div><div id="shop-balance" style="color:#F5C518;font-size:1.05rem;font-weight:900;font-family:'Rajdhani',sans-serif;">⭐ 0 pts</div><div id="shop-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%;max-height:56vh;overflow-y:auto;"></div><button class="modal-btn secondary" id="shop-close" onclick="window.closeShop()">Close</button></div></div>
@@ -704,6 +707,37 @@ cancel_on_tap_outside:true
 google.accounts.id.prompt();
 }catch(e){console.error('ONE_TAP_INIT_FAILED',e);}
 };
+/* OAuth CSRF protection: random "state" bound to this browser, verified on return (blocks #access_token=ATTACKER links) */
+function _gStateRead(st){try{const r=JSON.parse(st.getItem('ludo_gsignin_state')||'null');return(r&&typeof r.s==='string'&&r.s&&(Date.now()-Number(r.t))<10*60*1000)?r.s:'';}catch(e){return '';}}
+function _gStateClear(){try{sessionStorage.removeItem('ludo_gsignin_state');}catch(e){}try{localStorage.removeItem('ludo_gsignin_state');}catch(e){}}
+function _gStateNew(){
+let s='';
+try{const a=new Uint8Array(16);crypto.getRandomValues(a);s=Array.from(a,function(x){return('0'+x.toString(16)).slice(-2);}).join('');}catch(e){}
+if(!s)return '';
+const rec=JSON.stringify({s:s,t:Date.now()});
+let stored=false;
+try{sessionStorage.setItem('ludo_gsignin_state',rec);stored=true;}catch(e){}
+try{localStorage.setItem('ludo_gsignin_state',rec);stored=true;}catch(e){}
+return stored?s:'';
+}
+function _consumeGoogleState(got){
+const exp=[];
+try{exp.push(_gStateRead(sessionStorage));}catch(e){}
+try{exp.push(_gStateRead(localStorage));}catch(e){}
+_gStateClear();
+return !!got&&exp.some(function(e){return e&&e===got;});
+}
+/* the access token must have been issued to OUR client id (a token minted for some other app could otherwise be replayed here).
+   Network/CORS/5xx hiccup => allow (Firebase still verifies the token itself); only an explicit "not ours / invalid" answer blocks. */
+async function _googleTokenIsForUs(accessToken){
+try{
+const r=await fetch('https://oauth2.googleapis.com/tokeninfo?access_token='+encodeURIComponent(accessToken),{cache:'no-store'});
+if(r.status>=500||r.status===429)return true;
+if(!r.ok)return false;
+const j=await r.json();
+return !!j&&(j.aud===GOOGLE_WEB_CLIENT_ID||j.azp===GOOGLE_WEB_CLIENT_ID);
+}catch(e){console.warn('GOOGLE_TOKENINFO_UNREACHABLE',e);return true;}
+}
 window.signInWithGoogle=async function(){
 
 
@@ -716,6 +750,8 @@ window.signInWithGoogle=async function(){
 try{
 sessionStorage.setItem('ludo_gsignin_return','1');
 }catch(e){}
+const _gState=_gStateNew();
+if(!_gState){showToast&&showToast("❌ Sign-in failed (browser storage blocked). Try again.");return;}
 const redirectUri=location.origin+location.pathname;
 const authUrl='https://accounts.google.com/o/oauth2/v2/auth'
 +'?client_id='+encodeURIComponent(GOOGLE_WEB_CLIENT_ID)
@@ -723,6 +759,7 @@ const authUrl='https://accounts.google.com/o/oauth2/v2/auth'
 +'&response_type=token'
 +'&scope='+encodeURIComponent('email profile')
 +'&include_granted_scopes=true'
++'&state='+encodeURIComponent(_gState)
 +'&prompt=select_account';
 location.href=authUrl;
 };
@@ -731,12 +768,15 @@ if(!location.hash||location.hash.indexOf('access_token=')===-1)return;
 const params=new URLSearchParams(location.hash.slice(1));
 const accessToken=params.get('access_token');
 const error=params.get('error');
+const gotState=params.get('state')||'';
 history.replaceState(null,'',location.pathname+location.search);
 try{sessionStorage.removeItem('ludo_gsignin_return');}catch(e){}
 if(error){console.error('GOOGLE_REDIRECT_ERROR',error);showToast&&showToast("❌ Sign-in failed. Try again.");return;}
 if(!accessToken)return;
+if(!_consumeGoogleState(gotState)){console.warn('GOOGLE_REDIRECT_STATE_MISMATCH');showToast&&showToast("⚠️ Sign-in link was not valid. Please tap Sign in again.");return;}
 if(!(await waitForRealFirebase(8000))){showToast&&showToast("❌ Cannot reach server. Check internet & try again.");return;}
 await waitForAuth().catch(()=>{});
+if(!(await _googleTokenIsForUs(accessToken))){console.warn('GOOGLE_TOKEN_AUD_MISMATCH');showToast&&showToast("⚠️ Sign-in failed. Please try again.");return;}
 await _completeGoogleSignIn(accessToken);
 };
 async function _onGoogleSignedIn(user){
@@ -3070,7 +3110,7 @@ await connRef.set({v:!document.hidden});
 function _unbindPresence(){
 if(_presenceConnRef){
 try{_presenceConnRef.onDisconnect().cancel();}catch(e){}
-try{_presenceConnRef.remove();}catch(e){}
+try{const _pr=_presenceConnRef.remove();if(_pr&&_pr.catch)_pr.catch(()=>{});}catch(e){}
 _presenceConnRef=null;
 }
 }
@@ -3222,6 +3262,7 @@ showToast("Connecting to server...");
 try{await waitForAuth();}catch(e){showToast("⚠️ Auth error — check internet");return;}
 if(!auth.currentUser){console.error('CREATE_ROOM_NO_AUTH_USER',{});showToast("⚠️ Sign-in failed. Enable Anonymous Auth in Firebase console & retry.");return;}
 if(!(await waitForRealFirebase())){showToast("❌ Cannot reach server. Check internet & try again.");return;}
+try{await _retireOldSessions(null);}catch(e){_dbgLog('RETIRE_OLD_FAILED',{message:e&&e.message});}
 const _createRes=await window._srv('c',{p:{
 n:numPlayers,
 tm:!!(numPlayers===4&&_pendingTeamMode),
@@ -3312,6 +3353,7 @@ if(!_jr){ROOM_CODE=null;roomRef=null;gameRef=null;playersRef=null;showToast("Cou
 MY_SEAT=_jr.seat;
 _bindPresence(code,MY_SEAT);
 saveSession();
+_retireOldSessions(code).catch(()=>{});
 closeModals();
 document.getElementById("display-room-code").textContent=code;
 document.getElementById("modal-waiting").classList.add("show");
@@ -3349,6 +3391,7 @@ row.style.opacity=IS_HOST?'1':'0.75';
 if(sub)sub.textContent=IS_HOST?'Start instantly when room is full':(on?'Host enabled auto start':'Host will start manually');
 }
 function listenRoom(){
+const _lrCode=ROOM_CODE;
 const cb1=snap=>{
 const players=snap.val()||{};
 window._dbgLog('PLAYERS_SNAPSHOT',{roomCode:ROOM_CODE,summary:Object.values(players).map(p=>({seat:p.seat,name:p.name,connsCount:p.conns?Object.keys(p.conns).length:0}))});
@@ -3372,6 +3415,7 @@ playersRef.on('value',cb1);
 _listeners.push(()=>playersRef.off('value',cb1));
 const gameStatusRef=db.ref(`rooms/${ROOM_CODE}/status`);
 const cb2=snap=>{
+if(!snap.exists()){if(ROOM_CODE===_lrCode&&!_gameStarted&&!_gameStartLock)_onWaitingRoomDeleted(_lrCode);return;}
 if(snap.val()==="playing"&&!_gameStarted&&!_gameStartLock){
 _gameStartLock=true;
 _gameStarted=true;
@@ -3968,7 +4012,7 @@ const action=data.action||data.lastAction;
 const dice=data.dice??data.diceVal??(action==="move"?G.diceVal:null);
 const rolledBy=data.actionBy;
 if(action==="roll"){
-if(rolledBy!==null&&rolledBy!==undefined&&!data.auto){
+if(rolledBy!==null&&rolledBy!==undefined&&!data.auto&&!_afkSeats[rolledBy]&&!PLAYERS[rolledBy]?.isBot){
 _timerExpireCount[rolledBy]=0;
 _updateOfflineBadge(rolledBy,false);
 }
@@ -4012,7 +4056,7 @@ syncUI();
 return;
 }
 if(action==="move"){
-if(rolledBy!==null&&rolledBy!==undefined&&!data.auto){
+if(rolledBy!==null&&rolledBy!==undefined&&!data.auto&&!_afkSeats[rolledBy]&&!PLAYERS[rolledBy]?.isBot){
 _timerExpireCount[rolledBy]=0;
 _updateOfflineBadge(rolledBy,false);
 }
@@ -4268,36 +4312,196 @@ _dbgLog('SYNC_PUSH_FAILED',{action:extra.action,message:e&&e.message,code:e&&e.c
 showToast("Sync error-reconnecting...");
 });
 }
+// ===== Rejoin sessions (multi-room) =====
+// localStorage 'ludo_sessions' = [{code,seat,name},...]. The old single 'ludo_session' key is migrated automatically.
+const _SESS_KEY='ludo_sessions';
+function _readSessions(){
+let arr=[];
+try{
+const raw=localStorage.getItem(_SESS_KEY);
+if(raw){
+const p=JSON.parse(raw);
+if(Array.isArray(p))arr=p.filter(x=>x&&x.code&&x.seat!==undefined&&x.seat!==null&&x.name);
+}else{
+const old=localStorage.getItem('ludo_session');
+if(old){const o=JSON.parse(old);if(o&&o.code&&o.seat!==undefined&&o.seat!==null&&o.name)arr=[{code:o.code,seat:o.seat,name:o.name}];}
+}
+}catch(e){}
+return arr;
+}
+function _writeSessions(arr){
+try{
+if(arr&&arr.length)localStorage.setItem(_SESS_KEY,JSON.stringify(arr));else localStorage.removeItem(_SESS_KEY);
+localStorage.removeItem('ludo_session');
+}catch(e){}
+}
 function saveSession(){
 if(window._cpuMode){return;}
 if(!ROOM_CODE||MY_SEAT===null||!MY_NAME){return;}
 const data={code:ROOM_CODE,seat:MY_SEAT,name:MY_NAME};
-try{localStorage.setItem('ludo_session',JSON.stringify(data));_dbgLog('SESSION_SAVED',data);}catch(e){}
+const list=_readSessions();
+const i=list.findIndex(x=>x.code===ROOM_CODE);
+if(i>=0)list[i]=data;else list.push(data);
+_writeSessions(list);
+_dbgLog('SESSION_SAVED',data);
 }
-function clearSession(){
+// clearSession(code) forgets ONE room. No argument = the room I am currently in.
+function clearSession(code){
 try{
-localStorage.removeItem('ludo_session');
-_dbgLog('SESSION_CLEARED',{});
+const c=code||ROOM_CODE;
+if(!c)return;
+_writeSessions(_readSessions().filter(x=>x.code!==c));
+_dbgLog('SESSION_CLEARED',{code:c});
 }catch(e){}
 }
-function loadSession(){
-try{const s=localStorage.getItem('ludo_session');const parsed=s?JSON.parse(s):null;return parsed;}catch(e){return null;}
-}
 window.checkRejoin=function checkRejoin(){
-const s=loadSession();
+const list=_readSessions();
 const card=document.getElementById('rejoin-card');
 const sub=document.getElementById('rejoin-sub');
 if(!card){return;}
-if(s){
+if(list.length){
 card.style.display='flex';
-if(sub)sub.textContent=`Room ${s.code}· as ${s.name}`;
+if(sub)sub.textContent=list.length>1?`${list.length} rooms · tap to choose`:`Room ${list[0].code} · as ${list[0].name}`;
 }else{
 card.style.display='none';
 }
 }
+// Silent health check of one saved room (no toasts, no deletes).
+// ok:true = still usable, ok:false = gone/expired/over (forget it), ok:null = could not verify (network)
+async function _inspectSession(s){
+const base=db.ref(`rooms/${s.code}`);
+const g=(p)=>base.child(p).once('value').catch(()=>null);
+const[st,host,ca,ab,la,pl]=await Promise.all(['status','host','createdAt','abandonedAt','lastActiveAt','players'].map(g));
+if(!st)return{s,ok:null};
+if(!st.exists())return{s,ok:false,why:'gone'};
+const status=st.val(),now=Date.now(),T=15*60*1000;
+if(status==='waiting'){
+const c=ca&&ca.val();
+if(c&&now-c>=T)return{s,ok:false,why:'expired'};
+}else{
+const ov=await g('game/over');
+if(ov&&ov.val()===true)return{s,ok:false,why:'over'};
+const abv=ab&&ab.val(),lav=la&&la.val();
+if(abv&&now-abv>=T)return{s,ok:false,why:'abandoned'};
+if(!abv&&lav&&now-lav>=T)return{s,ok:false,why:'inactive'};
+}
+const players=(pl&&pl.val())||{};
+if(!players[s.seat])return{s,ok:false,why:'seat'};
+const others=Object.keys(players).filter(k=>String(k)!==String(s.seat)).map(k=>players[k]&&players[k].name).filter(Boolean);
+return{s,ok:true,status,isHost:(host&&host.val()!==null&&Number(host.val())===Number(s.seat)),others};
+}
+// Deletes a room that has NOT started (server checks that I am its host). Everyone inside is removed.
+async function _deleteWaitingRoom(code){
+for(let i=0;i<2;i++){
+try{const r=await window._srv('xw',{c:code});if(r&&r.ok)return true;}catch(e){}
+await new Promise(r=>setTimeout(r,600));
+}
+return false;
+}
+// Called when I create / join a new room.
+//  - old room NOT started + I am host  -> deleted for everyone (players get kicked with a message)
+//  - old room NOT started + I am guest -> just removed from my list
+//  - old room already RUNNING          -> kept, so Rejoin can still bring me back to my friends
+async function _retireOldSessions(exceptCode){
+const list=_readSessions().filter(x=>x.code!==exceptCode);
+if(!list.length)return;
+const infos=await Promise.all(list.map(_inspectSession));
+const dropCodes=new Set(),delCodes=[];
+infos.forEach(i=>{
+if(i.ok===null)return;
+if(!i.ok){dropCodes.add(i.s.code);return;}
+if(i.status==='waiting'){dropCodes.add(i.s.code);if(i.isHost)delCodes.push(i.s.code);}
+});
+if(dropCodes.size)_writeSessions(_readSessions().filter(x=>!dropCodes.has(x.code)));
+_dbgLog('SESSIONS_RETIRED',{drop:[...dropCodes],del:delCodes});
+for(const c of delCodes){await _deleteWaitingRoom(c);}
+}
+// Shown to players who are still inside a waiting room when its host deletes it.
+function _onWaitingRoomDeleted(code){
+if(ROOM_CODE!==code||_gameStarted)return;
+_dbgLog('WAITING_ROOM_DELETED',{code});
+clearSession(code);
+showToast('This room has been deleted.',5000);
+window.leaveWaitingRoom();
+}
+function _showRejoinChooser(infos){
+window._rejoinChoices=infos;
+const box=document.getElementById('rejoin-choose-list');
+if(!box)return;
+box.innerHTML='';
+infos.slice().sort((x,y)=>(x.status==='waiting')-(y.status==='waiting')).forEach(i=>{
+const playing=i.status!=='waiting';
+const card=document.createElement('div');
+card.className='s-card';
+card.style.cssText='padding:12px 14px;gap:12px;border-color:'+(playing?'rgba(0,200,83,.45)':'rgba(0,174,239,.45)')+';';
+const ic=document.createElement('div');
+ic.className='s-card-icon';
+ic.style.background=playing?'linear-gradient(135deg,#00C853,#008a39)':'linear-gradient(135deg,#00AEEF,#0077aa)';
+ic.textContent=playing?'🎮':'🕒';
+const tx=document.createElement('div');
+tx.className='s-card-text';
+tx.style.cssText='min-width:0;flex:1;';
+const t1=document.createElement('div');
+t1.className='s-card-title';
+t1.textContent=playing?'Game in progress':'New room';
+const t2=document.createElement('div');
+t2.className='s-card-sub';
+t2.style.cssText='word-break:break-word;';
+t2.textContent='Room '+i.s.code+' · '+(i.others.length?('with '+i.others.join(', ')):(playing?'no other players':'no friends joined yet'));
+tx.appendChild(t1);tx.appendChild(t2);
+const ar=document.createElement('div');
+ar.className='s-card-arrow';
+ar.textContent='›';
+card.appendChild(ic);card.appendChild(tx);card.appendChild(ar);
+card.addEventListener('click',()=>window._pickRejoinRoom(i.s.code));
+box.appendChild(card);
+});
+const m=document.getElementById('modal-rejoin-choose');
+if(m)m.classList.add('show');
+}
+// One tap on a room = enter it, and the OTHER room is removed from my Rejoin list for good.
+// Unstarted room I host -> deleted for everyone. Running match -> only removed for me, my friends keep playing.
+window._pickRejoinRoom=async function(code){
+const m=document.getElementById('modal-rejoin-choose');
+if(m)m.classList.remove('show');
+const infos=window._rejoinChoices||[];
+window._rejoinChoices=[];
+const chosen=infos.find(i=>i.s.code===code);
+if(!chosen)return;
+const dropped=infos.filter(i=>i.s.code!==code);
+const dropCodes=new Set(dropped.map(i=>i.s.code));
+_writeSessions(_readSessions().filter(x=>!dropCodes.has(x.code)));
+checkRejoin();
+_dbgLog('REJOIN_CHOSEN',{keep:code,drop:[...dropCodes]});
+dropped.forEach(i=>{if(i.status==='waiting'&&i.isHost)_deleteWaitingRoom(i.s.code);});
+await _rejoinSession(chosen.s);
+};
 window.tryRejoin=async function(){
-const s=loadSession();
-if(!s){clearSession();return;}
+if(window._rejoinBusy)return;
+window._rejoinBusy=true;
+try{
+const list=_readSessions();
+if(!list.length){checkRejoin();return;}
+if(list.length===1){await _rejoinSession(list[0]);return;}
+let infos;
+window._showBusyOverlay('Checking your rooms...');
+try{
+await waitForAuth();
+if(!(await waitForRealFirebase())){showToast("❌ Cannot reach server. Check internet & try again.");return;}
+infos=await Promise.all(list.map(_inspectSession));
+}finally{window._hideBusyOverlay();}
+if(infos.some(i=>i.ok===null)){showToast("❌ Cannot reach server. Check internet & try again.");return;}
+const dead=new Set(infos.filter(i=>!i.ok).map(i=>i.s.code));
+if(dead.size)_writeSessions(_readSessions().filter(x=>!dead.has(x.code)));
+const live=infos.filter(i=>i.ok);
+checkRejoin();
+if(live.length===0){showToast('Your previous rooms are no longer available');return;}
+if(live.length===1){await _rejoinSession(live[0].s);return;}
+_showRejoinChooser(live);
+}finally{window._rejoinBusy=false;}
+};
+async function _rejoinSession(s){
+if(!s){return;}
 _dbgLog('REJOIN_ATTEMPT_START',{code:s.code,seat:s.seat,name:s.name});
 
 
@@ -4316,7 +4520,7 @@ roomBase.child('abandonedAt').once('value').catch(()=>null),
 roomBase.child('lastActiveAt').once('value').catch(()=>null),
 roomBase.child('createdAt').once('value').catch(()=>null)
 ]);
-if(!statusSnap||!statusSnap.exists()){_dbgLog('REJOIN_FAILED',{code:s.code,reason:'room_no_longer_exists'});showToast('Room no longer exists');clearSession();document.getElementById('rejoin-card').style.display='none';return;}
+if(!statusSnap||!statusSnap.exists()){_dbgLog('REJOIN_FAILED',{code:s.code,reason:'room_no_longer_exists'});showToast('Room no longer exists');clearSession(s.code);checkRejoin();return;}
 const rData={
 status:statusSnap.val(),
 host:hostSnap&&hostSnap.val(),
@@ -4330,8 +4534,8 @@ if(rData.status==='waiting'&&rData.createdAt&&(Date.now()-rData.createdAt)>=15*6
 try{await window._srv('x',{c:s.code});}catch(e){}
 _dbgLog('REJOIN_FAILED',{code:s.code,reason:'waiting_room_expired_15min'});
 showToast('Room expired — not started within 15 min');
-clearSession();
-document.getElementById('rejoin-card').style.display='none';
+clearSession(s.code);
+checkRejoin();
 return;
 }
 await _joinRoomAsMember(s.code);
@@ -4352,17 +4556,17 @@ return;
 }
 const gameSnap=await db.ref(`rooms/${s.code}/game/over`).once('value').catch(()=>null);
 const gameOver=gameSnap&&gameSnap.val()===true;
-if(gameOver){_dbgLog('REJOIN_FAILED',{code:s.code,reason:'game_already_over'});showToast('That game has already ended');clearSession();document.getElementById('rejoin-card').style.display='none';return;}
+if(gameOver){_dbgLog('REJOIN_FAILED',{code:s.code,reason:'game_already_over'});showToast('That game has already ended');clearSession(s.code);checkRejoin();return;}
 if(rData.abandonedAt){
 const elapsed=Date.now()-rData.abandonedAt;
-if(elapsed>=15*60*1000){_dbgLog('REJOIN_FAILED',{code:s.code,reason:'room_abandoned_15min',elapsed});showToast('Room expired — everyone left');clearSession();document.getElementById('rejoin-card').style.display='none';return;}
+if(elapsed>=15*60*1000){_dbgLog('REJOIN_FAILED',{code:s.code,reason:'room_abandoned_15min',elapsed});showToast('Room expired — everyone left');clearSession(s.code);checkRejoin();return;}
 }
 if(!rData.abandonedAt&&rData.lastActiveAt){
 const elapsed=Date.now()-rData.lastActiveAt;
-if(elapsed>=15*60*1000){_dbgLog('REJOIN_FAILED',{code:s.code,reason:'inactive_15min',elapsed});showToast('Room expired — inactive for 15 min');clearSession();document.getElementById('rejoin-card').style.display='none';return;}
+if(elapsed>=15*60*1000){_dbgLog('REJOIN_FAILED',{code:s.code,reason:'inactive_15min',elapsed});showToast('Room expired — inactive for 15 min');clearSession(s.code);checkRejoin();return;}
 }
 const playerSnap=await db.ref(`rooms/${s.code}/players/${s.seat}`).once('value').catch(()=>null);
-if(!playerSnap||!playerSnap.exists()){_dbgLog('REJOIN_FAILED',{code:s.code,seat:s.seat,reason:'seat_no_longer_available'});showToast('Seat no longer available');clearSession();return;}
+if(!playerSnap||!playerSnap.exists()){_dbgLog('REJOIN_FAILED',{code:s.code,seat:s.seat,reason:'seat_no_longer_available'});showToast('Seat no longer available');clearSession(s.code);checkRejoin();return;}
 MY_SEAT=s.seat;IS_HOST=(rData.host===s.seat);
 NUM_PLAYERS=rData.numPlayers||4;
 ROOM_CODE=s.code;
@@ -4379,11 +4583,12 @@ showToast('🔄 Rejoining...');
 
 await _doLoadAndStartGame();
 listenRoom();
-};
+}
 window.leaveToLobby=async function(){
 clearTimeout(_turnTimeoutTimer);_turnTimeoutTimer=null;
 clearTimeout(_abandonCheckTimer);_abandonCheckTimer=null;
 _clearWaitingExpireTimer();
+_unbindPresence();
 _stopHeartbeat();
 _stopStaleTurnWatchdog();_stopPeriodicResync();
 stopTurnTimer();
@@ -4468,7 +4673,7 @@ if(chatPanel){chatPanel.classList.remove("open");chatPanel.style.bottom="";}docu
 _chatOpen=false;_unreadCount=0;_chatListening=false;_lastChatKey=null;_chatHistoryReady=false;_replyTarget=null;
 _resetTeamChatSession();
 updateChatBadge();
-const rc=document.getElementById("rejoin-card");if(rc)rc.style.display="none";
+checkRejoin();
 document.getElementById("lobby").style.display="flex";
 closeModals();
 };
@@ -4817,8 +5022,7 @@ try{await window._srv('x',{c:ROOM_CODE});}catch(e){}
 }
 showToast('🕐 Room expired — everyone was away for 15 min');
 clearSession();
-const rc=document.getElementById('rejoin-card');
-if(rc)rc.style.display='none';
+checkRejoin();
 if(document.getElementById('game-wrap')?.style.display!=='none'){
 window.leaveToLobby();
 }
@@ -4867,6 +5071,27 @@ listenAfkSeats();
 listenBotOff();
 _listenAbandonedAt();
 }
+function _restoreOfflineBadges(){
+try{
+SEAT_LAYOUT_ACTIVE.forEach(seat=>{
+if(!PLAYERS[seat]?.active)return;
+const b=document.getElementById(`offbadge-${seat}`);
+if(!b||b.classList.contains('show'))return;
+if(PLAYERS[seat].isBot){
+if(window._cpuMode)return;
+const isMine=seat===MY_SEAT;
+b.classList.add('show','bot-mode');
+b.style.pointerEvents=isMine?'auto':'none';b.style.cursor=isMine?'pointer':'default';
+const a=document.getElementById(`offafk-${seat}`);if(a)a.textContent='BOT MODE';
+const m=document.getElementById(`offmain-${seat}`);if(m)m.style.display='none';
+const t=document.getElementById(`offtxt-${seat}`);if(t)t.style.display='none';
+const u=document.getElementById(`offauto-${seat}`);if(u){u.style.display='block';u.textContent=isMine?'STOP AUTO-PLAY':'Auto-playing';}
+const d=document.getElementById(`botdice-${seat}`);if(d)d.style.display='block';
+}else if(_isSeatAfk(seat)){_updateOfflineBadge(seat,true);}
+});
+}catch(e){}
+}
+function _isSeatAfk(seat){return !!_afkSeats[seat]||(_timerExpireCount[seat]||0)>=EXPIRE_COUNT_FOR_VOTE;}
 function _updateOfflineBadge(seat,isOffline){
 const badge=document.getElementById(`offbadge-${seat}`);
 if(!badge)return;
@@ -4969,7 +5194,7 @@ _dbgLog('VOTE_BELOW_THRESHOLD_UNDOING_BOT',{seat,votes,needed});
 _deactivateBot(seat);
 return;
 }
-_updateOfflineBadge(seat,(_timerExpireCount[seat]||0)>=EXPIRE_COUNT_FOR_VOTE);
+_updateOfflineBadge(seat,_isSeatAfk(seat));
 });
 };
 ref.on('value',cb);
@@ -4991,7 +5216,7 @@ _botVotes[seat][voteKey]=true;
 const activePlayers=SEAT_LAYOUT_ACTIVE.filter(s=>PLAYERS[s]?.active&&s!==seat);
 const needed=Math.ceil(activePlayers.length*2/3)||1;
 const votes=Object.keys(_botVotes[seat]).length;
-_updateOfflineBadge(seat,(_timerExpireCount[seat]||0)>=EXPIRE_COUNT_FOR_VOTE);
+_updateOfflineBadge(seat,_isSeatAfk(seat));
 if(votes>=needed)_activateBot(seat);
 return;
 }
@@ -5579,6 +5804,7 @@ _domCache.dcube[pid]=document.getElementById(`dcube-${pid}`);
 _domCache.pdw[pid]=document.getElementById(`pdw-${pid}`);
 _domCache.tbar[pid]=document.getElementById(`tbar-${pid}`);
 });
+_restoreOfflineBadges();
 }
 function makePlaceholder(side){
 const col=document.createElement("div");
@@ -7339,7 +7565,7 @@ v=smartRng(seat);
 G.rolled=true;G.diceVal=v;
 _dbgLog('BOTTURN_ROLLED',{seat,dice:v,forceAfk:!!forceAfk});
 const _botDiceEl=document.getElementById('botdice-'+seat);
-if(_botDiceEl){_botDiceEl.style.display='block';_botDiceEl.textContent=v;}
+if(_botDiceEl&&PLAYERS[seat]?.isBot){_botDiceEl.style.display='block';_botDiceEl.textContent=v;}
 if(G.over||G.turn!==seat){G.rolled=false;G.diceVal=null;_dbgLog('BOTTURN_BAIL',{seat,reason:'stale_after_roll'});return;}
 if(v===6){G.sixes=(G.sixes||0)+1;
 if(G.sixes>=3){const _ffP=_trackCommit(_srvForfeit(seat));G.sixes=0;G.rolled=false;G.diceVal=null;_rolling=false;nextTurn(false);_optimisticPass(_ffP);
@@ -9493,7 +9719,7 @@ function hsShowHomeScreen(){}
 </script>
 <script>
 (function(){
-const GUIDE_TOPICS=[{"title": "Features", "sub": "What makes this Ludo different", "html": "<p>This game includes the following features beyond standard Ludo.</p><h3>Online Multiplayer</h3><p>Play with 2, 3, or 4 players. The host creates a room and shares the 6-character room code (tap the code to copy it), and friends join by entering it. The waiting room shows who has joined and whether each player is online or away. The host can start the match once at least two players have joined, or turn on Auto Start to begin as soon as the room is full. A room that is not started within 15 minutes expires.</p><h3>Special Mode</h3><p>The host can enable Special Mode when creating a room. In this mode you earn points for actions such as capturing tokens, and you can spend them in the Shop on six powers: Ambush, Freeze, Aegis, Lucky Number, Re-roll, and Reverse. The Shop button appears in the top bar only in this mode.</p><h3>Team Mode</h3><p>Team Mode is available in 4-player rooms and is enabled by the host when creating the room. The teams are Pink and Green versus Yellow and Blue. In the lobby, the host can change the teams by tapping one player and then another to swap their colors, and therefore their teams. Each player's team is shown beside their name during the match. Teammates have a private Team chat, which is also available in the lobby while teams are being arranged. When only one opponent is still in play, you can also move your teammate's tokens on your turn.</p><h3>Shield System</h3><p>Two of your tokens on the same cell form a Normal shield, which opponents cannot land on. Three or more form a Super shield, which also stops opponents from passing through. You can choose the design of each shield.</p><h3>Turn Timer and Bot Takeover</h3><p>Each turn has a 43-second timer, shown as a bar around the player's panel. If it runs out, the game rolls and moves for you automatically. If a player misses three turns in a row, an AFK badge appears on their panel. The other players can tap the badge to vote, and once two-thirds of them have voted, a bot plays on that player's behalf so the match keeps moving. The player can take control back by tapping \"Stop auto-play\" on their panel.</p><h3>Rejoin and Rematch</h3><p>If your connection drops or you close the app, \"Rejoin Game\" on the home screen returns you to your room, as long as the room is still active. You can also rejoin after leaving with the Home button. The game reconnects automatically, and a status indicator in the top bar shows whether you are Synced, Syncing, or Disconnected. When a match ends, the button on the results screen creates a new room with the same settings and moves the other players into it automatically.</p><h3>Customization</h3><p>Choose from four board themes (with a preview), 20 shield designs, and five token designs. Normal and Super shields are set separately, and they must be different. Your choices are saved on your device.</p><h3>Chat and Reactions</h3><p>Every room has a General chat. In Team Mode, a separate Team chat is available to teammates. Swipe a message to reply to it. New messages appear as a bubble above the sender's panel, and you can mute these popups from the chat window. You can also send one of ten reactions to any player by tapping the three-dot menu on their panel. Sending reactions requires you to sign in.</p><h3>Profile and Stats</h3><p>You can play as a guest with any name (up to 12 characters), or sign in with Google to save your kills, wins, and losses to your account, so your record is kept even if you clear your browser data. You can edit your name from your profile. Tap the three-dot menu on a signed-in player's panel to view their stats.</p><h3>Effects, Sound, and Performance Mode</h3><p>Tokens move cell by cell with a 3D dice roll. The game includes sound effects, vibration feedback on supported devices, and visual effects such as bomb blasts, freeze effects, an Aegis glow, and a win celebration. Use the sound button in the top bar to mute, and turn on Performance Mode (the lightning-bolt button) on slower devices to reduce effects and keep the game smooth.</p>"}, {"title": "Rules", "sub": "How to play, step by step", "html": "<h3>Objective</h3><p>Bring all four of your tokens from your home base, around the board, and into the home at the center. The first player to bring all four tokens home wins. The match continues until only one player is left, and the order in which players finish decides the rankings.</p><h3>Turns</h3><p>Turns pass clockwise around the board. Players who have already finished are skipped. On your turn, tap your dice to roll it, then tap one of the highlighted tokens to move it by the number rolled.</p><h3>Leaving Home</h3><p>A token can leave home only when you roll a 6. It is placed on your start cell, and each 6 brings out one token.</p><h3>Movement</h3><p>After leaving home, a token travels along the main track and then enters its own home stretch, which leads to the center. To enter home, you must roll the exact number needed. If the roll is larger than the steps remaining, that token cannot move.</p><h3>Extra Turns</h3><p>You roll again after any of the following:</p><ul><li>Rolling a 6</li><li>Capturing a token</li><li>Bringing a token home</li></ul><h3>Three Sixes</h3><p>If you roll three sixes in a row, the third six is not played and your turn passes to the next player.</p><h3>No Legal Move</h3><p>If none of your tokens can move with the number rolled, your turn passes automatically.</p><h3>Automatic Moves</h3><p>If only one move is possible, or all possible moves end on the same cell, the game plays it for you. In Special Mode, this does not apply while you own a Re-roll, or when Reverse can be used, so that you have time to decide.</p><h3>Safe Cells</h3><p>The eight star cells (the four start cells and the four grey stars) and all home stretch cells are safe. A token on a safe cell cannot be captured, and tokens of different players can share it.</p><h3>Capturing</h3><p>If you land on a cell that is not safe and an opponent has a single token there, that token is captured and sent back home. It needs a 6 to leave home again. Your own tokens are never captured, and they can share a cell.</p><h3>Shields</h3><ul><li>Two or more tokens of the same player on one cell form a shield, and tokens in a shield cannot be captured.</li><li>An opponent cannot land on a cell with a two-token shield, but can pass over it.</li><li>Three or more tokens form a Super shield. Opponents can neither land on it nor pass through it.</li><li>Shields apply on the main track only. On safe cells, every token is already protected.</li></ul><h3>Turn Timer</h3><p>You have 43 seconds to roll, and a fresh 43 seconds to choose a token after rolling. If the time runs out, the game plays for you: it rolls the dice, moves a token, or passes the turn if no move is possible. If you miss three turns in a row, an AFK badge appears on your panel. Once two-thirds of the other players vote, a bot plays for you until you tap \"Stop auto-play\".</p><h3>Team Mode</h3><ul><li>Team Mode is played with four players: Pink and Green versus Yellow and Blue.</li><li>The team of the first player to bring all four tokens home wins.</li><li>When only one opponent is still in play, you can move your teammate's tokens as well as your own on your turn.</li><li>Your teammate's tokens are not protected from you. If you land on a cell that is not safe and your teammate has a single token there, that token is captured and sent home, exactly like an opponent's token. The same applies in reverse.</li><li>A teammate's shield (two or more tokens) cannot be captured, because you cannot land on it. You can, however, pass through it, including a Super shield.</li></ul><h3>Rooms</h3><ul><li>Only the host can start the match, and at least two players must have joined.</li><li>A match cannot be joined once it has started. A player who was already in the match can return with \"Rejoin Game\".</li><li>A room that is not started within 15 minutes expires. A running room also expires after 15 minutes of inactivity or once everyone has left.</li></ul>"}, {"title": "Shield System", "sub": "Protecting tokens and blocking paths", "html": "<p>Shields let you protect your tokens and block your opponents' paths on the main track.</p><h3>How a Shield Forms</h3><p>When two or more of your tokens stand on the same cell, they form a shield. A shield icon appears above the stack. Only tokens of the same player form a shield, and all four of your tokens can stack on one cell.</p><h3>Normal Shield (2 tokens)</h3><ul><li>The tokens cannot be captured.</li><li>Opponents cannot land on the cell.</li><li>Opponents can pass over the cell.</li></ul><h3>Super Shield (3 or more tokens)</h3><ul><li>The tokens cannot be captured.</li><li>Opponents can neither land on the cell nor pass through it, so it blocks the path completely.</li></ul><h3>Where Shields Work</h3><p>Shields apply on the main track only. On safe cells (the star cells and the home stretch), every token is already protected, so no shield icon appears. Your own tokens are never blocked by your own shield.</p><h3>Breaking a Shield</h3><p>A shield lasts only while the tokens stay together. If one token moves away, a Normal shield is gone, and a Super shield becomes a Normal shield. The remaining tokens can then be captured like any others.</p><h3>Blocked Moves</h3><p>If shields block every move you could make, the turn passes automatically, as with any other turn without a legal move.</p><h3>Team Mode</h3><p>A token of yours and a token of your teammate on the same cell do not form a shield. A teammate's shield does not block you from passing, but you cannot land on it.</p><h3>Shield Designs</h3><p>You can choose the design of your Normal and Super shields under Customize, then Shield Style. There are 20 designs, and the two shields must use different designs. The designs are a display preference: you see every shield on the board in the designs you selected. Your choice is saved on your device.</p><h3>Special Mode</h3><ul><li>A token protected by the Aegis power is not blocked by shields. It can pass through an opponent's shield and land on it, but it cannot land on a cell that contains another Aegis-protected token.</li><li>If Aegis wears off while the token is still on a cell held by an opponent's shield, the token is sent home, unless it is part of a shield of its own.</li><li>The Reverse power follows the same shield rules as normal movement.</li></ul>"}, {"title": "Special Mode", "sub": "Points, the Shop, and powers", "html": "<p>Special Mode adds points, a Shop, and six powers to the standard game, so every match becomes a mix of luck and strategy.</p><h3>Enabling Special Mode</h3><p>The host turns on Special Mode when creating the room. It applies to every player for the whole match, works in 2, 3, and 4-player rooms, and can be combined with Team Mode. It cannot be changed after the room is created, and a rematch keeps the same setting.</p><h3>Points</h3><p>You earn points as you play, for example by capturing tokens and bringing tokens home. Each player has a personal balance that starts at zero in every match. Your balance is shown at the top of the Shop, and other players' balances are not displayed. Points are used only to buy powers and do not affect the final ranking. The Point System section lists every way to earn points.</p><h3>The Shop</h3><ul><li>Open the Shop with the button in the top bar. It appears only in Special Mode.</li><li>Each power shows its price. Tap Buy when you have enough points.</li><li>You can open the Shop and buy powers at any time, not only on your turn.</li><li>You can hold several copies of a power. Aegis can be bought only once per match.</li><li>Tap Use on a power you own to activate it. Re-roll also has a button next to your name.</li><li>Prices are lower in 2-player rooms.</li></ul><h3>Powers and Prices</h3><p>The price in a 2-player room is shown in brackets.</p><ul><li><b>Ambush:</b> 15 points (10). Plant a hidden trap on a cell. The first token that lands on it, including your own, is sent home.</li><li><b>Freeze:</b> 10 points (7). Freeze an opponent's token so that it cannot move on its owner's next turn.</li><li><b>Aegis:</b> 20 points (15). Protect one of your tokens from capture for three of your turns. Once per match.</li><li><b>Lucky Number:</b> 5 points (3). Raises the chance that your next roll gives the number that helps you most.</li><li><b>Re-roll:</b> 7 points (5). Within 15 seconds of rolling, discard your roll and roll again.</li><li><b>Reverse:</b> 15 points (10). After rolling, move one of your tokens backward by the number rolled. Your turn then ends, unless you rolled a 6.</li></ul><h3>When You Can Use Powers</h3><ul><li>Ambush, Freeze, and Aegis can be used from the Shop whenever you choose.</li><li>Lucky Number: activate it before you roll. It applies to your next roll.</li><li>Re-roll: only within 15 seconds after you roll.</li><li>Reverse: only on your turn, after you have rolled.</li></ul><h3>What Other Players See</h3><ul><li>Every purchase is announced to all players.</li><li>Using Freeze, Aegis, or Reverse is also announced. When an Ambush is placed, everyone is told that one was planted, but only the player who placed it can see where.</li></ul><h3>Bots</h3><p>A bot that plays for an AFK player does not buy or use powers.</p>"}, {"title": "Point System", "sub": "Every way to earn points", "html": "<h3>General</h3><ul><li>Points are earned only in Special Mode. Each player has a personal balance that starts at zero in every match, including in Team Mode.</li><li>Points are added the moment the event happens, and they can be fractions.</li><li>Points are spent only in the Shop and never affect the final ranking.</li><li>If several tokens are captured in one move, points are awarded for each captured token.</li></ul><h3>Capturing Tokens</h3><p>Points go to the player who makes the capture.</p><ul><li><b>Capture (1 point):</b> you land on a cell that is not safe and an opponent has a single token there.</li><li><b>Capture before the home stretch (3 points instead of 1):</b> the captured token was on the last cell of its main track, just before its own home stretch.</li><li><b>Spawn kill (2 bonus points):</b> the capture is made with the first move you make after bringing a token out of home. That move can be made with any of your tokens. The bonus is lost if that move does not capture, or when your turn ends.</li><li><b>Revenge (2 bonus points):</b> you capture a token belonging to the player who most recently captured one of yours. You must do it during your very next turn, including extra rolls. The chance ends after that turn or once you have taken revenge.</li><li><b>Kill streak (1 bonus point):</b> awarded when your captured-token count reaches three, after which the count restarts. Any move that does not capture, including bringing a token out of home, resets the count to zero.</li></ul><p>Bonuses stack. For example, capturing a token on the last cell of its main track as your first move after bringing a token out of home earns 3 + 2 = 5 points.</p><h3>Having Your Token Captured</h3><ul><li><b>0.5 points:</b> you receive this when one of your tokens is sent home by a capture.</li><li><b>1 point instead:</b> if the token was on the last cell of its main track.</li><li>This applies to every capture, including those made by powers and by the expiry of Aegis.</li></ul><h3>Progress</h3><ul><li><b>Token enters its home stretch (0.2 points):</b> awarded once for each token, on the move that takes it onto or past the first home stretch cell. Moving further inside the home stretch gives no additional points.</li><li><b>Star cell (0.2 points):</b> a move ends on a star cell. Bringing a token out of home and Reverse moves do not count.</li><li><b>Token reaches home (1 point):</b> awarded when a token reaches home at the center.</li><li><b>Flawless run (3 bonus points):</b> the token that reaches home was never sent home during the match. A flawless token therefore earns 1 + 3 = 4 points in total.</li></ul><h3>Dice</h3><p>Every roll you make counts, including rolls made with Re-roll, and streaks continue across turns.</p><ul><li><b>Low rolls (0.3 points):</b> three rolls in a row, each 1 or 2. The count restarts after the award, or as soon as you roll 3 or higher.</li><li><b>Same rolls (0.3 points):</b> three identical rolls in a row, and again for every further three in a row. Three sixes count, even though the third six is not played.</li><li><b>No legal move (0.2 points):</b> each time your turn passes because none of your tokens can move. This includes the timer running out with no move available, and an unused Re-roll window with no move available.</li></ul><h3>Powers</h3><ul><li><b>Power kill (1 bonus point):</b> added to the normal capture points (1 or 3) when a token is sent home by a power. Power kills do not count toward the Kill streak or the Spawn kill bonus.<ul><li><b>Reverse:</b> a Reverse move captures a token. Revenge also applies.</li><li><b>Ambush:</b> a token triggers your trap. The trap owner earns these points whichever token triggers it. If the token is protected by Aegis, it survives and no points are awarded.</li><li><b>Aegis strike:</b> after any move, an Aegis-protected token shares a cell with exactly one opponent token that is not protected by Aegis. That opponent token is sent home, and the Aegis owner earns the points.</li></ul></li><li><b>Aegis expiry (1 point):</b> when an Aegis wears off while its token is inside an opponent's shield, the token is sent home and the shield's owner earns 1 point, without the power kill bonus.</li></ul>"}, {"title": "Powers", "sub": "How each power works", "html": "<h3>Using a Power</h3><ul><li>Open the Shop and tap Use on a power you own. The Shop closes and an instruction banner appears at the top of the screen.</li><li>Tap the close button on the banner to cancel. A power is spent only when you complete its action, so cancelling costs nothing.</li><li>Starting a different power cancels the current one.</li><li>If a power has no valid target, you see a message and nothing is spent.</li><li>Re-roll and Lucky Number work slightly differently and are explained below.</li></ul><h3>Ambush</h3><ul><li><b>Effect:</b> plants a hidden trap. The first token that ends its move on that cell is sent home, and the trap is used up. This applies to any token, including your own.</li><li><b>Where:</b> any cell of the main track that is not a star cell, is not part of a home stretch, has no token on it, and has no trap already. You can plant several traps, one per cell.</li><li><b>Visibility:</b> only you can see your traps, and your teammate cannot see them either. Everyone is told that an Ambush was planted, but not where.</li><li><b>Triggering:</b> a trap is triggered when a token ends a move on it, whether that move is a forward move or a Reverse move. Passing over a trap does not trigger it. A trap stays until it is triggered.</li><li><b>Aegis:</b> a token protected by Aegis survives the blast, and the trap is still used up.</li></ul><h3>Freeze</h3><ul><li><b>Effect:</b> a frozen token cannot be moved until the end of its owner's turn. If you freeze a token during another player's turn, it stays frozen through its owner's next turn.</li><li><b>Targets:</b> any token of another player (in Team Mode, this includes your teammate) that is on the main track, not on a star cell, not in a home stretch, not already frozen, and not protected by Aegis.</li><li><b>Other tokens:</b> the owner's other tokens can move normally. If every token that could move is frozen, the owner's turn passes.</li><li><b>No protection:</b> a frozen token can still be captured, and it still counts toward shields. Being sent home ends the freeze.</li></ul><h3>Aegis</h3><ul><li><b>Effect:</b> protects one of your tokens for three of your turns. It can be bought only once per match.</li><li><b>Targets:</b> any of your tokens on the board (not at home, not finished) that is not already protected and does not share a cell with an opponent's Aegis-protected token. Only your own tokens can be chosen.</li><li><b>Duration:</b> it ends at the end of your third turn, counting from when you apply it. A turn that continues because of a 6, a capture, or a token reaching home counts as one turn. If you apply it during your own turn, that turn is the first.</li><li><b>Protection:</b> opponents cannot land on the token's cell, so it cannot be captured. It cannot be frozen, and applying Aegis to a frozen token unfreezes it. It survives an Ambush blast. It is also not blocked by shields, as described under Shield System.</li><li><b>Aegis strike:</b> after any move, if a protected token shares a cell with exactly one opponent token that is not protected by Aegis, that opponent token is sent home.</li><li><b>Expiry:</b> if Aegis wears off while the token is inside an opponent's shield, the token is sent home, unless it is part of a shield of its own.</li></ul><h3>Lucky Number</h3><ul><li><b>Activation:</b> tap Use, then tap your own player box. One Lucky Number is spent, and your dice glows while it is armed.</li><li><b>Effect:</b> it applies to your next roll only, whenever that roll comes. The game picks the number that helps you most, and that number gets a 1 in 3 chance of being rolled. The other five numbers share the remaining chance equally.</li><li><b>How the number is chosen</b> (first match wins):<ol><li>A number that captures an opponent's token</li><li>A number that brings a token home</li><li>A 6, if a 6 can be played</li><li>After two sixes in a row: a number that lands on a star cell</li><li>Otherwise, the number that moves a token furthest</li></ol></li><li><b>Limits:</b> after two sixes in a row, Lucky Number never gives a third six. If no number gives you a move, it cannot help and is still used up.</li></ul><h3>Re-roll</h3><ul><li><b>Effect:</b> discards your current roll and rolls again. The new roll must be accepted, unless you have another Re-roll and use it in the same way.</li><li><b>When:</b> within 15 seconds after any roll, whether you have no move, one move, or several. If you have no legal move and do not re-roll, your turn passes when the 15 seconds end.</li><li><b>How:</b> tap the Re-roll button next to your name, which shows a countdown, or tap Use in the Shop. Making a move ends the window.</li><li><b>Automatic moves:</b> while you own a Re-roll, the game does not play a single possible move for you. Tap the token to move, or use the Re-roll.</li><li><b>Sixes:</b> a discarded 6 gives no extra turn and does not count toward three sixes in a row.</li></ul><h3>Reverse</h3><ul><li><b>Effect:</b> moves one of your tokens backward by exactly the number you rolled, instead of playing that roll normally.</li><li><b>When:</b> on your turn, after you have rolled and once the current move has finished. When Reverse is possible, the game does not auto-play your roll, so you can choose.</li><li><b>Targets:</b> your tokens on the main track, except a token on your start cell. The token cannot go back past your start cell, and the same shield rules as forward movement apply to its path and landing cell.</li><li><b>Capture:</b> if it lands on a cell that is not safe and an opponent has a single token there, that token is captured.</li><li><b>Ambush:</b> if it lands on an Ambush trap, the trap is triggered like on any other move.</li><li><b>After Reverse:</b> if you rolled a 6, you get your extra turn as usual. Otherwise your turn ends, even if a token was captured. Reverse moves do not earn star cell points.</li><li><b>No target:</b> if no token can be reversed with your roll, you see a message and nothing is spent.</li></ul>"}, {"title": "Turn Timer, AFK, and Bot", "sub": "Timeouts, voting, and auto-play", "html": "<h3>Turn Timer</h3><ul><li>Every turn has a 43-second timer, shown as a bar that drains around the edge of the active player's panel, in that player's color. The bar turns yellow when fewer than 25 seconds remain, and pink when fewer than 10 seconds remain.</li><li>The timer restarts at each stage: when your turn begins, after you roll (giving you 43 seconds to choose a token), and at the start of every extra turn.</li><li>The timer keeps running if you leave the game. When you rejoin, it shows the real remaining time. If it has already run out, the game plays the turn immediately.</li></ul><h3>When the Timer Runs Out</h3><ul><li>If you have not rolled, the game rolls for you.</li><li>If you have rolled and must choose a token, the game picks a move for you, using the same strategy as a bot (see Bot Mode). If no move is possible, the turn passes.</li><li>If you were choosing a target for a power, that selection is cancelled.</li><li>The turn is played by your own device or, if your device is inactive, in the background, or offline, by another player's device. A match never waits for an absent player.</li></ul><h3>Missed Turns and the AFK Badge</h3><ul><li>Every turn that ends because the timer ran out counts as a missed turn.</li><li>After three missed turns in a row, an AFK badge appears on that player's panel on every other player's screen. The player does not see the badge on their own panel.</li><li>The badge is based on missed turns only. Being offline or disconnected does not show it until three turns have been missed.</li><li>Until a bot takes over, the game keeps playing that player's turns automatically each time the timer runs out.</li><li>When the player rolls or moves by themselves, the missed-turn count resets and the badge disappears. Automatic plays do not reset it.</li></ul><h3>Voting for a Bot</h3><ul><li>Tap the AFK badge on the player's panel to vote. It changes to \"Voted\" and lists who has voted, for example \"Blue, Pink voted (1/2)\".</li><li>The votes needed are two-thirds of the other players in the match, rounded up: 1 vote in a 2-player match, 2 votes in a 3-player match, and 2 votes in a 4-player match. Bots count toward the total but cannot vote.</li><li>Each player can vote once for each AFK player. A vote cannot be withdrawn, and you cannot vote for yourself or for a bot.</li><li>When enough votes are cast, everyone is told that the player is now a bot. Their panel shows \"BOT MODE\" and \"Auto-playing\".</li></ul><h3>Bot Mode</h3><ul><li>The bot rolls and moves for that player quickly, so the match keeps its pace. It follows all normal rules, including the three-sixes rule, and uses the same dice as every other player. In Team Mode, it can also move the teammate's tokens when Team Control applies.</li><li>The bot generally prefers moves in this order, with a small random factor: bring a token home, move a token into its home stretch, capture an opponent's token, bring a token out of home, land on a safe cell. Otherwise it prefers the move that leaves a token further along the track.</li><li>In Special Mode, a bot never buys or uses powers.</li></ul><h3>Taking Control Back</h3><ul><li>Tap \"Stop auto-play\" on your own panel. You are back in control immediately, even if the bot is in the middle of a turn, the badge and votes are cleared, and everyone is told that the bot was removed.</li><li>The missed-turn count is not reset by taking control back. It resets only when you roll or move yourself, so if you miss another turn before doing so, the AFK badge returns right away.</li></ul><h3>Connection Problems</h3><p>A player who disconnects or closes the app is handled in the same way: their turns are played automatically, and after three missed turns the others can vote for a bot. They can return at any time with \"Rejoin Game\". As a safety net, if a turn stays stuck for more than 100 seconds, another player's device plays it automatically.</p>"}, {"title": "Rejoin, Connection, and Settings", "sub": "Returning to a match, and options", "html": "<h3>Rejoin Game</h3><ul><li>When you create or join a room, your device saves the room code, your seat, and your name. While a saved room exists, the home screen shows a \"Rejoin Game\" card with the room code and your name. Tap it to return.</li><li>Rejoin works in the waiting room and during a match. It works only on the same device and browser, and clearing your browser data removes the saved room.</li><li>Leaving with the Home button during a match, or with \"Leave Room\" in the waiting room, keeps the card, so you can come back.</li><li>While you are away from a match, your turns are played automatically when the timer runs out. See Turn Timer, AFK, and Bot.</li><li>On rejoining, the current state is loaded from the server, so you see the board exactly as it is now.</li><li>The saved room is removed, and the card disappears, when the match ends, when the room expires, or when rejoining fails.</li></ul><h3>When Rejoin Fails</h3><p>You see one of these messages, and the card is removed:</p><ul><li>\"Room no longer exists\"</li><li>\"Room expired — not started within 15 min\"</li><li>\"That game has already ended\"</li><li>\"Room expired — everyone left\"</li><li>\"Room expired — inactive for 15 min\"</li><li>\"Seat no longer available\"</li></ul><h3>Room Expiry</h3><ul><li>A waiting room that is not started within 15 minutes expires.</li><li>A running match expires after 15 minutes without any active player, either because everyone has been offline or because the room has been inactive.</li><li>Once a match has ended, its room cannot be rejoined.</li></ul><h3>Connection</h3><ul><li>The home screen shows \"Server connected\" in green, or \"No server connection\" in pink.</li><li>A full-screen message reads \"Connecting to server...\" when the game starts, or \"Reconnecting to server...\" if the connection is lost. It disappears when the connection returns.</li><li>During a match, the status indicator in the top bar shows Synced, Syncing, or Disconnected. When the connection returns, you see \"Reconnected!\".</li><li>Brief interruptions of under 5 seconds are ignored. After a longer drop, the game state is refreshed from the server.</li><li>If you leave the app and return after more than 3 seconds, the board and chat are refreshed from the server. As a safety net, the game also refreshes itself every 15 seconds.</li></ul><h3>Rematch</h3><ul><li>When a match ends, the results screen shows a button (labelled \"Back\"). When any player taps it, a new room is created and all the players from the match are moved into it automatically.</li><li>The new room keeps the same number of players, Team Mode, Special Mode, and colors. Players return to their previous seats when possible.</li><li>Everyone waits in the new room's waiting room, and the host starts the match again. Auto Start is not carried over, so it must be turned on again if you want it. The new room expires if it is not started within 15 minutes.</li><li>If the new room cannot be created, the button becomes available again after a few seconds, so you can tap it again.</li><li>If you do not want to play again, leave from the waiting room, or use the Home button at the top left of the results screen.</li></ul><h3>Settings</h3><ul><li><b>Sound:</b> the speaker button in the top bar mutes and unmutes all game sounds. Sound is back on when you reload the game.</li><li><b>Vibration:</b> on supported devices, the game gives short vibrations, for example when you roll the dice. The sound button does not affect it, and there is no setting to turn it off.</li><li><b>Performance Mode:</b> the lightning-bolt button in the top bar turns it on or off, and your choice is saved on your device. It turns off most visual effects: token trails, sparkles, glows, token shadows, animation transitions, and landing and spawn animations. The highlight on tokens you can move and the shield icons stay visible, but without animation.</li><li><b>Customization:</b> your board theme, shield designs, and token designs are saved on your device.</li><li><b>Chat popups:</b> you can mute the chat bubbles from the chat window, and this choice is also saved on your device.</li></ul>"}];
+const GUIDE_TOPICS=[{"title": "Features", "sub": "What makes this Ludo different", "html": "<p>This game includes the following features beyond standard Ludo.</p><h3>Online Multiplayer</h3><p>Play with 2, 3, or 4 players. The host creates a room and shares the 6-character room code (tap the code to copy it), and friends join by entering it. The waiting room shows who has joined and whether each player is online or away. The host can start the match once at least two players have joined, or turn on Auto Start to begin as soon as the room is full. A room that is not started within 15 minutes expires.</p><h3>Special Mode</h3><p>The host can enable Special Mode when creating a room. In this mode you earn points for actions such as capturing tokens, and you can spend them in the Shop on six powers: Ambush, Freeze, Aegis, Lucky Number, Re-roll, and Reverse. The Shop button appears in the top bar only in this mode.</p><h3>Team Mode</h3><p>Team Mode is available in 4-player rooms and is enabled by the host when creating the room. The teams are Pink and Green versus Yellow and Blue. In the lobby, the host can change the teams by tapping one player and then another to swap their colors, and therefore their teams. Each player's team is shown beside their name during the match. Teammates have a private Team chat, which is also available in the lobby while teams are being arranged. When only one opponent is still in play, you can also move your teammate's tokens on your turn.</p><h3>Shield System</h3><p>Two of your tokens on the same cell form a Normal shield, which opponents cannot land on. Three or more form a Super shield, which also stops opponents from passing through. You can choose the design of each shield.</p><h3>Turn Timer and Bot Takeover</h3><p>Each turn has a 43-second timer, shown as a bar around the player's panel. If it runs out, the game rolls and moves for you automatically. If a player misses three turns in a row, an AFK badge appears on their panel. The other players can tap the badge to vote, and once two-thirds of them have voted, a bot plays on that player's behalf so the match keeps moving. The player can take control back by tapping \"Stop auto-play\" on their panel.</p><h3>Rejoin and Rematch</h3><p>If your connection drops or you close the app, \"Rejoin Game\" on the home screen returns you to your room, as long as the room is still active. You can also rejoin after leaving with the Home button. The game reconnects automatically, and a status indicator in the top bar shows whether you are Synced, Syncing, or Disconnected. When a match ends, the button on the results screen creates a new room with the same settings and moves the other players into it automatically.</p><h3>Customization</h3><p>Choose from four board themes (with a preview), 20 shield designs, and five token designs. Normal and Super shields are set separately, and they must be different. Your choices are saved on your device.</p><h3>Chat and Reactions</h3><p>Every room has a General chat. In Team Mode, a separate Team chat is available to teammates. Swipe a message to reply to it. New messages appear as a bubble above the sender's panel, and you can mute these popups from the chat window. You can also send one of ten reactions to any player by tapping the three-dot menu on their panel. Sending reactions requires you to sign in.</p><h3>Profile and Stats</h3><p>You can play as a guest with any name (up to 12 characters), or sign in with Google to save your kills, wins, and losses to your account, so your record is kept even if you clear your browser data. You can edit your name from your profile. Tap the three-dot menu on a signed-in player's panel to view their stats.</p><h3>Effects, Sound, and Performance Mode</h3><p>Tokens move cell by cell with a 3D dice roll. The game includes sound effects, vibration feedback on supported devices, and visual effects such as bomb blasts, freeze effects, an Aegis glow, and a win celebration. Use the sound button in the top bar to mute, and turn on Performance Mode (the lightning-bolt button) on slower devices to reduce effects and keep the game smooth.</p>"}, {"title": "Rules", "sub": "How to play, step by step", "html": "<h3>Objective</h3><p>Bring all four of your tokens from your home base, around the board, and into the home at the center. The first player to bring all four tokens home wins. The match continues until only one player is left, and the order in which players finish decides the rankings.</p><h3>Turns</h3><p>Turns pass clockwise around the board. Players who have already finished are skipped. On your turn, tap your dice to roll it, then tap one of the highlighted tokens to move it by the number rolled.</p><h3>Leaving Home</h3><p>A token can leave home only when you roll a 6. It is placed on your start cell, and each 6 brings out one token.</p><h3>Movement</h3><p>After leaving home, a token travels along the main track and then enters its own home stretch, which leads to the center. To enter home, you must roll the exact number needed. If the roll is larger than the steps remaining, that token cannot move.</p><h3>Extra Turns</h3><p>You roll again after any of the following:</p><ul><li>Rolling a 6</li><li>Capturing a token</li><li>Bringing a token home</li></ul><h3>Three Sixes</h3><p>If you roll three sixes in a row, the third six is not played and your turn passes to the next player.</p><h3>No Legal Move</h3><p>If none of your tokens can move with the number rolled, your turn passes automatically.</p><h3>Automatic Moves</h3><p>If only one move is possible, or all possible moves end on the same cell, the game plays it for you. In Special Mode, this does not apply while you own a Re-roll, or when Reverse can be used, so that you have time to decide.</p><h3>Safe Cells</h3><p>The eight star cells (the four start cells and the four grey stars) and all home stretch cells are safe. A token on a safe cell cannot be captured, and tokens of different players can share it.</p><h3>Capturing</h3><p>If you land on a cell that is not safe and an opponent has a single token there, that token is captured and sent back home. It needs a 6 to leave home again. Your own tokens are never captured, and they can share a cell.</p><h3>Shields</h3><ul><li>Two or more tokens of the same player on one cell form a shield, and tokens in a shield cannot be captured.</li><li>An opponent cannot land on a cell with a two-token shield, but can pass over it.</li><li>Three or more tokens form a Super shield. Opponents can neither land on it nor pass through it.</li><li>Shields apply on the main track only. On safe cells, every token is already protected.</li></ul><h3>Turn Timer</h3><p>You have 43 seconds to roll, and a fresh 43 seconds to choose a token after rolling. If the time runs out, the game plays for you: it rolls the dice, moves a token, or passes the turn if no move is possible. If you miss three turns in a row, an AFK badge appears on your panel. Once two-thirds of the other players vote, a bot plays for you until you tap \"Stop auto-play\".</p><h3>Team Mode</h3><ul><li>Team Mode is played with four players: Pink and Green versus Yellow and Blue.</li><li>The team of the first player to bring all four tokens home wins.</li><li>When only one opponent is still in play, you can move your teammate's tokens as well as your own on your turn.</li><li>Your teammate's tokens are not protected from you. If you land on a cell that is not safe and your teammate has a single token there, that token is captured and sent home, exactly like an opponent's token. The same applies in reverse.</li><li>A teammate's shield (two or more tokens) cannot be captured, because you cannot land on it. You can, however, pass through it, including a Super shield.</li></ul><h3>Rooms</h3><ul><li>Only the host can start the match, and at least two players must have joined.</li><li>A match cannot be joined once it has started. A player who was already in the match can return with \"Rejoin Game\".</li><li>A room that is not started within 15 minutes expires. A running room also expires after 15 minutes of inactivity or once everyone has left.</li></ul>"}, {"title": "Shield System", "sub": "Protecting tokens and blocking paths", "html": "<p>Shields let you protect your tokens and block your opponents' paths on the main track.</p><h3>How a Shield Forms</h3><p>When two or more of your tokens stand on the same cell, they form a shield. A shield icon appears above the stack. Only tokens of the same player form a shield, and all four of your tokens can stack on one cell.</p><h3>Normal Shield (2 tokens)</h3><ul><li>The tokens cannot be captured.</li><li>Opponents cannot land on the cell.</li><li>Opponents can pass over the cell.</li></ul><h3>Super Shield (3 or more tokens)</h3><ul><li>The tokens cannot be captured.</li><li>Opponents can neither land on the cell nor pass through it, so it blocks the path completely.</li></ul><h3>Where Shields Work</h3><p>Shields apply on the main track only. On safe cells (the star cells and the home stretch), every token is already protected, so no shield icon appears. Your own tokens are never blocked by your own shield.</p><h3>Breaking a Shield</h3><p>A shield lasts only while the tokens stay together. If one token moves away, a Normal shield is gone, and a Super shield becomes a Normal shield. The remaining tokens can then be captured like any others.</p><h3>Blocked Moves</h3><p>If shields block every move you could make, the turn passes automatically, as with any other turn without a legal move.</p><h3>Team Mode</h3><p>A token of yours and a token of your teammate on the same cell do not form a shield. A teammate's shield does not block you from passing, but you cannot land on it.</p><h3>Shield Designs</h3><p>You can choose the design of your Normal and Super shields under Customize, then Shield Style. There are 20 designs, and the two shields must use different designs. The designs are a display preference: you see every shield on the board in the designs you selected. Your choice is saved on your device.</p><h3>Special Mode</h3><ul><li>A token protected by the Aegis power is not blocked by shields. It can pass through an opponent's shield and land on it, but it cannot land on a cell that contains another Aegis-protected token.</li><li>If Aegis wears off while the token is still on a cell held by an opponent's shield, the token is sent home, unless it is part of a shield of its own.</li><li>The Reverse power follows the same shield rules as normal movement.</li></ul>"}, {"title": "Special Mode", "sub": "Points, the Shop, and powers", "html": "<p>Special Mode adds points, a Shop, and six powers to the standard game, so every match becomes a mix of luck and strategy.</p><h3>Enabling Special Mode</h3><p>The host turns on Special Mode when creating the room. It applies to every player for the whole match, works in 2, 3, and 4-player rooms, and can be combined with Team Mode. It cannot be changed after the room is created, and a rematch keeps the same setting.</p><h3>Points</h3><p>You earn points as you play, for example by capturing tokens and bringing tokens home. Each player has a personal balance that starts at zero in every match. Your balance is shown at the top of the Shop, and other players' balances are not displayed. Points are used only to buy powers and do not affect the final ranking. The Point System section lists every way to earn points.</p><h3>The Shop</h3><ul><li>Open the Shop with the button in the top bar. It appears only in Special Mode.</li><li>Each power shows its price. Tap Buy when you have enough points.</li><li>You can open the Shop and buy powers at any time, not only on your turn.</li><li>You can hold several copies of a power. Aegis can be bought only once per match.</li><li>Tap Use on a power you own to activate it. Re-roll also has a button next to your name.</li><li>Prices are lower in 2-player rooms.</li></ul><h3>Powers and Prices</h3><p>The price in a 2-player room is shown in brackets.</p><ul><li><b>Ambush:</b> 15 points (10). Plant a hidden trap on a cell. The first token that lands on it, including your own, is sent home.</li><li><b>Freeze:</b> 10 points (7). Freeze an opponent's token so that it cannot move on its owner's next turn.</li><li><b>Aegis:</b> 20 points (15). Protect one of your tokens from capture for three of your turns. Once per match.</li><li><b>Lucky Number:</b> 5 points (3). Raises the chance that your next roll gives the number that helps you most.</li><li><b>Re-roll:</b> 7 points (5). Within 15 seconds of rolling, discard your roll and roll again.</li><li><b>Reverse:</b> 15 points (10). After rolling, move one of your tokens backward by the number rolled. Your turn then ends, unless you rolled a 6.</li></ul><h3>When You Can Use Powers</h3><ul><li>Ambush, Freeze, and Aegis can be used from the Shop whenever you choose.</li><li>Lucky Number: activate it before you roll. It applies to your next roll.</li><li>Re-roll: only within 15 seconds after you roll.</li><li>Reverse: only on your turn, after you have rolled.</li></ul><h3>What Other Players See</h3><ul><li>Every purchase is announced to all players.</li><li>Using Freeze, Aegis, or Reverse is also announced. When an Ambush is placed, everyone is told that one was planted, but only the player who placed it can see where.</li></ul><h3>Bots</h3><p>A bot that plays for an AFK player does not buy or use powers.</p>"}, {"title": "Point System", "sub": "Every way to earn points", "html": "<h3>General</h3><ul><li>Points are earned only in Special Mode. Each player has a personal balance that starts at zero in every match, including in Team Mode.</li><li>Points are added the moment the event happens, and they can be fractions.</li><li>Points are spent only in the Shop and never affect the final ranking.</li><li>If several tokens are captured in one move, points are awarded for each captured token.</li></ul><h3>Capturing Tokens</h3><p>Points go to the player who makes the capture.</p><ul><li><b>Capture (1 point):</b> you land on a cell that is not safe and an opponent has a single token there.</li><li><b>Capture before the home stretch (3 points instead of 1):</b> the captured token was on the last cell of its main track, just before its own home stretch.</li><li><b>Spawn kill (2 bonus points):</b> the capture is made with the first move you make after bringing a token out of home. That move can be made with any of your tokens. The bonus is lost if that move does not capture, or when your turn ends.</li><li><b>Revenge (2 bonus points):</b> you capture a token belonging to the player who most recently captured one of yours. You must do it during your very next turn, including extra rolls. The chance ends after that turn or once you have taken revenge.</li><li><b>Kill streak (1 bonus point):</b> awarded when your captured-token count reaches three, after which the count restarts. Any move that does not capture, including bringing a token out of home, resets the count to zero.</li></ul><p>Bonuses stack. For example, capturing a token on the last cell of its main track as your first move after bringing a token out of home earns 3 + 2 = 5 points.</p><h3>Having Your Token Captured</h3><ul><li><b>0.5 points:</b> you receive this when one of your tokens is sent home by a capture.</li><li><b>1 point instead:</b> if the token was on the last cell of its main track.</li><li>This applies to every capture, including those made by powers and by the expiry of Aegis.</li></ul><h3>Progress</h3><ul><li><b>Token enters its home stretch (0.2 points):</b> awarded once for each token, on the move that takes it onto or past the first home stretch cell. Moving further inside the home stretch gives no additional points.</li><li><b>Star cell (0.2 points):</b> a move ends on a star cell. Bringing a token out of home and Reverse moves do not count.</li><li><b>Token reaches home (1 point):</b> awarded when a token reaches home at the center.</li><li><b>Flawless run (3 bonus points):</b> the token that reaches home was never sent home during the match. A flawless token therefore earns 1 + 3 = 4 points in total.</li></ul><h3>Dice</h3><p>Every roll you make counts, including rolls made with Re-roll, and streaks continue across turns.</p><ul><li><b>Low rolls (0.3 points):</b> three rolls in a row, each 1 or 2. The count restarts after the award, or as soon as you roll 3 or higher.</li><li><b>Same rolls (0.3 points):</b> three identical rolls in a row, and again for every further three in a row. Three sixes count, even though the third six is not played.</li><li><b>No legal move (0.2 points):</b> each time your turn passes because none of your tokens can move. This includes the timer running out with no move available, and an unused Re-roll window with no move available.</li></ul><h3>Powers</h3><ul><li><b>Power kill (1 bonus point):</b> added to the normal capture points (1 or 3) when a token is sent home by a power. Power kills do not count toward the Kill streak or the Spawn kill bonus.<ul><li><b>Reverse:</b> a Reverse move captures a token. Revenge also applies.</li><li><b>Ambush:</b> a token triggers your trap. The trap owner earns these points whichever token triggers it. If the token is protected by Aegis, it survives and no points are awarded.</li><li><b>Aegis strike:</b> after any move, an Aegis-protected token shares a cell with exactly one opponent token that is not protected by Aegis. That opponent token is sent home, and the Aegis owner earns the points.</li></ul></li><li><b>Aegis expiry (1 point):</b> when an Aegis wears off while its token is inside an opponent's shield, the token is sent home and the shield's owner earns 1 point, without the power kill bonus.</li></ul>"}, {"title": "Powers", "sub": "How each power works", "html": "<h3>Using a Power</h3><ul><li>Open the Shop and tap Use on a power you own. The Shop closes and an instruction banner appears at the top of the screen.</li><li>Tap the close button on the banner to cancel. A power is spent only when you complete its action, so cancelling costs nothing.</li><li>Starting a different power cancels the current one.</li><li>If a power has no valid target, you see a message and nothing is spent.</li><li>Re-roll and Lucky Number work slightly differently and are explained below.</li></ul><h3>Ambush</h3><ul><li><b>Effect:</b> plants a hidden trap. The first token that ends its move on that cell is sent home, and the trap is used up. This applies to any token, including your own.</li><li><b>Where:</b> any cell of the main track that is not a star cell, is not part of a home stretch, has no token on it, and has no trap already. You can plant several traps, one per cell.</li><li><b>Visibility:</b> only you can see your traps, and your teammate cannot see them either. Everyone is told that an Ambush was planted, but not where.</li><li><b>Triggering:</b> a trap is triggered when a token ends a move on it, whether that move is a forward move or a Reverse move. Passing over a trap does not trigger it. A trap stays until it is triggered.</li><li><b>Aegis:</b> a token protected by Aegis survives the blast, and the trap is still used up.</li></ul><h3>Freeze</h3><ul><li><b>Effect:</b> a frozen token cannot be moved until the end of its owner's turn. If you freeze a token during another player's turn, it stays frozen through its owner's next turn.</li><li><b>Targets:</b> any token of another player (in Team Mode, this includes your teammate) that is on the main track, not on a star cell, not in a home stretch, not already frozen, and not protected by Aegis.</li><li><b>Other tokens:</b> the owner's other tokens can move normally. If every token that could move is frozen, the owner's turn passes.</li><li><b>No protection:</b> a frozen token can still be captured, and it still counts toward shields. Being sent home ends the freeze.</li></ul><h3>Aegis</h3><ul><li><b>Effect:</b> protects one of your tokens for three of your turns. It can be bought only once per match.</li><li><b>Targets:</b> any of your tokens on the board (not at home, not finished) that is not already protected and does not share a cell with an opponent's Aegis-protected token. Only your own tokens can be chosen.</li><li><b>Duration:</b> it ends at the end of your third turn, counting from when you apply it. A turn that continues because of a 6, a capture, or a token reaching home counts as one turn. If you apply it during your own turn, that turn is the first.</li><li><b>Protection:</b> opponents cannot land on the token's cell, so it cannot be captured. It cannot be frozen, and applying Aegis to a frozen token unfreezes it. It survives an Ambush blast. It is also not blocked by shields, as described under Shield System.</li><li><b>Aegis strike:</b> after any move, if a protected token shares a cell with exactly one opponent token that is not protected by Aegis, that opponent token is sent home.</li><li><b>Expiry:</b> if Aegis wears off while the token is inside an opponent's shield, the token is sent home, unless it is part of a shield of its own.</li></ul><h3>Lucky Number</h3><ul><li><b>Activation:</b> tap Use, then tap your own player box. One Lucky Number is spent, and your dice glows while it is armed.</li><li><b>Effect:</b> it applies to your next roll only, whenever that roll comes. The game picks the number that helps you most, and that number gets a 1 in 3 chance of being rolled. The other five numbers share the remaining chance equally.</li><li><b>How the number is chosen</b> (first match wins):<ol><li>A number that captures an opponent's token</li><li>A number that brings a token home</li><li>A 6, if a 6 can be played</li><li>After two sixes in a row: a number that lands on a star cell</li><li>Otherwise, the number that moves a token furthest</li></ol></li><li><b>Limits:</b> after two sixes in a row, Lucky Number never gives a third six. If no number gives you a move, it cannot help and is still used up.</li></ul><h3>Re-roll</h3><ul><li><b>Effect:</b> discards your current roll and rolls again. The new roll must be accepted, unless you have another Re-roll and use it in the same way.</li><li><b>When:</b> within 15 seconds after any roll, whether you have no move, one move, or several. If you have no legal move and do not re-roll, your turn passes when the 15 seconds end.</li><li><b>How:</b> tap the Re-roll button next to your name, which shows a countdown, or tap Use in the Shop. Making a move ends the window.</li><li><b>Automatic moves:</b> while you own a Re-roll, the game does not play a single possible move for you. Tap the token to move, or use the Re-roll.</li><li><b>Sixes:</b> a discarded 6 gives no extra turn and does not count toward three sixes in a row.</li></ul><h3>Reverse</h3><ul><li><b>Effect:</b> moves one of your tokens backward by exactly the number you rolled, instead of playing that roll normally.</li><li><b>When:</b> on your turn, after you have rolled and once the current move has finished. When Reverse is possible, the game does not auto-play your roll, so you can choose.</li><li><b>Targets:</b> your tokens on the main track, except a token on your start cell. The token cannot go back past your start cell, and the same shield rules as forward movement apply to its path and landing cell.</li><li><b>Capture:</b> if it lands on a cell that is not safe and an opponent has a single token there, that token is captured.</li><li><b>Ambush:</b> if it lands on an Ambush trap, the trap is triggered like on any other move.</li><li><b>After Reverse:</b> if you rolled a 6, you get your extra turn as usual. Otherwise your turn ends, even if a token was captured. Reverse moves do not earn star cell points.</li><li><b>No target:</b> if no token can be reversed with your roll, you see a message and nothing is spent.</li></ul>"}, {"title": "Turn Timer, AFK, and Bot", "sub": "Timeouts, voting, and auto-play", "html": "<h3>Turn Timer</h3><ul><li>Every turn has a 43-second timer, shown as a bar that drains around the edge of the active player's panel, in that player's color. The bar turns yellow when fewer than 25 seconds remain, and pink when fewer than 10 seconds remain.</li><li>The timer restarts at each stage: when your turn begins, after you roll (giving you 43 seconds to choose a token), and at the start of every extra turn.</li><li>The timer keeps running if you leave the game. When you rejoin, it shows the real remaining time. If it has already run out, the game plays the turn immediately.</li></ul><h3>When the Timer Runs Out</h3><ul><li>If you have not rolled, the game rolls for you.</li><li>If you have rolled and must choose a token, the game picks a move for you, using the same strategy as a bot (see Bot Mode). If no move is possible, the turn passes.</li><li>If you were choosing a target for a power, that selection is cancelled.</li><li>The turn is played by your own device or, if your device is inactive, in the background, or offline, by another player's device. A match never waits for an absent player.</li></ul><h3>Missed Turns and the AFK Badge</h3><ul><li>Every turn that ends because the timer ran out counts as a missed turn.</li><li>After three missed turns in a row, an AFK badge appears on that player's panel on every other player's screen. The player does not see the badge on their own panel.</li><li>The badge is based on missed turns only. Being offline or disconnected does not show it until three turns have been missed.</li><li>Until a bot takes over, the game keeps playing that player's turns automatically each time the timer runs out.</li><li>When the player rolls or moves by themselves, the missed-turn count resets and the badge disappears. Automatic plays do not reset it.</li></ul><h3>Voting for a Bot</h3><ul><li>Tap the AFK badge on the player's panel to vote. It changes to \"Voted\" and lists who has voted, for example \"Blue, Pink voted (1/2)\".</li><li>The votes needed are two-thirds of the other players in the match, rounded up: 1 vote in a 2-player match, 2 votes in a 3-player match, and 2 votes in a 4-player match. Bots count toward the total but cannot vote.</li><li>Each player can vote once for each AFK player. A vote cannot be withdrawn, and you cannot vote for yourself or for a bot.</li><li>When enough votes are cast, everyone is told that the player is now a bot. Their panel shows \"BOT MODE\" and \"Auto-playing\".</li></ul><h3>Bot Mode</h3><ul><li>The bot rolls and moves for that player quickly, so the match keeps its pace. It follows all normal rules, including the three-sixes rule, and uses the same dice as every other player. In Team Mode, it can also move the teammate's tokens when Team Control applies.</li><li>The bot generally prefers moves in this order, with a small random factor: bring a token home, move a token into its home stretch, capture an opponent's token, bring a token out of home, land on a safe cell. Otherwise it prefers the move that leaves a token further along the track.</li><li>In Special Mode, a bot never buys or uses powers.</li></ul><h3>Taking Control Back</h3><ul><li>Tap \"Stop auto-play\" on your own panel. You are back in control immediately, even if the bot is in the middle of a turn, the badge and votes are cleared, and everyone is told that the bot was removed.</li><li>The missed-turn count is not reset by taking control back. It resets only when you roll or move yourself, so if you miss another turn before doing so, the AFK badge returns right away.</li></ul><h3>Connection Problems</h3><p>A player who disconnects or closes the app is handled in the same way: their turns are played automatically, and after three missed turns the others can vote for a bot. They can return at any time with \"Rejoin Game\". As a safety net, if a turn stays stuck for more than 100 seconds, another player's device plays it automatically.</p>"}, {"title": "Rejoin, Connection, and Settings", "sub": "Returning to a match, and options", "html": "<h3>Rejoin Game</h3><ul><li>When you create or join a room, your device saves the room code, your seat, and your name. While a saved room exists, the home screen shows a \"Rejoin Game\" card with the room code and your name. Tap it to return.</li><li>Rejoin works in the waiting room and during a match. It works only on the same device and browser, and clearing your browser data removes the saved room.</li><li>Leaving with the Home button during a match, or with \"Leave Room\" in the waiting room, keeps the card, so you can come back.</li><li>While you are away from a match, your turns are played automatically when the timer runs out. See Turn Timer, AFK, and Bot.</li><li>On rejoining, the current state is loaded from the server, so you see the board exactly as it is now.</li><li>The saved room is removed, and the card disappears, when the match ends, when the room expires, or when rejoining fails.</li><li>If you create a new room while a match is still running, \"Rejoin Game\" lets you choose between the two rooms. Choosing one removes the other from your list for good. A room you created that has not started yet is deleted for everyone inside as soon as you create or join another room.</li></ul><h3>When Rejoin Fails</h3><p>You see one of these messages, and the card is removed:</p><ul><li>\"Room no longer exists\"</li><li>\"Room expired — not started within 15 min\"</li><li>\"That game has already ended\"</li><li>\"Room expired — everyone left\"</li><li>\"Room expired — inactive for 15 min\"</li><li>\"Seat no longer available\"</li></ul><h3>Room Expiry</h3><ul><li>A waiting room that is not started within 15 minutes expires.</li><li>A running match expires after 15 minutes without any active player, either because everyone has been offline or because the room has been inactive.</li><li>Once a match has ended, its room cannot be rejoined.</li></ul><h3>Connection</h3><ul><li>The home screen shows \"Server connected\" in green, or \"No server connection\" in pink.</li><li>A full-screen message reads \"Connecting to server...\" when the game starts, or \"Reconnecting to server...\" if the connection is lost. It disappears when the connection returns.</li><li>During a match, the status indicator in the top bar shows Synced, Syncing, or Disconnected. When the connection returns, you see \"Reconnected!\".</li><li>Brief interruptions of under 5 seconds are ignored. After a longer drop, the game state is refreshed from the server.</li><li>If you leave the app and return after more than 3 seconds, the board and chat are refreshed from the server. As a safety net, the game also refreshes itself every 15 seconds.</li></ul><h3>Rematch</h3><ul><li>When a match ends, the results screen shows a button (labelled \"Back\"). When any player taps it, a new room is created and all the players from the match are moved into it automatically.</li><li>The new room keeps the same number of players, Team Mode, Special Mode, and colors. Players return to their previous seats when possible.</li><li>Everyone waits in the new room's waiting room, and the host starts the match again. Auto Start is not carried over, so it must be turned on again if you want it. The new room expires if it is not started within 15 minutes.</li><li>If the new room cannot be created, the button becomes available again after a few seconds, so you can tap it again.</li><li>If you do not want to play again, leave from the waiting room, or use the Home button at the top left of the results screen.</li></ul><h3>Settings</h3><ul><li><b>Sound:</b> the speaker button in the top bar mutes and unmutes all game sounds. Sound is back on when you reload the game.</li><li><b>Vibration:</b> on supported devices, the game gives short vibrations, for example when you roll the dice. The sound button does not affect it, and there is no setting to turn it off.</li><li><b>Performance Mode:</b> the lightning-bolt button in the top bar turns it on or off, and your choice is saved on your device. It turns off most visual effects: token trails, sparkles, glows, token shadows, animation transitions, and landing and spawn animations. The highlight on tokens you can move and the shield icons stay visible, but without animation.</li><li><b>Customization:</b> your board theme, shield designs, and token designs are saved on your device.</li><li><b>Chat popups:</b> you can mute the chat bubbles from the chat window, and this choice is also saved on your device.</li></ul>"}];
 const ov=document.getElementById('guide-overlay');
 const body=document.getElementById('guide-body');
 const title=document.getElementById('guide-title');
