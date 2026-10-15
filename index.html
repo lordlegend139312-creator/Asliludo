@@ -46,8 +46,8 @@ window._srv=function(t,b){
     return u.getIdToken().then(function(tok){
       var ac=(typeof AbortController!=='undefined')?new AbortController():null;
       var tm=ac?setTimeout(function(){ac.abort();},20000):null;
-      return fetch(window._SRV_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},body:JSON.stringify(Object.assign({t:t},b||{})),keepalive:true,signal:ac?ac.signal:undefined}).then(function(r){if(tm)clearTimeout(tm);if(t!=='ping')window._srvLastStatus=t+':'+r.status;(window._srvStatusBy=window._srvStatusBy||{})[t]=r.status;if(r.ok)return r.json();if((t==='v'||t==='p')&&(r.status===403||r.status===409)){return r.json().then(function(j){return(j&&j.why)?{e:1,why:j.why}:null;},function(){return null;});}return null;},function(e){if(tm)clearTimeout(tm);throw e;});
-    }).catch(function(e){window._srvLastStatus=t+':ERR:'+(e&&e.name);return null;});
+      return fetch(window._SRV_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},body:JSON.stringify(Object.assign({t:t},b||{})),keepalive:true,signal:ac?ac.signal:undefined}).then(function(r){if(tm)clearTimeout(tm);if(t!=='ping'&&t!=='lb')window._srvLastStatus=t+':'+r.status;(window._srvStatusBy=window._srvStatusBy||{})[t]=r.status;if(r.ok)return r.json();if((t==='v'||t==='p')&&(r.status===403||r.status===409)){return r.json().then(function(j){return(j&&j.why)?{e:1,why:j.why}:null;},function(){return null;});}return null;},function(e){if(tm)clearTimeout(tm);throw e;});
+    }).catch(function(e){if(t!=='lb')window._srvLastStatus=t+':ERR:'+(e&&e.name);return null;});
   }catch(e){return Promise.resolve(null);}
 };
 
@@ -113,6 +113,53 @@ window._dbgPersist=function(){
   window._dbgPT=setTimeout(function(){window._dbgPT=null;window._dbgPersistNow();},1000);
 };
 try{window.addEventListener('pagehide',function(){try{window._dbgPersistNow();}catch(e){}});}catch(e){}
+window._dbgOutQ=[];window._dbgShipBusy=false;window._dbgShipFails=0;
+window._dbgEnqueue=function(e){
+  try{
+    var s=JSON.stringify(e);
+    if(s.length>3500)e=Object.assign({},e,{data:{_trunc:true,len:s.length,preview:s.slice(0,2800)}});
+    var q=window._dbgOutQ;q.push(e);
+    if(q.length>600)q.splice(0,q.length-600);
+  }catch(x){}
+};
+window._dbgFlush=function(){
+  try{
+    var q=window._dbgOutQ;
+    if(!window._dbgIsOn()){q.length=0;return;}
+    if(window._dbgShipBusy||!q.length)return;
+    var rc=(typeof window._getROOM_CODE==='function')?window._getROOM_CODE():null;
+    if(!rc||!window.auth||!window.auth.currentUser||!window._srvRaw)return;
+    var take=0,used=0;
+    for(var i=0;i<q.length&&take<60;i++){var sz=JSON.stringify(q[i]).length+2;if(take>0&&used+sz>40000)break;used+=sz;take++;}
+    var batch=q.splice(0,take).filter(function(e){return !e.room||e.room===rc;}).map(function(e){return e.room?e:Object.assign({},e,{room:rc});});
+    if(!batch.length)return;
+    window._dbgShipBusy=true;
+    var fail=function(){window._dbgShipBusy=false;window._dbgShipFails++;if(window._dbgShipFails<=5)window._dbgOutQ=batch.concat(window._dbgOutQ).slice(-600);};
+    window._srvRaw('lb',{c:rc,es:batch}).then(function(r){
+      if(!r||r.ok!==1){fail();return;}
+      window._dbgShipBusy=false;window._dbgShipFails=0;
+    },fail);
+  }catch(x){window._dbgShipBusy=false;}
+};
+setInterval(function(){window._dbgFlush();},700);
+document.addEventListener('visibilitychange',function(){if(document.hidden)window._dbgFlush();});
+/* vault toggle (config/dl) -> every device. Needs the dl read rule from database_rules.json */
+window._dbgStartRemoteFlag=function(){
+  try{
+    if(window._dbgRemoteStarted)return;
+    var d=window.db||(typeof db!=='undefined'?db:null);
+    if(!d)return;
+    window._dbgRemoteStarted=true;
+    d.ref('config/dl').on('value',function(s){
+      var on=(s.val()===true);var was=window._dbgIsOn();
+      window._dbgRemoteVal=on;window._dbgSetLocal(on);
+      if(on&&!was){try{window._dbgLog('DBG_REMOTE_FLAG_ON',{room:(typeof window._getROOM_CODE==='function')?window._getROOM_CODE():null});if(typeof window._dbgStateSnap==='function')window._dbgStateSnap('flag_on');}catch(e){}}
+    },function(err){
+      window._dbgRemoteStarted=false;window._dbgRemoteErr=String((err&&err.code)||err);
+      setTimeout(window._dbgStartRemoteFlag,10000);
+    });
+  }catch(e){window._dbgRemoteStarted=false;}
+};
 window._dbgLog=function(tag,data){
   try{
     if(!window._dbgIsOn())return;
@@ -125,6 +172,7 @@ window._dbgLog=function(tag,data){
     window._dbg.push(_entry);
     if(window._dbg.length>1500)window._dbg.shift();
     window._dbgPersist();
+    try{window._dbgEnqueue(_entry);}catch(e3){}
 
 
   }catch(e){}
@@ -549,7 +597,7 @@ _authResolvers=[];
 auth.onAuthStateChanged(function(user){
 
 window._dbgLog('AUTH_STATE_CHANGED',{uid:user?user.uid:null,source:'patchFirebaseRefs'});
-if(user){_setAuthReady();setSyncStatus("ok");}
+if(user){_setAuthReady();setSyncStatus("ok");try{window._dbgStartRemoteFlag();}catch(e){}}
 });
 try{_connRef.off("value",_onConnChange);}catch(e){}
 _connRef=db.ref(".info/connected");
@@ -581,7 +629,7 @@ _authResolvers=[];
 auth.onAuthStateChanged((user)=>{
 
 window._dbgLog('AUTH_STATE_CHANGED',{uid:user?user.uid:null,source:'topLevel'});
-if(user){_setAuthReady();setSyncStatus("ok");}
+if(user){_setAuthReady();setSyncStatus("ok");try{window._dbgStartRemoteFlag();}catch(e){}}
 });
 auth.signInAnonymously().catch((err)=>{
 
@@ -1753,9 +1801,9 @@ if(!def)return 0;
 return (typeof NUM_PLAYERS!=="undefined"&&NUM_PLAYERS===2&&def.cost2p!=null)?def.cost2p:def.cost;
 }
 function buyPower(pid,key){
-if(!G.specialMode)return false;
+if(!G.specialMode){_dbgLog('POWER_BUY_BLOCKED_NOT_SPECIAL',{pid,key});return false;}
 const def=POWER_DEFS[key];
-if(!def)return false;
+if(!def){_dbgLog('POWER_BUY_BLOCKED_BAD_KEY',{pid,key});return false;}
 if(!G.inventory)G.inventory=_defaultInventory();
 if(!G.purchased)G.purchased={0:{},1:{},2:{},3:{}};
 if(!G.inventory[pid])G.inventory[pid]={};
@@ -1791,13 +1839,20 @@ el.appendChild(mark);
 });
 }
 async function _showBlast(cellKey,pid,tid){
+{const _k=(pid!=null&&tid!=null)?`${pid}-${tid}`:null;_dbgLog('AMBUSH_BLAST_SHOW',{cellKey,pid,tid,hasTokEl:!!(_k&&_tokEls[_k]&&_tokEls[_k].wrap),hasCellEl:!!_cellDiv(cellKey),animating:_animating,hidden:document.hidden,tokStep:(tokOf(pid,tid)||{}).step});}
 SFX.play&&SFX.play('bomb');
 navigator.vibrate&&navigator.vibrate(60);
 const key=(pid!=null&&tid!=null)?`${pid}-${tid}`:null;
 const tEls=key?_tokEls[key]:null;
 const layer=document.getElementById("tokens-layer");
 if(tEls&&tEls.wrap&&layer){
-await _tokenBlastFX(tEls.wrap,layer);
+/* blast ALWAYS plays on the bomb's cell, never on the token's current spot (it may already be back home) */
+let _ov=null;try{const _pp=String(cellKey).split('-');if(_pp.length===2&&!isNaN(+_pp[0])&&!isNaN(+_pp[1]))_ov=rcToXY(+_pp[0],+_pp[1]);}catch(e){_ov=null;}
+await _tokenBlastFX(tEls.wrap,layer,_ov,true);
+/* fragments + blast are completely finished: ONLY NOW the dead token goes home */
+try{const _t=tokOf(pid,tid);if(_t){if(_t.step>0){_t.everKilled=true;_t.step=0;}renderTokens();}}catch(e){}
+try{const _w=(_tokEls[`${pid}-${tid}`]||{}).wrap;if(_w)_w.style.opacity='1';tEls.wrap.style.opacity='1';}catch(e){}
+_dbgLog('AMBUSH_BLAST_DONE_TOKEN_HOME',{pid,tid,cellKey});
 return;
 }
 const el=_cellDiv(cellKey);
@@ -1810,19 +1865,24 @@ await new Promise(r=>setTimeout(r,550));
 blast.remove();
 }
 function _blastRand(a,b){return a+Math.random()*(b-a);}
-function _tokenBlastFX(wrap,layer){
+function _tokenBlastFX(wrap,layer,ov,keepHidden){
 return new Promise(resolve=>{
 const rW=parseFloat(wrap.dataset.rw||"28");
 const{hRatio}=_tokGeometry();
 const rH=rW*hRatio;
 const tr=wrap.style.transform||'';
 const m=tr.match(/translate\(([^,]+)px,\s*([^)]+)px\)/);
-const originX=(m?parseFloat(m[1]):0)+rW/2;
-const originY=(m?parseFloat(m[2]):0)+rH/2;
+const _wcx=(m?parseFloat(m[1]):0)+rW/2;
+const _wcy=(m?parseFloat(m[2]):0)+rH/2;
+const originX=ov?ov.x:_wcx;
+const originY=ov?ov.y:_wcy;
+/* hide the real token only if it is actually sitting on the blast cell; if it already went home leave it alone */
+const _atCell=!ov||Math.hypot(_wcx-ov.x,_wcy-ov.y)<cellPx()*0.9;
+try{_dbgLog('AMBUSH_BLAST_ORIGIN',{originX,originY,tokenX:_wcx,tokenY:_wcy,usedCell:!!ov,tokenAtCell:_atCell});}catch(e){}
 const color=wrap.dataset.rc||'#e63946';
 const svgStr=(wrap.innerHTML&&wrap.innerHTML.trim())?wrap.innerHTML:tokSVG(color,rW);
-wrap.style.opacity='0';
-const finish=()=>{wrap.style.opacity='1';resolve();};
+if(_atCell||keepHidden)wrap.style.opacity='0';
+const finish=()=>{if(!keepHidden&&_atCell)wrap.style.opacity='1';resolve();};
 const layerRect=layer.getBoundingClientRect();
 if(!layerRect.width||!layerRect.height){finish();return;}
 const canvas=document.createElement('canvas');
@@ -2311,8 +2371,11 @@ return list.some(sh=>sh&&sh.pid===pid&&sh.tid===tid);
 }
 async function _srvPlace(kind,extra){
 if(!(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode))return true;
+const _t0=Date.now();
+_dbgLog('PLACE_SRV_REQ',{kind,extra:(kind==='ambush'?{cell:extra&&extra.cell}:extra),waitingCommit:!!window._lastCommitP});
 const r=await window._srv('p',{c:ROOM_CODE,p:Object.assign({k:kind},extra||{})});
 window._lastPlaceWhy=(r&&r.why)||null;
+_dbgLog('PLACE_SRV_RES',{kind,ms:Date.now()-_t0,ok:!!(r&&r.ok),resp:r,srvStatus:window._srvStatusBy&&window._srvStatusBy.p});
 return !!(r&&r.ok);
 }
 function startFreezeTargeting(){
@@ -2354,7 +2417,8 @@ else{_dbgLog('POWER_FREEZE_NO_ELIGIBLE',{pid:MY_SEAT,reason:'only_target_is_aegi
 }
 window.startFreezeTargeting=startFreezeTargeting;
 async function applyFreeze(pid,tid){
-if(_placingPower!=='freeze'||_placeBusy)return;
+_dbgLog('POWER_FREEZE_APPLY_CLICK',{pid,tid,placing:_placingPower,placeBusy:_placeBusy,inv:G.inventory&&G.inventory[MY_SEAT]&&G.inventory[MY_SEAT].freeze});
+if(_placingPower!=='freeze'||_placeBusy){_dbgLog('POWER_FREEZE_APPLY_IGNORED',{placing:_placingPower,placeBusy:_placeBusy});return;}
 if(!G.inventory[MY_SEAT]||!(G.inventory[MY_SEAT].freeze>0)){cancelPlacement();return;}
 if(G.aegisShields&&G.aegisShields.some(sh=>sh.pid===pid&&sh.tid===tid)){_dbgLog('POWER_FREEZE_BLOCKED_AEGIS',{targetPid:pid,targetTid:tid});cancelPlacement();showToast("That token is Aegis-shielded — it can't be frozen");return;}
 _placeBusy=true;
@@ -2366,6 +2430,7 @@ _renderFrozenVisuals();
 SFX.play&&SFX.play('freeze');
 let _okP=false;try{_okP=await _srvPlace('freeze',{pid,tid});}finally{_placeBusy=false;}
 if(!_okP){
+_dbgLog('POWER_FREEZE_SERVER_FAILED',{pid,tid,why:window._lastPlaceWhy,srvStatus:window._srvStatusBy&&window._srvStatusBy.p,invBeforeRefund:G.inventory[MY_SEAT].freeze});
 G.inventory[MY_SEAT].freeze+=1;
 G.frozenTokens=(G.frozenTokens||[]).filter(f=>!(f.pid===pid&&f.tid===tid&&f.casterPid===MY_SEAT));
 _renderFrozenVisuals();
@@ -2668,7 +2733,8 @@ pushGameState({action:"reverse"});
 }
 window.applyReverse=applyReverse;
 async function applyAegis(pid,tid){
-if(_placingPower!=='aegis'||_placeBusy||_aegisPend)return;
+_dbgLog('POWER_AEGIS_APPLY_CLICK',{pid,tid,placing:_placingPower,placeBusy:_placeBusy,aegisPend:!!_aegisPend,inv:G.inventory&&G.inventory[MY_SEAT]&&G.inventory[MY_SEAT].aegis,turn:G.turn});
+if(_placingPower!=='aegis'||_placeBusy||_aegisPend){_dbgLog('POWER_AEGIS_APPLY_IGNORED',{placing:_placingPower,placeBusy:_placeBusy,aegisPend:!!_aegisPend});return;}
 if(!G.inventory[MY_SEAT]||!(G.inventory[MY_SEAT].aegis>0)){cancelPlacement();return;}
 const _atok=tokOf(pid,tid);
 if(_atok){
@@ -2772,7 +2838,7 @@ _luckyArming=true;
 let _r=null;
 try{_r=await window._srv('ln',{c:ROOM_CODE});}catch(e){_r=null;}
 _luckyArming=false;
-if(!(_r&&_r.ok)){cancelPlacement();showToast("Lucky Number activate nahi hua — connection check karke dobara try karo");return;}
+if(!(_r&&_r.ok)){_dbgLog('POWER_LUCKYNUMBER_SERVER_FAILED',{resp:_r,srvStatus:window._srvStatusBy&&window._srvStatusBy.ln,turn:G.turn});cancelPlacement();showToast("Lucky Number activate nahi hua — connection check karke dobara try karo");return;}
 if(!G.pMeta)G.pMeta=_defaultPMeta();
 if(!G.pMeta[MY_SEAT])G.pMeta[MY_SEAT]={ks:0,lr:0,sr:0,lv:null,rf:null,luckyActive:false};
 if(!_r.already&&G.inventory[MY_SEAT].luckyNumber>0)G.inventory[MY_SEAT].luckyNumber-=1;
@@ -2796,8 +2862,8 @@ if(G.turn===MY_SEAT&&!G.rolled){_preKey=null;_prefetchRoll(MY_SEAT);}
 }
 window.confirmLuckyNumberActivate=confirmLuckyNumberActivate;
 function useReroll(){
-if(!G.inventory||!G.inventory[MY_SEAT]||!(G.inventory[MY_SEAT].reroll>0)){showToast("You don't have a Re-roll to use");return;}
-if(!_rerollWindowActive||G.turn!==MY_SEAT||!G.rolled||G.diceVal==null){showToast("You can only re-roll within the 15s window after your roll");return;}
+if(!G.inventory||!G.inventory[MY_SEAT]||!(G.inventory[MY_SEAT].reroll>0)){_dbgLog('POWER_REROLL_BLOCKED',{why:'no_stock',inv:G.inventory&&G.inventory[MY_SEAT]});showToast("You don't have a Re-roll to use");return;}
+if(!_rerollWindowActive||G.turn!==MY_SEAT||!G.rolled||G.diceVal==null){_dbgLog('POWER_REROLL_BLOCKED',{why:'window_or_turn',windowActive:_rerollWindowActive,turn:G.turn,me:MY_SEAT,rolled:G.rolled,dice:G.diceVal});showToast("You can only re-roll within the 15s window after your roll");return;}
 _cancelRerollWindow();
 stopTurnTimer();
 _dbgLog('POWER_REROLL_USED',{pid:MY_SEAT,discardedDice:G.diceVal,sixesStreakBeforeReset:G.sixes||0,invLeftBefore:G.inventory[MY_SEAT].reroll});
@@ -2816,7 +2882,8 @@ if(G.turn===MY_SEAT)doRoll(MY_SEAT); /* no 250ms delay: dice spins + server 'd' 
 }
 window.useReroll=useReroll;
 function startAmbushPlacement(){
-if(!G.inventory||!G.inventory[MY_SEAT]||!(G.inventory[MY_SEAT].ambush>0)){showToast("You don't have an Ambush to place");return;}
+_dbgLog('POWER_AMBUSH_START_CLICK',{pid:MY_SEAT,inv:G.inventory&&G.inventory[MY_SEAT]&&G.inventory[MY_SEAT].ambush,placing:_placingPower,placeBusy:_placeBusy,traps:(G.traps||[]).length});
+if(!G.inventory||!G.inventory[MY_SEAT]||!(G.inventory[MY_SEAT].ambush>0)){_dbgLog('POWER_AMBUSH_BLOCKED',{why:'no_stock'});showToast("You don't have an Ambush to place");return;}
 window.closeShop();
 cancelPlacement();
 _placingPower='ambush';
@@ -2843,8 +2910,9 @@ else{_dbgLog('POWER_AMBUSH_NO_ELIGIBLE',{pid:MY_SEAT,reason:'all_have_traps'});s
 }
 window.startAmbushPlacement=startAmbushPlacement;
 async function placeTrap(cellKey){
-if(_placingPower!=='ambush'||_placeBusy)return;
-if(!G.inventory[MY_SEAT]||!(G.inventory[MY_SEAT].ambush>0)){cancelPlacement();return;}
+_dbgLog('POWER_AMBUSH_PLACE_CLICK',{pid:MY_SEAT,cellKey,placing:_placingPower,placeBusy:_placeBusy,inv:G.inventory&&G.inventory[MY_SEAT]&&G.inventory[MY_SEAT].ambush,turn:G.turn,animating:_animating});
+if(_placingPower!=='ambush'||_placeBusy){_dbgLog('POWER_AMBUSH_PLACE_IGNORED',{placing:_placingPower,placeBusy:_placeBusy});return;}
+if(!G.inventory[MY_SEAT]||!(G.inventory[MY_SEAT].ambush>0)){_dbgLog('POWER_AMBUSH_PLACE_NO_STOCK',{});cancelPlacement();return;}
 _placeBusy=true;
 G.inventory[MY_SEAT].ambush-=1;_invDec('ambush',true);
 if(!G.traps)G.traps=[];
@@ -2853,6 +2921,7 @@ cancelPlacement();
 _renderMyTraps();
 let _okP=false;try{_okP=await _srvPlace('ambush',{cell:cellKey});}finally{_placeBusy=false;}
 if(!_okP){
+_dbgLog('POWER_AMBUSH_SERVER_FAILED',{cellKey,why:window._lastPlaceWhy,srvStatus:window._srvStatusBy&&window._srvStatusBy.p,invBeforeRefund:G.inventory[MY_SEAT].ambush});
 G.inventory[MY_SEAT].ambush+=1;
 G.traps=(G.traps||[]).filter(t=>!(t.cellKey===cellKey&&t.ownerPid===MY_SEAT));
 _renderMyTraps();
@@ -2866,6 +2935,7 @@ pushGameState({});
 showToast("Ambush placed — it's invisible to everyone else");
 }
 async function checkTrapTrigger(cellKey,pid,tid){
+_dbgLog('AMBUSH_TRAP_CHECK',{cellKey,pid,tid,myTraps:(G.traps||[]).length,hasTrapHere:!!(G.traps||[]).find(t=>t.cellKey===cellKey),me:MY_SEAT});
 if(!G.traps||!G.traps.length)return false;
 const idx=G.traps.findIndex(t=>t.cellKey===cellKey);
 if(idx<0)return false;
@@ -3927,14 +3997,23 @@ showToast(data.lastPowerUse.text);
 _renderMyTraps();
 _renderFrozenVisuals();
 _renderAegisVisuals();
+var _deferTrig=null;
 if(data.lastAmbushTrigger&&data.lastAmbushTrigger.ts>_lastShownAmbushTs){
+_dbgLog('AMBUSH_SYNC_TRIGGER_RECEIVED',{trig:data.lastAmbushTrigger,lastShownTs:_lastShownAmbushTs,action:data.action,actionBy:data.actionBy,me:MY_SEAT,deferredCandidate:data.action==="move"&&data.actionBy!==MY_SEAT&&Array.isArray(data.moves)&&data.moves.some(m=>m&&m.trapCell),victimTokStep:(tokOf(data.lastAmbushTrigger.victimPid,data.lastAmbushTrigger.victimTid)||{}).step,animating:_animating});
 _lastShownAmbushTs=data.lastAmbushTrigger.ts;
 G.lastAmbushTrigger=data.lastAmbushTrigger;
 const _syncTrapCellEl=_cellDiv(data.lastAmbushTrigger.cellKey);
 if(_syncTrapCellEl){const _mk=_syncTrapCellEl.querySelector(".ambush-mark");if(_mk)_mk.remove();}
 
 
-const _ambushDeferred=data.action==="move"&&data.actionBy!==MY_SEAT&&Array.isArray(data.moves)&&data.moves.some(m=>m&&m.trapCell);
+const _atrig0=data.lastAmbushTrigger;
+const _viaTrapCell=data.action==="move"&&data.actionBy!==MY_SEAT&&Array.isArray(data.moves)&&data.moves.some(m=>m&&m.trapCell);
+/* opponent stepped on a hidden trap: moves[] has no trapCell for us, but the mover's token walk is replayed below.
+   Defer the blast until that walk ARRIVES (not at sync receipt = before the token moves), then the token goes home. */
+const _viaVictimMove=!_viaTrapCell&&data.action==="move"&&data.actionBy!==MY_SEAT&&Array.isArray(data.moves)&&data.moves.some(m=>m&&(m.type==="move"||m.type==="open")&&m.pid===_atrig0.victimPid&&m.tid===_atrig0.victimTid);
+const _ambushDeferred=_viaTrapCell||_viaVictimMove;
+if(_viaVictimMove)_deferTrig=_atrig0;
+_dbgLog('AMBUSH_SYNC_DEFER_DECISION',{deferred:_ambushDeferred,viaTrapCell:_viaTrapCell,viaVictimMove:_viaVictimMove,trigAgeMs:Date.now()-(_atrig0.ts||0)});
 if(!_ambushDeferred){
 
 
@@ -4057,9 +4136,11 @@ return;
 }
 let _ambushShown=false;
 const _showDeferredAmbush=async(pid,tid)=>{
-if(_ambushShown||!primaryMove||!primaryMove.trapCell)return;
+const _blastCell=(primaryMove&&primaryMove.trapCell)||(_deferTrig&&_deferTrig.cellKey);
+if(_ambushShown||!primaryMove||!_blastCell){_dbgLog('AMBUSH_DEFERRED_SKIPPED',{shown:_ambushShown,hasMove:!!primaryMove,trapCell:primaryMove&&primaryMove.trapCell,deferTrig:!!_deferTrig});return;}
 _ambushShown=true;
-await _showBlast(primaryMove.trapCell,pid,tid);
+_dbgLog('AMBUSH_DEFERRED_SHOW',{pid,tid,cell:_blastCell,tokStepAtBlast:(tokOf(pid,tid)||{}).step,trigStep:_deferTrig&&_deferTrig.step,trigAgeMs:_deferTrig?Date.now()-(_deferTrig.ts||0):null});
+await _showBlast(_blastCell,pid,tid);
 const _vP=PLAYERS[pid];
 showToast(`💥 ${(_vP&&_vP.label)||"A token"} hit a hidden Ambush!`);
 };
@@ -4128,14 +4209,14 @@ _replayPendingDroppedTokens();
 }
 }
 }
-if(primaryMove&&primaryMove.trapCell&&!_ambushShown)await _showDeferredAmbush(primaryMove.pid,primaryMove.tid);
+if(primaryMove&&(primaryMove.trapCell||_deferTrig)&&!_ambushShown)await _showDeferredAmbush(primaryMove.pid,primaryMove.tid);
 if(data.tokens){
 const capturePromises=[];
 data.tokens.forEach(ft=>{
 if(ft.step===0){
 const lt=tokOf(ft.pid,ft.tid);
 if(lt&&lt.step>0){
-const _isTrapVictim=!!(primaryMove&&primaryMove.trapCell&&ft.pid===primaryMove.pid&&ft.tid===primaryMove.tid);
+const _isTrapVictim=!!(primaryMove&&(primaryMove.trapCell||_deferTrig)&&ft.pid===primaryMove.pid&&ft.tid===primaryMove.tid);
 if(!_isTrapVictim&&primaryMove&&ft.pid===primaryMove.pid&&ft.tid===primaryMove.tid){_dbgLog('CAPTURE_SELF_IGNORED',{pid:ft.pid,tid:ft.tid,localStep:lt.step,note:'stale incoming tokens: mover own token cannot be captured by its own move'});return;}
 capturePromises.push(sendHomeFast(lt,_isTrapVictim));
 }
@@ -4822,11 +4903,49 @@ val=nv;}});
 Object.defineProperty(G,'__bhW',{value:true,enumerable:false,configurable:true});
 }catch(e){}
 }
+var _pwProx=new WeakSet(),_pwMap=new WeakMap();
+function _pwWrap(o,path){
+  if(!o||typeof o!=='object'||_pwProx.has(o))return o;
+  if(_pwMap.has(o))return _pwMap.get(o);
+  var p=new Proxy(o,{
+    get:function(t,k,r){var v=Reflect.get(t,k,r);if(v&&typeof v==='object'&&typeof k==='string'&&path.indexOf('.')<0)return _pwWrap(v,path+'.'+k);return v;},
+    set:function(t,k,v,r){
+      try{if(window._dbgIsOn&&window._dbgIsOn()&&typeof k==='string'&&t[k]!==v)_dbgLog('PW_WRITE',{path:path+'.'+k,from:t[k],to:(v&&typeof v==='object')?'[obj]':v,st:_bhStack()});}catch(e){}
+      return Reflect.set(t,k,v,r);
+    }
+  });
+  _pwProx.add(p);_pwMap.set(o,p);return p;
+}
+/* every write to G.points / G.inventory is logged with WHO wrote it (call stack) */
+function _pwWatchG(){
+  try{
+    if(!G||G.__pwW)return;
+    ['points','inventory'].forEach(function(k){
+      var val=_pwWrap(G[k],k);
+      Object.defineProperty(G,k,{configurable:true,enumerable:true,get:function(){return val;},set:function(nv){
+        try{if(window._dbgIsOn&&window._dbgIsOn()&&nv!==val)_dbgLog('PW_REPLACE',{k:k,from:JSON.stringify(val),to:JSON.stringify(nv),st:_bhStack()});}catch(e){}
+        val=_pwWrap(nv,k);}});
+    });
+    Object.defineProperty(G,'__pwW',{value:true,enumerable:false,configurable:true});
+  }catch(e){}
+}
+/* full state snapshot: on flag ON, and every 10s while logging is on */
+window._dbgStateSnap=function(why){
+  try{
+    _dbgLog('STATE_SNAPSHOT',{why:why,seat:MY_SEAT,room:ROOM_CODE,turn:G.turn,rolled:G.rolled,waiting:G.waiting,dice:G.diceVal,sixes:G.sixes,over:G.over,special:G.specialMode,
+      points:G.points,inv:G.inventory,purchased:G.purchased,traps:(G.traps||[]).length,frozen:(G.frozenTokens||[]).length,aegis:(G.aegisShields||[]).length,
+      bots:PLAYERS.map(function(p){return p&&p.active?(p.id+':'+(p.isBot?'BOT':'H')):null;}).filter(Boolean).join(','),
+      afk:(typeof _afkSeats!=='undefined')?_afkSeats:null,expire:(typeof _timerExpireCount!=='undefined')?_timerExpireCount:null,
+      flags:{rolling:typeof _rolling!=='undefined'?_rolling:null,animating:typeof _animating!=='undefined'?_animating:null,botActing:typeof _botActing!=='undefined'?_botActing:null,placeBusy:typeof _placeBusy!=='undefined'?_placeBusy:null,placing:typeof _placingPower!=='undefined'?_placingPower:null,luckyArming:typeof _luckyArming!=='undefined'?_luckyArming:null,rerollWin:typeof _rerollWindowActive!=='undefined'?_rerollWindowActive:null,buyInflight:window._buyInflight||0},
+      hidden:document.hidden,online:navigator.onLine,srv:window._srvLastStatus});
+  }catch(e){}
+}
+setInterval(function(){try{if(window._dbgIsOn&&window._dbgIsOn())window._dbgStateSnap('periodic');}catch(e){}},10000);
 let _bhSnapN=0;
 function _bhSnap(d){
 try{
 if(!d||!(window._dbgIsOn&&window._dbgIsOn()))return;
-_bhWatchG();_bhSnapN++;
+_bhWatchG();_pwWatchG();_bhSnapN++;
 var tk=Array.isArray(d.tokens)?d.tokens.map(function(t){return t.pid+''+t.tid+':'+t.step;}).join(','):null;
 var mv=Array.isArray(d.moves)?d.moves.map(function(m){return m.pid+''+m.tid+':'+m.type+'>'+m.finalStep;}).join(','):null;
 _dbgLog('BH_SNAP',{n:_bhSnapN,turn:d.turn,rolled:d.rolled,dice:d.diceVal,d2:d.dice,act:d.action||d.lastAction,by:d.actionBy,mid:d.mid,ts:d.timestamp,srvTs:d.srvTs,ver:d.ver,wait:d.waiting,over:d.over,lm:(d.lastMove&&d.lastMove.until)||null,rollTs:d.rollTs,mv:mv,tk:tk,ctx:_bhCtx()});
@@ -5124,6 +5243,7 @@ function listenAfkSeats(){
 if(!ROOM_CODE)return;
 const ref=db.ref(`rooms/${ROOM_CODE}/afkSeats`);
 const cb=snap=>{
+{const _nv=snap.val()||{};_dbgLog('AFK_SEATS_CHANGED',{from:_afkSeats,to:_nv,me:MY_SEAT,turn:G.turn});}
 _afkSeats=snap.val()||{};
 SEAT_LAYOUT_ACTIVE.forEach(seat=>{
 if(!PLAYERS[seat]?.active)return;
@@ -5138,6 +5258,7 @@ function listenBotVotes(){
 if(!ROOM_CODE)return;
 const ref=db.ref(`rooms/${ROOM_CODE}/botVotes`);
 const cb=snap=>{
+_dbgLog('BOT_VOTES_CHANGED',{votes:snap.val()||{},me:MY_SEAT,turn:G.turn});
 _botVotes=snap.val()||{};
 SEAT_LAYOUT_ACTIVE.forEach(seat=>{
 if(!PLAYERS[seat]?.active)return;
@@ -5967,6 +6088,7 @@ reroll:`<svg viewBox="0 0 380 380" width="100%" height="100%"><circle cx="190" c
 reverse:`<svg viewBox="0 0 380 380" width="100%" height="100%"><circle cx="190" cy="190" r="150" fill="#0a1420"/><circle cx="190" cy="190" r="150" fill="none" stroke="#6d28d9" stroke-width="6" opacity="0.5"/><circle cx="190" cy="190" r="146" fill="none" stroke="#a78bfa" stroke-width="2.5"/><path d="M240 130 L240 195 A45 45 0 0 1 195 240 L140 240" fill="none" stroke="#c4b5fd" stroke-width="16" stroke-linecap="round"/><polygon points="168,215 130,240 168,265" fill="#c4b5fd"/></svg>`
 };
 function renderShop(){
+try{_dbgLog('SHOP_RENDER',{pid:MY_SEAT,pts:G.points&&G.points[MY_SEAT],inv:G.inventory&&G.inventory[MY_SEAT],inflight:window._buyInflight||0});}catch(e){}
 const bal=document.getElementById("shop-balance");
 const myPts=(G.points&&G.points[MY_SEAT]!=null)?G.points[MY_SEAT]:0;
 if(bal)bal.textContent=`⭐ ${myPts} pts`;
@@ -6000,27 +6122,50 @@ window.closeShop=function(){
 document.getElementById("modal-shop").classList.remove("show");
 };
 window._buyPowerClick=async function(key){
+const _bid=(window._buySeq=(window._buySeq||0)+1);
 const _onlineBuy=!!(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode);
 const _b4={pts:(G.points&&G.points[MY_SEAT])||0,inv:(G.inventory&&G.inventory[MY_SEAT]&&G.inventory[MY_SEAT][key])||0,pur:!!(G.purchased&&G.purchased[MY_SEAT]&&G.purchased[MY_SEAT][key]),lp:G.lastPurchase};
+const _inflight=window._buyInflight||0;
+_dbgLog('SHOP_BUY_CLICK',{bid:_bid,pid:MY_SEAT,key,cost:_powerCost(key),online:_onlineBuy,inflight:_inflight,sinceLastClickMs:Date.now()-(window._lastBuyClickAt||0),b4:{pts:_b4.pts,inv:_b4.inv,pur:_b4.pur},waitingCommit:!!window._lastCommitP,hidden:document.hidden,srv:window._srvLastStatus});
+window._lastBuyClickAt=Date.now();
+if(_inflight>0)_dbgLog('SHOP_BUY_RAPID_OVERLAP',{bid:_bid,key,inflight:_inflight,note:'queued behind previous buy (requests are sent one by one)'});
 if(buyPower(MY_SEAT,key)){
 if(_onlineBuy){
+const _cost=_powerCost(key);
+const _wasOnce=!!POWER_DEFS[key].once;
+window._buyInflight=(window._buyInflight||0)+1;
 renderShop();
 _renderRerollBox();
 showToast(`✅ Bought ${POWER_DEFS[key].name}`);
-const _r=await window._srv('b',{c:ROOM_CODE,p:{key}});
+_dbgLog('SHOP_BUY_LOCAL_APPLIED',{bid:_bid,key,ptsNow:G.points[MY_SEAT],invNow:G.inventory[MY_SEAT][key]});
+/* requests go to the server strictly one after another: in-order responses, no stale overwrite, no 429 burst */
+const _t0=Date.now();
+const _prevQ=window._buyQ||Promise.resolve();
+const _reqP=_prevQ.then(function(){return window._srv('b',{c:ROOM_CODE,p:{key}});});
+window._buyQ=_reqP.catch(function(){});
+let _r=null;
+try{_r=await _reqP;}catch(e){_r=null;_dbgLog('SHOP_BUY_SRV_THROW',{bid:_bid,key,msg:e&&e.message});}
+window._buyInflight=Math.max(0,(window._buyInflight||1)-1);
+const _drained=(window._buyInflight===0);
+const _ms=Date.now()-_t0;
 if(!_r||_r.ok!==1){
-G.points[MY_SEAT]=_b4.pts;
-G.inventory[MY_SEAT][key]=_b4.inv;
-if(POWER_DEFS[key].once)G.purchased[MY_SEAT][key]=_b4.pur;
-G.lastPurchase=_b4.lp;
-_dbgLog('SHOP_BUY_SERVER_REJECTED',{pid:MY_SEAT,key});
+_dbgLog('SHOP_BUY_SERVER_REJECTED',{bid:_bid,pid:MY_SEAT,key,ms:_ms,resp:_r,srvStatus:window._srvStatusBy&&window._srvStatusBy.b,localPtsNow:G.points[MY_SEAT],localInvNow:G.inventory[MY_SEAT][key],undoCost:_cost,drained:_drained});
+/* undo ONLY this purchase (delta), never restore an old snapshot: other buys in the burst stay intact */
+G.points[MY_SEAT]=+((G.points[MY_SEAT]||0)+_cost).toFixed(2);
+G.inventory[MY_SEAT][key]=Math.max(0,(G.inventory[MY_SEAT][key]||0)-1);
+if(_wasOnce&&G.purchased&&G.purchased[MY_SEAT])G.purchased[MY_SEAT][key]=_b4.pur;
 renderShop();_renderRerollBox();
 showToast("Purchase failed — refunded");
+if(_drained){try{_forceResyncGame('buy-reject');}catch(e){}}
 return;
 }
+_dbgLog('SHOP_BUY_SERVER_OK',{bid:_bid,key,ms:_ms,srvPts:_r.points,srvInv:_r.inv,localPts:G.points[MY_SEAT],localInv:G.inventory[MY_SEAT][key],drained:_drained,PTS_MISMATCH:(_drained&&typeof _r.points==='number'&&_r.points!==G.points[MY_SEAT]),INV_MISMATCH:(_drained&&typeof _r.inv==='number'&&_r.inv!==G.inventory[MY_SEAT][key])});
+if(_drained){
+/* last response of the burst = latest truth: now it is safe to adopt server numbers */
 if(typeof _r.points==='number')G.points[MY_SEAT]=_r.points;
 if(typeof _r.inv==='number')G.inventory[MY_SEAT][key]=_r.inv;
 pushGameState({});
+}
 renderShop();
 _renderRerollBox();
 return;
@@ -6030,7 +6175,7 @@ renderShop();
 _renderRerollBox();
 showToast(`✅ Bought ${POWER_DEFS[key].name}`);
 }else{
-_dbgLog('SHOP_BUY_CLICK_FAILED',{pid:MY_SEAT,key,points:(G.points&&G.points[MY_SEAT])||0,cost:_powerCost(key)});
+_dbgLog('SHOP_BUY_CLICK_FAILED',{bid:_bid,pid:MY_SEAT,key,points:(G.points&&G.points[MY_SEAT])||0,cost:_powerCost(key)});
 showToast("Can't buy that right now");
 }
 };
@@ -7773,6 +7918,11 @@ return true;
 });
 }
 function shouldAutoMove(mv,v,pid){
+const _r=_shouldAutoMoveRaw(mv,v,pid);
+try{_dbgLog('AUTOMOVE_DECISION',{pid,v,result:_r,movable:mv.map(t=>t.pid+''+t.tid+':'+t.step),me:MY_SEAT,hasReverse:!!(G.inventory&&G.inventory[pid]&&G.inventory[pid].reverse>0),animating:_animating,rolling:_rolling,botActing:_botActing,waiting:G.waiting});}catch(e){}
+return _r;
+}
+function _shouldAutoMoveRaw(mv,v,pid){
 if(mv.length===0)return false;
 if(pid===MY_SEAT&&_hasUsableReversePower(pid,v)){_dbgLog('AUTOMOVE_SKIPPED_REVERSE_AVAILABLE',{pid,dice:v});return false;}
 if(mv.length===1)return true;
@@ -8434,6 +8584,7 @@ _replayPendingDroppedTokens();
 const movesPayload=[];
 const finalTok=tokOf(pid,tid);
 const _trapHit=(_lastTrapHit&&_lastTrapHit.pid===pid&&_lastTrapHit.tid===tid)?_lastTrapHit:null;
+_dbgLog('AMBUSH_TRAPHIT_AT_MOVE_END',{pid,tid,lastTrapHit:_lastTrapHit,matched:!!_trapHit,finalStep:(tokOf(pid,tid)||{}).step});
 _lastTrapHit=null;
 if(finalTok){
 const _effStep=_trapHit?_trapHit.step:finalTok.step;
