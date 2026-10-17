@@ -268,13 +268,18 @@ if(!_ctx)_ctx=new(window.AudioContext||window.webkitAudioContext)();
 return _ctx;
 }
 
+let _pre=false;
 function _unlockAudio(){
+try{
 if(!_ctx){_ctx=new(window.AudioContext||window.webkitAudioContext)();}
-if(_ctx.state==='suspended'){
+if(_ctx.state!=='running'){_ctx.resume().catch(function(){});}
+if(!_pre){_pre=true;setTimeout(function(){Object.keys(_buffers).forEach(function(n,i){setTimeout(function(){_decode(n,function(){});},i*150);});},400);}
+}catch(e){}
 }
-}
-document.addEventListener('touchstart',_unlockAudio,{once:true,passive:true});
-document.addEventListener('click',_unlockAudio,{once:true,passive:true});
+document.addEventListener('touchstart',_unlockAudio,{passive:true});
+document.addEventListener('pointerdown',_unlockAudio,{passive:true});
+document.addEventListener('click',_unlockAudio,{passive:true});
+document.addEventListener('visibilitychange',function(){if(!document.hidden)_unlockAudio();});
 
 function _decode(name,cb){
 const entry=_buffers[name];
@@ -298,14 +303,29 @@ entry.loading=false;
 entry.loading=false;
 }
 }
+const _lastAt={};let _burstT=0,_burstN=0,_burstNames=[];
+function _lg(tag,d){try{if(window._dbgLog)window._dbgLog(tag,d);}catch(e){}}
 function play(name,opts){
 if(_muted)return;
 const entry=_buffers[name];
 if(!entry){return;}
 const ctx=_getCtx();
-const doPlay=()=>{
+const asked=performance.now();
+if(ctx.state!=='running'){
+try{ctx.resume().catch(function(){});}catch(e){}
+_lg('SFX_SKIP_NOT_RUNNING',{name:name,state:ctx.state});
+return;
+}
+if(_lastAt[name]!=null&&asked-_lastAt[name]<35){_lg('SFX_COALESCED',{name:name,gapMs:Math.round(asked-_lastAt[name])});return;}
+_lastAt[name]=asked;
+if(asked-_burstT>1000){_burstT=asked;_burstN=0;_burstNames=[];}
+_burstN++;_burstNames.push(name);
+if(_burstN===6)_lg('SFX_BURST',{names:_burstNames.join(',')});
 _decode(name,buf=>{
 try{
+const waited=performance.now()-asked;
+if(waited>400){_lg('SFX_DROP_STALE',{name:name,waitedMs:Math.round(waited)});return;}
+if(ctx.state!=='running')return;
 const src=ctx.createBufferSource();
 src.buffer=buf;
 const gain=ctx.createGain();
@@ -315,12 +335,6 @@ gain.connect(ctx.destination);
 src.start(ctx.currentTime+(opts&&opts.delay||0));
 }catch(e){}
 });
-};
-if(ctx.state==='suspended'){
-ctx.resume().then(doPlay).catch(()=>{});
-}else{
-doPlay();
-}
 }
 function setMuted(v){
 _muted=v;
