@@ -46,8 +46,8 @@ window._srv=function(t,b){
     return u.getIdToken().then(function(tok){
       var ac=(typeof AbortController!=='undefined')?new AbortController():null;
       var tm=ac?setTimeout(function(){ac.abort();},20000):null;
-      return fetch(window._SRV_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},body:JSON.stringify(Object.assign({t:t},b||{})),keepalive:true,signal:ac?ac.signal:undefined}).then(function(r){if(tm)clearTimeout(tm);if(t!=='ping'&&t!=='lb')window._srvLastStatus=t+':'+r.status;(window._srvStatusBy=window._srvStatusBy||{})[t]=r.status;if(r.ok)return r.json();if((t==='v'||t==='p')&&(r.status===403||r.status===409)){return r.json().then(function(j){return(j&&j.why)?{e:1,why:j.why}:null;},function(){return null;});}return null;},function(e){if(tm)clearTimeout(tm);throw e;});
-    }).catch(function(e){if(t!=='lb')window._srvLastStatus=t+':ERR:'+(e&&e.name);return null;});
+      return fetch(window._SRV_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},body:JSON.stringify(Object.assign({t:t},b||{})),keepalive:true,signal:ac?ac.signal:undefined}).then(function(r){if(tm)clearTimeout(tm);if(t!=='ping'&&t!=='q')window._srvLastStatus=t+':'+r.status;(window._srvStatusBy=window._srvStatusBy||{})[t]=r.status;if(r.ok)return r.json();if((t==='v'||t==='p')&&(r.status===403||r.status===409)){return r.json().then(function(j){return(j&&j.why)?{e:1,why:j.why}:null;},function(){return null;});}return null;},function(e){if(tm)clearTimeout(tm);throw e;});
+    }).catch(function(e){if(t!=='q')window._srvLastStatus=t+':ERR:'+(e&&e.name);return null;});
   }catch(e){return Promise.resolve(null);}
 };
 
@@ -88,17 +88,14 @@ try{
 var _n=Date.now();
 if(window._srvWarmAt&&_n-window._srvWarmAt<45000)return;
 window._srvWarmAt=_n;
-window._srv('ping',{});
+window._srv('ping',{}).then(function(r){if(r&&typeof r.n==='number')window._dbgLocalOn=(r.n===1);});
 }catch(e){}
 };
 document.addEventListener('visibilitychange',function(){
 try{if(!document.hidden&&typeof window._getROOM_CODE==='function'&&window._getROOM_CODE())window._srvWarm();}catch(e){}
 });
-window._dbgLocalKey='_ludoDbgOn_v1';
-try{window._dbgLocalOn=localStorage.getItem(window._dbgLocalKey)==='1';}catch(e){window._dbgLocalOn=false;}
+window._dbgLocalOn=false; /* in-memory only: nothing is stored in the browser */
 window._dbgIsOn=function(){return window._dbgLocalOn===true;};
-window._dbgSetLocal=function(on){window._dbgLocalOn=!!on;try{localStorage.setItem(window._dbgLocalKey,on?'1':'0');}catch(e){}};
-window.addEventListener('storage',function(e){if(e.key===window._dbgLocalKey)window._dbgLocalOn=(e.newValue==='1');});
 try{
   const _saved=localStorage.getItem(window._dbgStoreKey);
   window._dbg=_saved?JSON.parse(_saved):(window._dbg||[]);
@@ -135,7 +132,7 @@ window._dbgFlush=function(){
     if(!batch.length)return;
     window._dbgShipBusy=true;
     var fail=function(){window._dbgShipBusy=false;window._dbgShipFails++;if(window._dbgShipFails<=5)window._dbgOutQ=batch.concat(window._dbgOutQ).slice(-600);};
-    window._srvRaw('lb',{c:rc,es:batch}).then(function(r){
+    window._srvRaw('q',{c:rc,es:batch}).then(function(r){
       if(!r||r.ok!==1){fail();return;}
       window._dbgShipBusy=false;window._dbgShipFails=0;
     },fail);
@@ -143,23 +140,7 @@ window._dbgFlush=function(){
 };
 setInterval(function(){window._dbgFlush();},700);
 document.addEventListener('visibilitychange',function(){if(document.hidden)window._dbgFlush();});
-/* vault toggle (config/dl) -> every device. Needs the dl read rule from database_rules.json */
-window._dbgStartRemoteFlag=function(){
-  try{
-    if(window._dbgRemoteStarted)return;
-    var d=window.db||(typeof db!=='undefined'?db:null);
-    if(!d)return;
-    window._dbgRemoteStarted=true;
-    d.ref('config/dl').on('value',function(s){
-      var on=(s.val()===true);var was=window._dbgIsOn();
-      window._dbgRemoteVal=on;window._dbgSetLocal(on);
-      if(on&&!was){try{window._dbgLog('DBG_REMOTE_FLAG_ON',{room:(typeof window._getROOM_CODE==='function')?window._getROOM_CODE():null});if(typeof window._dbgStateSnap==='function')window._dbgStateSnap('flag_on');}catch(e){}}
-    },function(err){
-      window._dbgRemoteStarted=false;window._dbgRemoteErr=String((err&&err.code)||err);
-      setTimeout(window._dbgStartRemoteFlag,10000);
-    });
-  }catch(e){window._dbgRemoteStarted=false;}
-};
+
 window._dbgLog=function(tag,data){
   try{
     if(!window._dbgIsOn())return;
@@ -586,7 +567,13 @@ let auth=window._fbStub.auth();
 
 let _serverOffset=0;
 let _srvOffRef=null;
-function _onSrvOffset(snap){try{const v=snap&&snap.val();if(typeof v==='number'&&isFinite(v))_serverOffset=v;}catch(e){}}
+function _onSrvOffset(snap){try{const v=snap&&snap.val();if(typeof v==='number'&&isFinite(v)){
+const _old=_serverOffset;_serverOffset=v;
+try{if(Math.abs(v-_old)>300&&typeof window._stampRawTs==='number'&&window._stampRawTs>0&&typeof G!=='undefined'&&G&&typeof G.timestamp==='number'){
+const _nt=_srvTsToLocal(window._stampRawTs);
+if(Math.abs(_nt-G.timestamp)>300){_dbgLog('TO_OFFSET_RESTAMP',{oldOffset:_old,newOffset:v,oldTs:G.timestamp,newTs:_nt,gTurn:G.turn});G.timestamp=_nt;_lastTimerTurn=-1;}
+}}catch(e2){}
+}}catch(e){}}
 function _bindServerOffset(){try{if(_srvOffRef){try{_srvOffRef.off('value',_onSrvOffset);}catch(e){}}_srvOffRef=db.ref('.info/serverTimeOffset');_srvOffRef.on('value',_onSrvOffset);}catch(e){}}
 function _srvTsToLocal(ts){return Math.min(Date.now(),ts-_serverOffset);}
 window._patchFirebaseRefs=function(){
@@ -597,7 +584,7 @@ _authResolvers=[];
 auth.onAuthStateChanged(function(user){
 
 window._dbgLog('AUTH_STATE_CHANGED',{uid:user?user.uid:null,source:'patchFirebaseRefs'});
-if(user){_setAuthReady();setSyncStatus("ok");try{window._dbgStartRemoteFlag();}catch(e){}}
+if(user){_setAuthReady();setSyncStatus("ok");}
 });
 try{_connRef.off("value",_onConnChange);}catch(e){}
 _connRef=db.ref(".info/connected");
@@ -629,7 +616,7 @@ _authResolvers=[];
 auth.onAuthStateChanged((user)=>{
 
 window._dbgLog('AUTH_STATE_CHANGED',{uid:user?user.uid:null,source:'topLevel'});
-if(user){_setAuthReady();setSyncStatus("ok");try{window._dbgStartRemoteFlag();}catch(e){}}
+if(user){_setAuthReady();setSyncStatus("ok");}
 });
 auth.signInAnonymously().catch((err)=>{
 
@@ -3729,7 +3716,7 @@ aegisShields:gData.aegisShields||[],
 lastPowerUse:gData.lastPowerUse||null,
 
 
-timestamp:(typeof gData.timestamp==='number'&&gData.timestamp>0)?_srvTsToLocal(gData.timestamp):Date.now()
+timestamp:(typeof gData.srvTs==='number'&&gData.srvTs>0)?_srvTsToLocal(gData.srvTs):((typeof gData.timestamp==='number'&&gData.timestamp>0)?_srvTsToLocal(gData.timestamp):Date.now())
 };
 _lastShownPurchaseTs=(G.lastPurchase&&G.lastPurchase.ts)||0;
 _lastShownAmbushTs=(G.lastAmbushTrigger&&G.lastAmbushTrigger.ts)||0;
@@ -3881,7 +3868,7 @@ if(_syncSeenKeys.size>400){const _k0=_syncSeenKeys.keys().next().value;_syncSeen
 }
 }
 if(!_forceApply&&_midDup(data)){_dbgLog('SYNC_DUP_MID_DROPPED',{actionBy:data.actionBy,mid:data.mid,srvTurn:data.turn,gTurn:G.turn});return;}
-const _rawDice=data.dice??data.diceVal;
+const _rawDice=(data.rolled===true&&typeof data.diceVal==='number')?data.diceVal:(data.dice??data.diceVal);
 if(data.action==="roll"&&_rawDice!=null)_lastSeenDice[data.actionBy]=_rawDice;
 if(data.action==="move"&&_rawDice==null&&_lastSeenDice[data.actionBy]!=null){
 data={...data,dice:_lastSeenDice[data.actionBy],diceVal:_lastSeenDice[data.actionBy]};
@@ -3944,6 +3931,7 @@ _applySyncGameState(data,_forceApply);
 }
 let _syncAnimPlaying=false;
 let _lastRollAnimBy=-1;
+const _rollSrvSeen={}; /* seat -> srvTs of the roll already animated on this screen */
 function _applySyncGameState(data,_forceApply){
 if(window._TH&&data&&data.turn!=null&&G.turn!=null&&data.turn!==G.turn){const _pa=data.action||data.lastAction;if(_pa!=='move'&&_pa!=='skip'&&_pa!=='noMove'&&_pa!=='skip3six'){_dbgLog('TURNHOLD_TURN_PINNED',{from:data.turn,to:G.turn,action:_pa});data=Object.assign({},data,{turn:G.turn});}}
 try{if(G.rolled&&G.turn===MY_SEAT&&data&&data.turn===MY_SEAT&&data.rolled!==true&&!data.over){_dbgLog('ROLLED_RESET_RISK',{action:data.action,actionBy:data.actionBy,ts:data.timestamp,force:!!_forceApply,gDice:G.diceVal,MY_SEAT,rolling:_rolling,animating:_animating,commitPending:!!window._lastCommitP});}}catch(e){}
@@ -3969,14 +3957,14 @@ if(data.points){
 const _localPointsSig=G.points?Object.entries(G.points).map(([k,v])=>`${k}:${v}`).join(','):'';
 const _incomingPointsSig=Object.entries(data.points).map(([k,v])=>`${k}:${v}`).join(',');
 if(_localPointsSig!==_incomingPointsSig)_spacingLog('DIAG_POINTS_APPLIED',{animating:typeof _animating!=='undefined'?_animating:null,from:_localPointsSig,to:_incomingPointsSig});
-G.points=data.points;
+{const _kp=((window._buyInflight||0)>0&&MY_SEAT!=null&&G.points&&typeof G.points[MY_SEAT]==='number')?G.points[MY_SEAT]:null;G.points=data.points;if(_kp!==null)G.points[MY_SEAT]=_kp;}
 }
 if(data.pMeta)G.pMeta=data.pMeta;
 if(data.inventory){
 const _localInvSig=G.inventory?JSON.stringify(G.inventory):'';
 const _incomingInvSig=JSON.stringify(data.inventory);
 if(_localInvSig!==_incomingInvSig)_spacingLog('DIAG_INVENTORY_APPLIED',{animating:typeof _animating!=='undefined'?_animating:null,from:_localInvSig,to:_incomingInvSig});
-G.inventory=data.inventory;
+{const _ki=((window._buyInflight||0)>0&&MY_SEAT!=null&&G.inventory&&G.inventory[MY_SEAT])?G.inventory[MY_SEAT]:null;G.inventory=data.inventory;if(_ki)G.inventory[MY_SEAT]=_ki;}
 }
 if(data.purchased)G.purchased=data.purchased;
 
@@ -4040,10 +4028,12 @@ endGame();
 return;
 }
 const action=data.action||data.lastAction;
-const dice=data.dice??data.diceVal??(action==="move"?G.diceVal:null);
+const _srvRollFresh=(data.rolled===true&&typeof data.diceVal==='number');
+if(_srvRollFresh&&data.dice!=null&&data.dice!==data.diceVal)_dbgLog('SYNC_STALE_DICE_FIELD',{action:data.action,actionBy:data.actionBy,staleDice:data.dice,srvDiceVal:data.diceVal,rolled:data.rolled});
+const dice=_srvRollFresh?data.diceVal:(data.dice??data.diceVal??(action==="move"?G.diceVal:null));
 const rolledBy=data.actionBy;
 if(action==="roll"){
-if(rolledBy!==null&&rolledBy!==undefined&&!data.auto&&!_afkSeats[rolledBy]&&!PLAYERS[rolledBy]?.isBot){
+if(rolledBy!==null&&rolledBy!==undefined&&!data.auto&&!(typeof data.srvTs==='number'&&data.timestamp===data.srvTs)&&!_afkSeats[rolledBy]&&!PLAYERS[rolledBy]?.isBot){
 _timerExpireCount[rolledBy]=0;
 _updateOfflineBadge(rolledBy,false);
 }
@@ -4064,7 +4054,11 @@ return;
 
 
 if(data.waiting===true&&rolledBy!=null&&!PLAYERS[rolledBy]?.isBot)_stampRemoteTurnWindow(data,_forceApply);
-if(dice!=null&&rolledBy!=null){
+const _rcA=(typeof data.srvTs==='number'&&data.timestamp===data.srvTs); /* A = server commit snapshot, B = roller's own push (timestamp > srvTs) */
+const _rollDup=(!_rcA&&rolledBy!=null&&typeof data.srvTs==='number'&&_rollSrvSeen[rolledBy]===data.srvTs);
+if(rolledBy!=null&&typeof data.srvTs==='number'&&!_rollDup)_rollSrvSeen[rolledBy]=data.srvTs;
+if(_rollDup){_dbgLog('ROLL_ANIM_DEDUPED',{seat:rolledBy,srvTs:data.srvTs,dice:dice});syncUI();_flushSyncPending();}
+else if(dice!=null&&rolledBy!=null){
 if(PLAYERS[rolledBy]?.isBot){
 const _bd=document.getElementById('botdice-'+rolledBy);
 if(_bd){_bd.style.display='block';_bd.textContent=dice;}
@@ -7270,9 +7264,42 @@ _renderRerollBox();
 
 function _stampRemoteTurnWindow(data,forceApply){
 let t=Date.now();
+/* ROOT-CAUSE FIX. The turn window must start at the moment the SERVER started it: `srvTs`.
+   `srvTs` is written only by the server (rules: .write=false) when a turn/roll/move really begins, and every server
+   check (35s forfeit, 55s watchdog, afk elder idle) already measures from it.
+   `timestamp` is ALSO re-written by every client push (shop buy, power use, lucky, reroll...), so using it made the
+   timer jump back each time anybody bought something. A new window exists only when srvTs changed. */
+if(data&&typeof data.srvTs==='number'&&data.srvTs>0&&_isOnlineRoom()){
+if(window._stampedSrvTs===data.srvTs&&data.turn!=null&&G.turn===data.turn&&typeof G.timestamp==='number'&&G.timestamp>0){
+if(_lastTimerTurn!==G.turn)_lastTimerTurn=-1;
+_dbgLog('TO_STAMP_SAME_SRVTS',{srvTs:data.srvTs,timestampField:data.timestamp,keptTs:G.timestamp,force:!!forceApply,gTurn:G.turn,actionBy:data.actionBy,MY_SEAT});
+return;
+}
+window._stampedSrvTs=data.srvTs;
+window._stampRawTs=data.srvTs;
+t=_srvTsToLocal(data.srvTs);
+if(!forceApply)t=Math.max(t,Date.now()-(TURN_TIMER_SEC-3)*1000);
+_dbgLog('TO_STAMP_TURN',{src:'srvTs',rawTs:data.srvTs,timestampField:data.timestamp,stamped:t,ageMs:Date.now()-t,force:!!forceApply,prevTs:G.timestamp,gTurn:G.turn,srvTurn:data.turn,MY_SEAT});
+G.timestamp=t;
+_lastTimerTurn=-1;
+return;
+}
 if(data&&typeof data.timestamp==='number'&&data.timestamp>0){
+/* Shop/power pushes (pushGameState({})) re-write `timestamp` + actionBy of the BUYER in the middle of someone else's turn.
+   Adopting that moved the running turn timer back every time (opponent/bot timer never reached 0).
+   A real new window comes from a turn change or from the turn-holder itself (bonus roll); anything else is ignored
+   while this turn's window is still running on this client. */
+if(data.turn!=null&&G.turn===data.turn&&data.actionBy!=null&&data.actionBy!==data.turn&&_lastTimerTurn===G.turn&&typeof G.timestamp==='number'&&G.timestamp>0&&(Date.now()-G.timestamp)<(TURN_TIMER_SEC+5)*1000){
+_dbgLog('TO_STAMP_IGNORED_NONTURN_PUSH',{rawTs:data.timestamp,keptTs:G.timestamp,keptAgeMs:Date.now()-G.timestamp,force:!!forceApply,gTurn:G.turn,actionBy:data.actionBy,MY_SEAT});
+return;
+}
 
-t=_srvTsToLocal(data.timestamp);
+/* `timestamp` can be re-written by client pushes (shop/power/reroll of the turn-holder itself). `srvTs` is server-only.
+   A window may start at most 15s after the server commit that created it, so no push can keep pushing it back forever. */
+let _rawTs=data.timestamp;
+if(typeof data.srvTs==='number'&&data.srvTs>0&&data.timestamp>data.srvTs+15000){_rawTs=data.srvTs+15000;_dbgLog('TO_STAMP_CLAMPED_TO_SRVTS',{timestamp:data.timestamp,srvTs:data.srvTs,usedTs:_rawTs,lateByMs:data.timestamp-data.srvTs,gTurn:G.turn,actionBy:data.actionBy});}
+window._stampRawTs=_rawTs;
+t=_srvTsToLocal(_rawTs);
 if(!forceApply)t=Math.max(t,Date.now()-(TURN_TIMER_SEC-3)*1000);
 }
 _dbgLog('TO_STAMP_TURN',{rawTs:data&&data.timestamp,stamped:t,ageMs:Date.now()-t,force:!!forceApply,prevTs:G.timestamp,gTurn:G.turn,srvTurn:data&&data.turn,MY_SEAT});
