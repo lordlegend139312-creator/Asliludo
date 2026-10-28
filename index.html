@@ -43,10 +43,10 @@ window._srv=function(t,b){
   try{
     var u=window.auth&&window.auth.currentUser;
     if(!u)return Promise.resolve(null);
-    return u.getIdToken().then(function(tok){
+    return Promise.all([u.getIdToken(),(window._acI?window._acI.getToken().then(function(r){return (r&&r.token)||'';}).catch(function(){return '';}):Promise.resolve(''))]).then(function(_a){var tok=_a[0],_ac=_a[1];
       var ac=(typeof AbortController!=='undefined')?new AbortController():null;
       var tm=ac?setTimeout(function(){ac.abort();},20000):null;
-      return fetch(window._SRV_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},body:JSON.stringify(Object.assign({t:t},b||{})),keepalive:true,signal:ac?ac.signal:undefined}).then(function(r){if(tm)clearTimeout(tm);if(t!=='ping'&&t!=='q')window._srvLastStatus=t+':'+r.status;(window._srvStatusBy=window._srvStatusBy||{})[t]=r.status;if(r.ok)return r.json();if((t==='v'||t==='p')&&(r.status===403||r.status===409)){return r.json().then(function(j){return(j&&j.why)?{e:1,why:j.why}:null;},function(){return null;});}return null;},function(e){if(tm)clearTimeout(tm);throw e;});
+      return fetch(window._SRV_URL,{method:'POST',headers:Object.assign({'Content-Type':'application/json','Authorization':'Bearer '+tok},_ac?{'X-Firebase-AppCheck':_ac}:{}),body:JSON.stringify(Object.assign({t:t},b||{})),keepalive:true,signal:ac?ac.signal:undefined}).then(function(r){if(tm)clearTimeout(tm);if(t!=='ping'&&t!=='q')window._srvLastStatus=t+':'+r.status;(window._srvStatusBy=window._srvStatusBy||{})[t]=r.status;if(r.ok)return r.json();if((t==='v'||t==='p')&&(r.status===403||r.status===409)){return r.json().then(function(j){return(j&&j.why)?{e:1,why:j.why}:null;},function(){return null;});}return null;},function(e){if(tm)clearTimeout(tm);throw e;});
     }).catch(function(e){if(t!=='q')window._srvLastStatus=t+':ERR:'+(e&&e.name);return null;});
   }catch(e){return Promise.resolve(null);}
 };
@@ -568,7 +568,7 @@ window._loadRealFirebase=function(){
 if(window._firebaseReady)return Promise.resolve();
 return new Promise(function(resolve,reject){
 var done=0;
-function onLoad(){if(++done===3){window._firebaseReady=true;resolve();}}
+function onLoad(){if(++done===3){var _ac=document.createElement('script');_ac.src='https://www.gstatic.com/firebasejs/10.14.1/firebase-app-check-compat.js';_ac.onload=_ac.onerror=function(){window._firebaseReady=true;resolve();};document.head.appendChild(_ac);}}
 function loadScript(src){
 var s=document.createElement('script');
 s.src=src;s.onload=onLoad;s.onerror=reject;
@@ -1753,6 +1753,7 @@ document.getElementById('modal-token-style').classList.add('show');
 }
 const SEAT_COLOR=[PINK,YELLOW,GREEN,BLUE];
 const DEFAULT_COLOR_ASSIGN={0:PINK,1:YELLOW,2:GREEN,3:BLUE};
+function _okCA(v){const ok=[PINK,YELLOW,GREEN,BLUE];return(v&&typeof v==='object'&&[0,1,2,3].every(s=>ok.includes(v[s]))&&new Set([0,1,2,3].map(s=>v[s])).size===4)?v:DEFAULT_COLOR_ASSIGN;}
 function _teamOfColor(c){return(c===BLUE||c===YELLOW)?'A':'B';}
 const DEFAULT_TEAM_ASSIGN={0:'B',1:'A',2:'B',3:'A'};
 function _deriveTeamAssign(colorAssign){
@@ -3413,7 +3414,7 @@ closeModals();
 document.getElementById("display-room-code").textContent=code;
 document.getElementById("modal-waiting").classList.add("show");
 _onlineTeamModeUpdateUI(rData.numPlayers,false,rData.teamMode||false);
-window._lobbyColorAssign=rData.colorAssign||DEFAULT_COLOR_ASSIGN;
+window._lobbyColorAssign=_okCA(rData.colorAssign);
 listenRoom();
 listenChat();
 _startWaitingExpireTimer(code,rData.createdAt||Date.now());
@@ -3546,7 +3547,7 @@ _listeners.push(()=>autoStartRef.off('value',cbAutoStart));
 const colorAssignRef=db.ref(`rooms/${ROOM_CODE}/colorAssign`);
 const cbColorAssign=snap=>{
 const val=snap.val();
-if(val)window._lobbyColorAssign=val;
+if(val)window._lobbyColorAssign=_okCA(val);
 updatePlayerList(window._lobbyPlayers||{});
 };
 colorAssignRef.on('value',cbColorAssign);
@@ -6116,9 +6117,9 @@ body.innerHTML=_buildReactionRow(pid)+`<div style="display:flex;flex-direction:c
 </div>
 </div>
 </div>`;
-db.ref('players/'+p.uid).once('value').then(snap=>{
+window._srv('pr',{c:ROOM_CODE,p:{seat:pid}}).then(snap=>{
 if(!document.getElementById("modal-player-menu").classList.contains("show"))return;
-const v=(snap&&snap.val())||{};
+const v=snap?{kills:snap.k,wins:snap.w,losses:snap.l}:{};
 const sk=document.getElementById('pmenu-stat-kills');
 const sw=document.getElementById('pmenu-stat-wins');
 const sl=document.getElementById('pmenu-stat-losses');
@@ -9830,6 +9831,7 @@ messagingSenderId:"273830749078",
 appId:"1:273830749078:web:b197c8e42fc24b2b8a73b7"
 });
 }
+try{if(firebase.appCheck&&'6LcNjQQuAAAAAOCG2j3hSF-tXvUxEYDUYHVrCqJE'.indexOf('__')!==0){window._acI=firebase.appCheck();window._acI.activate(new firebase.appCheck.ReCaptchaEnterpriseProvider('6LcNjQQuAAAAAOCG2j3hSF-tXvUxEYDUYHVrCqJE'),true);}}catch(e){}
 window.db=firebase.database();
 window.auth=firebase.auth();
 
