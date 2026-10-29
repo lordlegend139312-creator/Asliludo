@@ -267,7 +267,7 @@ window.addEventListener('error',function(e){
 })();
 </script>
 <meta charset="UTF-8"/>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://accounts.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://*.googleusercontent.com https://*.gstatic.com; media-src 'self' data: blob:; connect-src 'self' data: blob: https://asliludo.vercel.app https://*.firebasedatabase.app wss://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebaseio.com https://*.googleapis.com https://*.firebaseapp.com https://accounts.google.com; frame-src https://accounts.google.com https://apis.google.com https://*.firebaseapp.com; object-src 'none'; base-uri 'self'"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://accounts.google.com https://www.google.com/recaptcha/ https://www.recaptcha.net/recaptcha/; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://*.googleusercontent.com https://*.gstatic.com; media-src 'self' data: blob:; connect-src 'self' data: blob: https://asliludo.vercel.app https://*.firebasedatabase.app wss://*.firebasedatabase.app https://*.firebaseio.com wss://*.firebaseio.com https://*.googleapis.com https://*.firebaseapp.com https://accounts.google.com https://www.google.com/recaptcha/ https://www.recaptcha.net/recaptcha/; frame-src https://accounts.google.com https://apis.google.com https://*.firebaseapp.com https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/ https://www.recaptcha.net/recaptcha/; object-src 'none'; base-uri 'self'"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="mobile-web-app-capable" content="yes"/>
@@ -9831,7 +9831,7 @@ messagingSenderId:"273830749078",
 appId:"1:273830749078:web:b197c8e42fc24b2b8a73b7"
 });
 }
-try{window._acD=function(m){try{var d=document.getElementById('_acd');if(!d){d=document.createElement('div');d.id='_acd';d.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:2147483647;background:#000;color:#0f0;font:12px monospace;padding:6px;white-space:pre-wrap;max-height:45vh;overflow:auto';(document.body||document.documentElement).appendChild(d);}d.textContent+=m+'\n';}catch(e){}};window.addEventListener('unhandledrejection',function(e){_acD('REJ: '+(e.reason&&(e.reason.code||e.reason.message)||e.reason));});window.addEventListener('error',function(e){_acD('ERR: '+e.message);});var _P=firebase.appCheck&&firebase.appCheck.ReCaptchaEnterpriseProvider;_acD('provider class: '+(_P?'yes':'MISSING'));if(firebase.appCheck&&_P){window._acI=firebase.appCheck();window._acI.activate(new _P('6LcNjQQuAAAAAOCG2j3hSF-tXvUxEYDUYHVrCqJE'),true);_acD('activated, asking for token...');var _t=Date.now();Promise.race([window._acI.getToken(),new Promise(function(r){setTimeout(function(){r({timeout:1});},10000);})]).then(function(r){_acD('getToken after '+(Date.now()-_t)+'ms: '+(r&&r.timeout?'TIMEOUT (no answer in 10s)':(r&&r.token?'token len '+r.token.length:'empty'))+(r&&r.error?' | ERROR: '+(r.error.code||'')+' '+(r.error.message||r.error):''));}).catch(function(e){_acD('getToken failed: '+(e&&(e.code||e.message)||e));});}}catch(e){window._acD&&_acD('init exception: '+(e&&(e.code||e.message)||e));}
+try{if(firebase.appCheck&&'6LcNjQQuAAAAAOCG2j3hSF-tXvUxEYDUYHVrCqJE'.indexOf('__')!==0){window._acI=firebase.appCheck();window._acI.activate(new firebase.appCheck.ReCaptchaEnterpriseProvider('6LcNjQQuAAAAAOCG2j3hSF-tXvUxEYDUYHVrCqJE'),true);}}catch(e){}
 window.db=firebase.database();
 window.auth=firebase.auth();
 
@@ -9884,7 +9884,22 @@ setTimeout(function(){if(!window.MY_PROFILE&&typeof window._initGoogleOneTap==='
 setTimeout(function(){if(!window.MY_PROFILE&&typeof window._initGoogleOneTap==='function')window._initGoogleOneTap();},2500);
 }
 });
-}).catch(function(){
+}).catch(function(err){
+window._dbgLog&&window._dbgLog('BOOT_FIREBASE_LOAD_FAILED',{attempt:window._bootRetryN||0,err:err&&(err.message||String(err))});
+window._bootRetryN=(window._bootRetryN||0)+1;
+if(window._bootRetryN<=2){
+setTimeout(function(){window._loadRealFirebase&&window._loadRealFirebase().then(function(){location.reload();}).catch(function(){
+var g=document.getElementById('connect-gate-text');
+if(g){g.textContent='Could not connect. Tap to retry.';}
+var gate=document.getElementById('connect-gate');
+if(gate&&!gate._retryBound){gate._retryBound=true;gate.style.cursor='pointer';gate.addEventListener('click',function(){location.reload();});}
+});},1500*window._bootRetryN);
+}else{
+var g=document.getElementById('connect-gate-text');
+if(g){g.textContent='Could not connect. Tap to retry.';}
+var gate=document.getElementById('connect-gate');
+if(gate&&!gate._retryBound){gate._retryBound=true;gate.style.cursor='pointer';gate.addEventListener('click',function(){location.reload();});}
+}
 });
 });
 
