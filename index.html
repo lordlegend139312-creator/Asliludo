@@ -4238,11 +4238,32 @@ if(old){const o=JSON.parse(old);if(o&&o.code&&o.seat!==undefined&&o.seat!==null&
 return arr;
 }
 function _writeSessions(arr){
+let _before=[];
+try{_before=_readSessions();}catch(e){}
 try{
 if(arr&&arr.length)localStorage.setItem(_SESS_KEY,JSON.stringify(arr));else localStorage.removeItem(_SESS_KEY);
 localStorage.removeItem('ludo_session');
 }catch(e){}
+try{
+const _keep=new Set((arr||[]).map(x=>x.code));
+_before.forEach(x=>{if(x&&x.code&&!_keep.has(x.code)&&window._srv)window._srv('rs',{d:x.code});});
+}catch(e){}
 }
+// Asks the server which rooms my account is still seated in and adds the ones missing from this device's list.
+window._syncRejoinFromServer=async function(){
+try{
+if(!window.auth||!window.auth.currentUser||window._cpuMode)return;
+const r=await window._srv('rs',{});
+if(!r||!r.ok||!Array.isArray(r.r))return;
+const list=_readSessions();let changed=false;
+r.r.forEach(function(x){
+if(!x||typeof x.c!=='string'||!/^[A-Za-z0-9]{6}$/.test(x.c)||!(x.s>=0&&x.s<=3)||!x.n)return;
+if(list.some(function(y){return y.code===x.c;}))return;
+list.push({code:x.c,seat:x.s,name:String(x.n)});changed=true;
+});
+if(changed){_writeSessions(list);if(typeof window.checkRejoin==='function')window.checkRejoin();}
+}catch(e){}
+};
 function saveSession(){
 if(window._cpuMode){return;}
 if(!ROOM_CODE||MY_SEAT===null||!MY_NAME){return;}
@@ -9112,9 +9133,8 @@ if(u&&!u.isAnonymous&&typeof window._onGoogleSignedIn==='function'){
 window._onGoogleSignedIn(u);
 }
 if(u){
-
-
 _authInitHandled=true;
+setTimeout(function(){if(typeof window._syncRejoinFromServer==='function')window._syncRejoinFromServer();},400);
 return;
 }
 if(!_authInitHandled){
