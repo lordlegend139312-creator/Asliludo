@@ -311,17 +311,17 @@ var N=Date.now(),DT=N-LT;LT=N;
 if(!g||g.style.display==='none'){clearInterval(iv);ss(function(){sessionStorage.removeItem(K);});ss(function(){if(msg)msg.remove();});return;}
 if(document.hidden){T0+=DT;return;}
 var s=(Date.now()-T0)/1000;
-if(s>=10&&!decided)say('Thoda time lag raha hai, khud dobara try ho raha hai...',false);
+if(s>=10&&!decided)say('Taking longer than usual. Retrying automatically...',false);
 if(((kicks<2&&s-lastKick>=8)||(decided&&s-lastKick>=20))&&window._firebaseReady&&window.db&&window.db.goOffline){
 lastKick=s;kicks++;
 ss(function(){var d=window.db;d.goOffline();setTimeout(function(){ss(function(){d.goOnline();});},400);});
 }
 if(s>=20&&!decided){
 decided=true;
-if(navigator.onLine===false){say('Internet nahi hai. Internet check karo, fir page reload karo.',true);return;}
+if(navigator.onLine===false){say('No internet connection. Please check your internet and reload the page.',true);return;}
 var n=cnt();
 if(n<3){bump(n+1);location.reload();return;}
-say('Connection nahi ban raha. Page reload karo.',true);
+say('Unable to connect. Please reload the page.',true);
 }
 },1000);
 })();</script>
@@ -468,6 +468,11 @@ try{_connRef.off("value",_onConnChange);}catch(e){}
 _connRef=db.ref(".info/connected");
 _connRef.on("value",_onConnChange);
 _bindServerOffset();
+try{var _g0=document.getElementById("connect-gate");if(_g0)_g0.style.display="none";}catch(e){}
+if(!window._slowNoticeBound){window._slowNoticeBound=true;
+[12000,35000].forEach(function(ms,i){setTimeout(function(){
+try{if(!window._everConnected&&typeof showToast==="function")showToast(i?"Network is very slow. Waiting for connection...":"Connection is slow. Connecting...");}catch(e){}
+},ms);});}
 };
 let _authReady=false;
 let _authResolvers=[];
@@ -595,7 +600,6 @@ cancel_on_tap_outside:true
 google.accounts.id.prompt();
 }catch(e){console.error('ONE_TAP_INIT_FAILED',e);}
 };
-/* OAuth CSRF protection: random "state" bound to this browser, verified on return (blocks #access_token=ATTACKER links) */
 function _gStateRead(st){try{const r=JSON.parse(st.getItem('ludo_gsignin_state')||'null');return(r&&typeof r.s==='string'&&r.s&&(Date.now()-Number(r.t))<10*60*1000)?r.s:'';}catch(e){return '';}}
 function _gStateClear(){try{sessionStorage.removeItem('ludo_gsignin_state');}catch(e){}try{localStorage.removeItem('ludo_gsignin_state');}catch(e){}}
 function _gStateNew(){
@@ -615,8 +619,6 @@ try{exp.push(_gStateRead(localStorage));}catch(e){}
 _gStateClear();
 return !!got&&exp.some(function(e){return e&&e===got;});
 }
-/* the access token must have been issued to OUR client id (a token minted for some other app could otherwise be replayed here).
-   Network/CORS/5xx hiccup => allow (Firebase still verifies the token itself); only an explicit "not ours / invalid" answer blocks. */
 async function _googleTokenIsForUs(accessToken){
 try{
 const r=await fetch('https://oauth2.googleapis.com/tokeninfo?access_token='+encodeURIComponent(accessToken),{cache:'no-store'});
@@ -829,6 +831,7 @@ if(connected){
 if(lobbyDot){lobbyDot.style.background="#00C853";}
 if(lobbyTxt){lobbyTxt.textContent="Server connected ✓";lobbyTxt.style.color="#00C853";}
 if(gate){gate.style.display="none";}
+window._everConnected=true;
 if(!_wasConnected){
 setSyncStatus("ok");
 if(_wasConnected===false&&document.getElementById("game-wrap").style.display!=="none"){
@@ -846,9 +849,9 @@ _disconnectedAt=0;
 }
 _wasConnected=true;
 }else{
-if(lobbyDot){lobbyDot.style.background="#FF2D78";}
-if(lobbyTxt){lobbyTxt.textContent="No server connection ✗";lobbyTxt.style.color="#FF2D78";}
-if(gate){gate.style.display="flex";if(gateTxt){gateTxt.textContent=_wasConnected?"Reconnecting to server...":"Connecting to server...";}}
+if(lobbyDot){lobbyDot.style.background=window._everConnected?"#FF2D78":"#F5C518";}
+if(lobbyTxt){lobbyTxt.textContent=window._everConnected?"No server connection ✗":"Connecting to server...";lobbyTxt.style.color=window._everConnected?"#FF2D78":"#F5C518";}
+if(gate&&window._everConnected){gate.style.display="flex";if(gateTxt){gateTxt.textContent=_wasConnected?"Reconnecting to server...":"Connecting to server...";}}
 setSyncStatus("err");
 if(!_disconnectedAt)_disconnectedAt=Date.now();
 _wasConnected=false;
@@ -1644,7 +1647,7 @@ _cacheValid=false;
 for(const k in _slotPxCache)delete _slotPxCache[k];
 renderTokens();
 });
-setTimeout(()=>{_cacheValid=false;for(const k in _slotPxCache)delete _slotPxCache[k];try{renderTokens();}catch(e){}},750); /* after the 0.6s rotate transition: measure once more, so nothing taken mid-turn can stay cached */
+setTimeout(()=>{_cacheValid=false;for(const k in _slotPxCache)delete _slotPxCache[k];try{renderTokens();}catch(e){}},750);
 }
 let _tokenRotationDeg=0;
 const STEP_MAIN_END=51;
@@ -1713,10 +1716,8 @@ const key=(pid!=null&&tid!=null)?`${pid}-${tid}`:null;
 const tEls=key?_tokEls[key]:null;
 const layer=document.getElementById("tokens-layer");
 if(tEls&&tEls.wrap&&layer){
-/* blast ALWAYS plays on the bomb's cell, never on the token's current spot (it may already be back home) */
 let _ov=null;try{const _pp=String(cellKey).split('-');if(_pp.length===2&&!isNaN(+_pp[0])&&!isNaN(+_pp[1]))_ov=rcToXY(+_pp[0],+_pp[1]);}catch(e){_ov=null;}
 await _tokenBlastFX(tEls.wrap,layer,_ov,true);
-/* fragments + blast are completely finished: ONLY NOW the dead token goes home */
 try{const _t=tokOf(pid,tid);if(_t){if(_t.step>0){_t.everKilled=true;_t.step=0;}renderTokens();}}catch(e){}
 try{const _w=(_tokEls[`${pid}-${tid}`]||{}).wrap;if(_w)_w.style.opacity='1';tEls.wrap.style.opacity='1';}catch(e){}
 
@@ -1743,7 +1744,6 @@ const _wcx=(m?parseFloat(m[1]):0)+rW/2;
 const _wcy=(m?parseFloat(m[2]):0)+rH/2;
 const originX=ov?ov.x:_wcx;
 const originY=ov?ov.y:_wcy;
-/* hide the real token only if it is actually sitting on the blast cell; if it already went home leave it alone */
 const _atCell=!ov||Math.hypot(_wcx-ov.x,_wcy-ov.y)<cellPx()*0.9;
 
 const color=wrap.dataset.rc||'#e63946';
@@ -2082,9 +2082,6 @@ els.frost._fzInitDone=true;
 });
 }
 function _isOnlineRoom(){return !!(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode);}
-/* WATCHDOG: if the shared game state has not changed for ~57s (turn timer is 45s, elder normally acts well before),
-   ANY visible player asks the server to force-pass the turn (t:'f' + wd). Server re-checks idle>=55s on its own clock,
-   so a skewed/abusive client can't skip live turns. Backstop for a dead/backgrounded elder tab. */
 let _wdSig='',_wdAt=Date.now(),_wdBusy=false;
 function _wdNote(data){
 try{
@@ -2103,13 +2100,10 @@ const seat=G.turn;
 const r=await window._srv('f',{c:ROOM_CODE,p:{as:(seat!==MY_SEAT?seat:undefined),wd:true}});
 
 if(r){_rolling=false;_animating=false;_wdAt=Date.now();try{await _forceResyncGame('watchdog');}catch(e){}}
-else{_wdAt=Date.now()-47000;} /* retry in ~10s */
+else{_wdAt=Date.now()-47000;}
 }catch(e){}
 finally{_wdBusy=false;}
 },5000);
-/* Desync recovery: server says turn=me & rolled=true but my screen has no roll (e.g. an earlier skip was rejected).
-   Seen twice, >=6s apart, with nothing pending -> replay the roll; server 'd' returns the already-committed value
-   (dup) or has auto-skipped, and the normal afterRoll flow takes over. */
 let _desyncSeen=null;
 function _recoverRolledDesync(data,_n){
 try{
@@ -2132,10 +2126,6 @@ _desyncSeen=null;
 doRoll(MY_SEAT);
 }catch(e){}
 }
-/* FIX: preroll path me 'd' (roll commit) background me jaata hai. Agar 's'/'f' uske commit hone se
-   pehle server pe pahunch jaye to server 403 deta hai (rolled!==true) aur baad me 'd' commit hota hai
-   -> server pe turn=me, rolled=true, koi legal move nahi, aur skip dobara kabhi nahi jata (stuck).
-   Isliye skip/forfeit hamesha pending roll-commit ke BAAD bhejo. */
 async function _waitRollCommit(){
 try{const rc=window._rollCommitP;if(rc)await Promise.race([rc.catch(function(){}),new Promise(function(r){setTimeout(r,20000);})]);}catch(e){}
 }
@@ -2144,7 +2134,6 @@ if(!_isOnlineRoom())return null;
 const _prev=window._lastCommitP;
 await _waitRollCommit();
 if(_prev)await Promise.race([_prev.catch(function(){}),new Promise(function(r){setTimeout(r,15000);})]);
-/* server 'd' may already have done the skip (noMove) in the same commit -> do NOT call 's' (turn is already passed) */
 const _dm=window._dNoMove;
 if(_dm&&_dm.pid===pid&&Date.now()-_dm.at<120000&&_dm.r&&typeof _dm.r.turn==='number'){window._dNoMove=null;return _dm.r;}
 const r=await window._srv('s',{c:ROOM_CODE,p:{as:(pid!==MY_SEAT?pid:undefined)}},{noWait:true});
@@ -2188,14 +2177,13 @@ try{
 
 if(!r||!Array.isArray(r.tokens)){
 
-if(r&&r.why==='frozen')showToast("❄️ Opponent ne is token ko Freeze kar diya — move cancel hui, board sync ho raha hai");
+if(r&&r.why==='frozen')showToast("❄️ Opponent froze this token. Move cancelled, syncing board...");
 else showToast("Sync error — reconnecting...");
 _forceResyncGame(r&&r.why==='frozen'?'move-frozen':'move-commit-failed');
 return;
 }
 if(G.over)return;
 if(r.placements)G.placements=r.placements;
-// only correct local state if nothing has progressed since our optimistic nextTurn
 if(G.turn!==expTurn||G.rolled||G.diceVal!=null||_animating||_rolling){return;}
 const _sig=a=>a.map(t=>t.pid+'-'+t.tid+':'+t.step).sort().join(',');
 const _tokDiff=_sig(r.tokens)!==_sig(G.tokens);
@@ -2216,8 +2204,7 @@ G.aegisShields=r.aegisShields||[];
 _aegisMergePending();
 }
 let _placeBusy=false;
-/* AEGIS: one-shot + optimistic state that survives server snapshots */
-let _aegisPend=null; // {pid,tid,okAt} from click until the server state confirms it
+let _aegisPend=null;
 function _aegisMergePending(){
 if(!_aegisPend||MY_SEAT===null)return;
 const p=_aegisPend;
@@ -2255,7 +2242,7 @@ Object.keys(_tokEls).forEach(key=>{
 const parts=key.split('-');
 const tpid=+parts[0],ttid=+parts[1];
 if(tpid===MY_SEAT)return;
-if(_finishedKeepsTurn(MY_SEAT)&&tpid===getTeammate(MY_SEAT))return; // finished: no Freeze on your teammate
+if(_finishedKeepsTurn(MY_SEAT)&&tpid===getTeammate(MY_SEAT))return;
 const tok=tokOf(tpid,ttid);
 if(!tok)return;
 if(tok.step===0||tok.step>=STEP_DONE)return;
@@ -2302,7 +2289,7 @@ if(!_okP){
 G.inventory[MY_SEAT].freeze+=1;
 G.frozenTokens=(G.frozenTokens||[]).filter(f=>!(f.pid===pid&&f.tid===tid&&f.casterPid===MY_SEAT));
 _renderFrozenVisuals();
-if(window._lastPlaceWhy==='moving')showToast("Token pehle hi click ho chuka tha — Freeze nahi laga, tumhari power wapas mil gayi");else showToast("Freeze failed — couldn't be verified, try again");return;
+if(window._lastPlaceWhy==='moving')showToast("Token was already clicked. Freeze not applied, your power has been restored.");else showToast("Freeze failed — couldn't be verified, try again");return;
 }
 
 const _casterP=PLAYERS[MY_SEAT],_victimP=PLAYERS[pid];
@@ -2636,9 +2623,9 @@ const _aegTxt=_wasFrozen?`😇 ${(_casterP&&_casterP.label)||"A player"}'s Aegis
 cancelPlacement();
 _renderAegisVisuals();
 _renderFrozenVisuals();
-showToast(_aegTxt); /* instant feedback — server confirms in the background */
+showToast(_aegTxt);
 let _okP=false;try{_okP=await _srvPlace('aegis',{pid,tid});}finally{_placeBusy=false;}
-if(!_okP)_okP=await _aegisVerify(pid,tid); /* no/ambiguous reply: check real server state before undoing */
+if(!_okP)_okP=await _aegisVerify(pid,tid);
 if(!_okP){
 _aegisPend=null;
 G.inventory[MY_SEAT].aegis+=1;
@@ -2675,24 +2662,21 @@ if(_placingPower!=='luckyNumber'||_luckyArming)return;
 if(!G.inventory[MY_SEAT]||!(G.inventory[MY_SEAT].luckyNumber>0)){cancelPlacement();return;}
 const _online=!!(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode);
 if(_online){
-/* online: the SERVER arms it (game/pMeta/<seat>/luckyActive) and deducts the stock,
-   so it can't be un-armed from devtools. Local state is only updated after server ok. */
 _luckyArming=true;
 let _r=null;
 try{_r=await window._srv('ln',{c:ROOM_CODE});}catch(e){_r=null;}
 _luckyArming=false;
-if(!(_r&&_r.ok)){cancelPlacement();showToast("Lucky Number activate nahi hua — connection check karke dobara try karo");return;}
+if(!(_r&&_r.ok)){cancelPlacement();showToast("Lucky Number could not be activated. Check your connection and try again.");return;}
 if(!G.pMeta)G.pMeta=_defaultPMeta();
 if(!G.pMeta[MY_SEAT])G.pMeta[MY_SEAT]={ks:0,lr:0,sr:0,lv:null,rf:null,luckyActive:false};
 if(!_r.already&&G.inventory[MY_SEAT].luckyNumber>0)G.inventory[MY_SEAT].luckyNumber-=1;
 G.pMeta[MY_SEAT].luckyActive=true;_luckyArmAt=Date.now();_setLuckyVisual(MY_SEAT,true);
 
 cancelPlacement();
-showToast(_r.already?"Lucky Number pehle se armed hai":"Lucky Number armed — boosts your next roll!");
+showToast(_r.already?"Lucky Number is already armed.":"Lucky Number armed — boosts your next roll!");
 if(G.turn===MY_SEAT&&!G.rolled){_preKey=null;_prefetchRoll(MY_SEAT);}
 return;
 }
-/* offline (CPU / pass-and-play): purely local */
 G.inventory[MY_SEAT].luckyNumber-=1;_invDec('luckyNumber',true);
 if(!G.pMeta)G.pMeta=_defaultPMeta();
 if(!G.pMeta[MY_SEAT])G.pMeta[MY_SEAT]={ks:0,lr:0,sr:0,lv:null,rf:null,luckyActive:false};
@@ -2721,7 +2705,7 @@ G.diceVal=null;
 window._pendingRerollCharge=true;
 pushGameState({});
 showToast("Rerolling...");
-if(G.turn===MY_SEAT)doRoll(MY_SEAT); /* no 250ms delay: dice spins + server 'd' fires immediately */
+if(G.turn===MY_SEAT)doRoll(MY_SEAT);
 }
 window.useReroll=useReroll;
 function startAmbushPlacement(){
@@ -2879,10 +2863,8 @@ if(!G.points)G.points={0:0,1:0,2:0,3:0};
 const _before=G.points[pid]||0;
 G.points[pid]=+((G.points[pid]||0)+amount).toFixed(2);
 
-/* points: server owns online */
 }
 function _invDec(key,localOnly){
-/* inventory: server owns online */
 }
 let ROOM_CODE=null;
 
@@ -3680,13 +3662,6 @@ return false;
 }
 const _syncSeenKeys=new Map();let _syncDupCount=0;
 function _syncDupKey(d){return(d&&typeof d.timestamp==='number'&&d.actionBy!=null&&d.action)?(d.actionBy+'|'+d.action+'|'+d.timestamp):null;}
-/* TURN-HOLD (opponent move landing).
-   Server t:'v' commit writes turn=next, final tokens, lastMove{until} into the node. The mover's own 'move' payload
-   (pushGameState) is a SEPARATE write. If the commit snapshot (A) reaches me BEFORE the move payload (B), A still carries
-   the previous action ('roll') -> the roll branch did G.turn=me while the opponent token was still walking on my screen
-   (glow + timer + dice on my box, roll click blocked by _animating).
-   Fix: A is held (not applied). _earlyPrefetch already ran on it (pre-roll is fetched in background as before).
-   B then walks the token and applyFinalState() hands the turn over exactly after landing. Fallback replays A if B never comes. */
 window._TH=null;
 let _lmRef=null,_lmSeen=0,_mvSigSeen='',_lastMoveRollTs={};
 function _mvSig(d){try{return JSON.stringify([d&&d.actionBy,d&&d.moves,d&&d.dice,d&&d.rollTs,d&&d.mid]);}catch(e){return '';}}
@@ -3811,7 +3786,7 @@ _applySyncGameState(data,_forceApply);
 }
 let _syncAnimPlaying=false;
 let _lastRollAnimBy=-1;
-const _rollSrvSeen={}; /* seat -> srvTs of the roll already animated on this screen */
+const _rollSrvSeen={};
 function _applySyncGameState(data,_forceApply){
 if(window._TH&&data&&data.turn!=null&&G.turn!=null&&data.turn!==G.turn){const _pa=data.action||data.lastAction;if(_pa!=='move'&&_pa!=='skip'&&_pa!=='noMove'&&_pa!=='skip3six'){data=Object.assign({},data,{turn:G.turn});}}
 try{if(G.rolled&&G.turn===MY_SEAT&&data&&data.turn===MY_SEAT&&data.rolled!==true&&!data.over){}}catch(e){}
@@ -3877,8 +3852,6 @@ if(_syncTrapCellEl){const _mk=_syncTrapCellEl.querySelector(".ambush-mark");if(_
 
 const _atrig0=data.lastAmbushTrigger;
 const _viaTrapCell=data.action==="move"&&data.actionBy!==MY_SEAT&&Array.isArray(data.moves)&&data.moves.some(m=>m&&m.trapCell);
-/* opponent stepped on a hidden trap: moves[] has no trapCell for us, but the mover's token walk is replayed below.
-   Defer the blast until that walk ARRIVES (not at sync receipt = before the token moves), then the token goes home. */
 const _viaVictimMove=!_viaTrapCell&&data.action==="move"&&data.actionBy!==MY_SEAT&&Array.isArray(data.moves)&&data.moves.some(m=>m&&(m.type==="move"||m.type==="open")&&m.pid===_atrig0.victimPid&&m.tid===_atrig0.victimTid);
 const _ambushDeferred=_viaTrapCell||_viaVictimMove;
 if(_viaVictimMove)_deferTrig=_atrig0;
@@ -3935,7 +3908,7 @@ return;
 
 
 if(data.waiting===true&&rolledBy!=null&&!PLAYERS[rolledBy]?.isBot)_stampRemoteTurnWindow(data,_forceApply);
-const _rcA=(typeof data.srvTs==='number'&&data.timestamp===data.srvTs); /* A = server commit snapshot, B = roller's own push (timestamp > srvTs) */
+const _rcA=(typeof data.srvTs==='number'&&data.timestamp===data.srvTs);
 const _rollDup=(!_rcA&&rolledBy!=null&&typeof data.srvTs==='number'&&_rollSrvSeen[rolledBy]===data.srvTs);
 if(rolledBy!=null&&typeof data.srvTs==='number'&&!_rollDup)_rollSrvSeen[rolledBy]=data.srvTs;
 if(_rollDup){syncUI();_flushSyncPending();}
@@ -4220,8 +4193,6 @@ setSyncStatus("err");
 showToast("Sync error-reconnecting...");
 });
 }
-// ===== Rejoin sessions (multi-room) =====
-// localStorage 'ludo_sessions' = [{code,seat,name},...]. The old single 'ludo_session' key is migrated automatically.
 const _SESS_KEY='ludo_sessions';
 function _readSessions(){
 let arr=[];
@@ -4249,7 +4220,6 @@ const _keep=new Set((arr||[]).map(x=>x.code));
 _before.forEach(x=>{if(x&&x.code&&!_keep.has(x.code)&&window._srv)window._srv('rs',{d:x.code});});
 }catch(e){}
 }
-// Asks the server which rooms my account is still seated in and adds the ones missing from this device's list.
 window._syncRejoinFromServer=async function(){
 try{
 if(!window.auth||!window.auth.currentUser||window._cpuMode)return;
@@ -4274,7 +4244,6 @@ if(i>=0)list[i]=data;else list.push(data);
 _writeSessions(list);
 
 }
-// clearSession(code) forgets ONE room. No argument = the room I am currently in.
 function clearSession(code){
 try{
 const c=code||ROOM_CODE;
@@ -4295,8 +4264,6 @@ if(sub)sub.textContent=list.length>1?`${list.length} rooms · tap to choose`:`Ro
 card.style.display='none';
 }
 }
-// Silent health check of one saved room (no toasts, no deletes).
-// ok:true = still usable, ok:false = gone/expired/over (forget it), ok:null = could not verify (network)
 async function _inspectSession(s){
 const base=db.ref(`rooms/${s.code}`);
 const g=(p)=>base.child(p).once('value').catch(e=>(e&&e.code==='PERMISSION_DENIED'&&window.auth&&window.auth.currentUser)?{exists:()=>false,val:()=>null}:null);
@@ -4319,7 +4286,6 @@ if(!players[s.seat])return{s,ok:false,why:'seat'};
 const others=Object.keys(players).filter(k=>String(k)!==String(s.seat)).map(k=>players[k]&&players[k].name).filter(Boolean);
 return{s,ok:true,status,isHost:(host&&host.val()!==null&&Number(host.val())===Number(s.seat)),others};
 }
-// Deletes a room that has NOT started (server checks that I am its host). Everyone inside is removed.
 async function _deleteWaitingRoom(code){
 for(let i=0;i<2;i++){
 try{const r=await window._srv('xw',{c:code});if(r&&r.ok)return true;}catch(e){}
@@ -4327,10 +4293,6 @@ await new Promise(r=>setTimeout(r,600));
 }
 return false;
 }
-// Called when I create / join a new room.
-//  - old room NOT started + I am host  -> deleted for everyone (players get kicked with a message)
-//  - old room NOT started + I am guest -> just removed from my list
-//  - old room already RUNNING          -> kept, so Rejoin can still bring me back to my friends
 async function _retireOldSessions(exceptCode){
 const list=_readSessions().filter(x=>x.code!==exceptCode);
 if(!list.length)return;
@@ -4345,7 +4307,6 @@ if(dropCodes.size)_writeSessions(_readSessions().filter(x=>!dropCodes.has(x.code
 
 for(const c of delCodes){await _deleteWaitingRoom(c);}
 }
-// Shown to players who are still inside a waiting room when its host deletes it.
 function _onWaitingRoomDeleted(code){
 if(ROOM_CODE!==code||_gameStarted)return;
 
@@ -4388,8 +4349,6 @@ box.appendChild(card);
 const m=document.getElementById('modal-rejoin-choose');
 if(m)m.classList.add('show');
 }
-// One tap on a room = enter it, and the OTHER room is removed from my Rejoin list for good.
-// Unstarted room I host -> deleted for everyone. Running match -> only removed for me, my friends keep playing.
 window._pickRejoinRoom=async function(code){
 const m=document.getElementById('modal-rejoin-choose');
 if(m)m.classList.remove('show');
@@ -5318,7 +5277,6 @@ return window._teamMode&&getTeammate(seatA)===seatB;
 function _teamControlActive(currentTurn){
 if(!window._teamMode)return false;
 const myTeammate=getTeammate(currentTurn);
-// a player who has brought all 4 tokens home keeps rolling for the teammate (as long as the teammate still has tokens to move)
 if(_finishedKeepsTurn(currentTurn))return true;
 const opponents=PLAYERS.filter(p=>p.active&&p.id!==currentTurn&&p.id!==myTeammate);
 const opponentsStillIn=opponents.filter(p=>!toksOf(p.id).every(t=>t.step>=STEP_DONE));
@@ -5832,7 +5790,6 @@ renderShop();
 _renderRerollBox();
 showToast(`✅ Bought ${POWER_DEFS[key].name}`);
 
-/* requests go to the server strictly one after another: in-order responses, no stale overwrite, no 429 burst */
 const _t0=Date.now();
 const _prevQ=window._buyQ||Promise.resolve();
 const _reqP=_prevQ.then(function(){return window._srv('b',{c:ROOM_CODE,p:{key}});});
@@ -5844,7 +5801,6 @@ const _drained=(window._buyInflight===0);
 const _ms=Date.now()-_t0;
 if(!_r||_r.ok!==1){
 
-/* undo ONLY this purchase (delta), never restore an old snapshot: other buys in the burst stay intact */
 G.points[MY_SEAT]=+((G.points[MY_SEAT]||0)+_cost).toFixed(2);
 G.inventory[MY_SEAT][key]=Math.max(0,(G.inventory[MY_SEAT][key]||0)-1);
 if(_wasOnce&&G.purchased&&G.purchased[MY_SEAT])G.purchased[MY_SEAT][key]=_b4.pur;
@@ -5855,7 +5811,6 @@ return;
 }
 
 if(_drained){
-/* last response of the burst = latest truth: now it is safe to adopt server numbers */
 if(typeof _r.points==='number')G.points[MY_SEAT]=_r.points;
 if(typeof _r.inv==='number')G.inventory[MY_SEAT][key]=_r.inv;
 pushGameState({});
@@ -6271,8 +6226,6 @@ const bw=document.getElementById('board-wrap');
 const bR=bw?bw.getBoundingClientRect():lR;
 const bcx=bR.left+bR.width/2;
 const bcy=bR.top+bR.height/2;
-/* un-rotate by the angle the board has RIGHT NOW: the 0.6s rotate transition may still be running when this is measured.
-   (Un-rotating by the final angle while the board was mid-turn put a seat's tokens in the neighbouring yard, and the wrong value stayed cached.) */
 let curDeg=getBoardRotation();
 try{
 const tf=bw?getComputedStyle(bw).transform:'none';
@@ -6652,11 +6605,6 @@ _renderRerollBox();
 
 function _stampRemoteTurnWindow(data,forceApply){
 let t=Date.now();
-/* ROOT-CAUSE FIX. The turn window must start at the moment the SERVER started it: `srvTs`.
-   `srvTs` is written only by the server (rules: .write=false) when a turn/roll/move really begins, and every server
-   check (35s forfeit, 55s watchdog, afk elder idle) already measures from it.
-   `timestamp` is ALSO re-written by every client push (shop buy, power use, lucky, reroll...), so using it made the
-   timer jump back each time anybody bought something. A new window exists only when srvTs changed. */
 if(data&&typeof data.srvTs==='number'&&data.srvTs>0&&_isOnlineRoom()){
 if(window._stampedSrvTs===data.srvTs&&data.turn!=null&&G.turn===data.turn&&typeof G.timestamp==='number'&&G.timestamp>0){
 if(_lastTimerTurn!==G.turn)_lastTimerTurn=-1;
@@ -6673,17 +6621,11 @@ _lastTimerTurn=-1;
 return;
 }
 if(data&&typeof data.timestamp==='number'&&data.timestamp>0){
-/* Shop/power pushes (pushGameState({})) re-write `timestamp` + actionBy of the BUYER in the middle of someone else's turn.
-   Adopting that moved the running turn timer back every time (opponent/bot timer never reached 0).
-   A real new window comes from a turn change or from the turn-holder itself (bonus roll); anything else is ignored
-   while this turn's window is still running on this client. */
 if(data.turn!=null&&G.turn===data.turn&&data.actionBy!=null&&data.actionBy!==data.turn&&_lastTimerTurn===G.turn&&typeof G.timestamp==='number'&&G.timestamp>0&&(Date.now()-G.timestamp)<(TURN_TIMER_SEC+5)*1000){
 
 return;
 }
 
-/* `timestamp` can be re-written by client pushes (shop/power/reroll of the turn-holder itself). `srvTs` is server-only.
-   A window may start at most 15s after the server commit that created it, so no push can keep pushing it back forever. */
 let _rawTs=data.timestamp;
 if(typeof data.srvTs==='number'&&data.srvTs>0&&data.timestamp>data.srvTs+15000){_rawTs=data.srvTs+15000;}
 window._stampRawTs=_rawTs;
@@ -6710,9 +6652,6 @@ setTimeout(()=>{if(!G.over&&G.turn===_botSeat&&PLAYERS[_botSeat]?.isBot&&!G.roll
 }
 }
 let _preRoll=null,_preKey=null,_preP=null,_earlyStamp=null;
-// early = server stamp (srvTs) of the committed state that gave me the turn. Passed only from
-// _earlyPrefetch (Firebase snapshot with server-written turn===MY_SEAT), so G may still be on the
-// previous turn (queued animation) and the G.turn/G.rolled guards are skipped in that mode.
 function _prefetchRoll(seat,early,_try,_lkIn){
 try{
 if(seat!==MY_SEAT||!ROOM_CODE||!gameRef||window._cpuMode||window._pnpMode||G.over)return;
@@ -6729,7 +6668,7 @@ _preP=window._srv('dp',_pl).then(function(r){
 
 if(_preKey!==key)return;
 if(r&&typeof r.v==='number'&&r.v>=1&&r.v<=6){_preRoll={seat:seat,v:r.v,at:Date.now(),lk:r.lk===1,lucky:(r.lucky==null?null:r.lucky),key:key};return;}
-if(r&&r.ok===1)return; /* roll is parked on the server; its value is only revealed by the roll commit */
+if(r&&r.ok===1)return;
 _preKey=null;
 if(tryN<3)setTimeout(function(){
 if(_preKey!==null||_rolling||G.over)return;
@@ -6740,9 +6679,6 @@ _prefetchRoll(seat,early,tryN+1,lk);
 }).catch(function(){if(_preKey===key)_preKey=null;});
 }catch(e){}
 }
-/* Lucky Number glow: armed -> EVERY screen shows it at once, consumed/cancelled -> EVERY screen hides it.
-   _setLuckyVisual flips the 4 DOM bits directly (no full refreshUI). _applyLuckyFlags reads the raw server
-   snapshot before syncGameState (which drops snapshots whose actionBy is me, and t:'ln' doesn't change actionBy). */
 let _luckyArmAt=0;
 function _setLuckyVisual(seat,on){
 try{
@@ -6760,8 +6696,6 @@ const st=+k,m=data.pMeta[k];
 if(!m||!G.pMeta[st])return;
 const on=m.luckyActive===true;
 if(st===MY_SEAT){
-/* own seat: OFF only (e.g. consumed by a proxy roll). Never ON from a snapshot - it could be stale
-   right after my own roll cleared it locally. 4s grace after arming so an older snapshot can't undo it. */
 if(on||!G.pMeta[st].luckyActive||Date.now()-_luckyArmAt<4000)return;
 G.pMeta[st].luckyActive=false;_setLuckyVisual(st,false);
 return;
@@ -6772,9 +6706,6 @@ _setLuckyVisual(st,on);
 });
 }catch(e){}
 }
-// Called from the Firebase game listener BEFORE syncGameState. Uses ONLY server-written fields:
-// `turn` is written by the server's t:'v' / 's' commit (online pushGameState strips turn), so if the
-// mover got an extra turn (six / kill / step done) the snapshot still says turn===mover and we skip.
 function _earlyPrefetch(data){
 try{
 if(MY_SEAT==null||!_gameLoaded||!ROOM_CODE||!gameRef||window._cpuMode||window._pnpMode)return;
@@ -6887,7 +6818,6 @@ const srv=snap&&snap.val();
 if(!srv)return false;
 const srvTurn=(srv.turn!=null)?Number(srv.turn):null;
 if(srvTurn===seat&&srv.rolled===true&&!G.rolled&&!G.waiting){
-/* server pe is seat ka roll pada hai jo kisi ne play nahi kiya (e.g. skip 403 ke baad). Stale mat maano: server tokens adopt karo, bot 'd' se wahi dice wapas lega aur chal dega */
 
 _adoptSrvTokens(srv);
 return false;
@@ -7239,7 +7169,7 @@ if(!_okRoll){
 clearTimeout(rollSafety);_rolling=false;
 if(_wasReroll&&G.inventory&&G.inventory[pid])G.inventory[pid].reroll=(G.inventory[pid].reroll||0)+1;
 
-showToast((window._srvStatusBy&&window._srvStatusBy.d===403)?"Turn sync ho raha hai, dobara try karo":"Roll failed — check connection and try again");
+showToast((window._srvStatusBy&&window._srvStatusBy.d===403)?"Syncing turn. Please try again.":"Roll failed — check connection and try again");
 return;
 }
 v=_r.v;
@@ -7276,7 +7206,6 @@ navigator.vibrate&&navigator.vibrate(28);
 SFX.play('dice');
 if(_deferSrv){
 animDice(pid,v,()=>{clearTimeout(rollSafety);_rolling=false;afterRoll(pid,v);},false);
-/* server confirm background me: UI turant aage badhta hai, 'v' commit _rollCommitP ke baad hi jata hai */
 const _shownV=v;
 _srvPromise.then(function(_r){
 try{
@@ -7296,7 +7225,7 @@ animDice(pid,_r2.v,()=>{afterRoll(pid,_r2.v);},true);
 return;
 }
 
-if(!_animating&&G.turn===pid&&G.rolled){G.rolled=false;G.diceVal=null;G.waiting=false;G.sixes=Math.max(0,(G.sixes||0)-(_shownV===6?1:0));_rolling=false;showToast((window._srvStatusBy&&window._srvStatusBy.d===403)?"Turn sync ho raha hai, dobara try karo":"Roll failed — check connection and try again");try{syncUI();}catch(e){}}
+if(!_animating&&G.turn===pid&&G.rolled){G.rolled=false;G.diceVal=null;G.waiting=false;G.sixes=Math.max(0,(G.sixes||0)-(_shownV===6?1:0));_rolling=false;showToast((window._srvStatusBy&&window._srvStatusBy.d===403)?"Syncing turn. Please try again.":"Roll failed — check connection and try again");try{syncUI();}catch(e){}}
 }catch(e){}
 });
 }
@@ -7811,7 +7740,6 @@ const _vT0=Date.now();
 _commitP=(window._rollCommitP||Promise.resolve()).then(function(){return window._srv('v',{c:ROOM_CODE,p:{tid,dv:v,mid:_myMid,auto:(_wasAutoMove?true:undefined),as:(_actorSeat!==MY_SEAT?_actorSeat:undefined),of:(pid!==_actorSeat?pid:undefined)}});});
 _commitP.then(function(_r){},function(e){});
 if(_actorSeat===MY_SEAT){_commitP.then(function(_cr){try{
-/* extra turn (six / kill / home): server already parked the next roll, fetch it now instead of after the move animation */
 if(_cr&&Array.isArray(_cr.tokens)&&_cr.turn===MY_SEAT&&!_cr.over&&!G.over){
 _earlyStamp='m'+Date.now();
 if(window._srvWarm)window._srvWarm();
@@ -7825,7 +7753,7 @@ _fireCommit();
 const _r=await _commitP;
 if(!_r||!Array.isArray(_r.tokens)){
 
-if(_r&&_r.why==='frozen'){showToast("❄️ Opponent ne is token ko Freeze kar diya — move cancel hui, dusra token chuno");try{_forceResyncGame('move-frozen');}catch(e){}}
+if(_r&&_r.why==='frozen'){showToast("❄️ Opponent froze this token. Move cancelled, choose another token.");try{_forceResyncGame('move-frozen');}catch(e){}}
 else showToast("Sync error — reconnecting...");
 return false;
 }
@@ -7848,7 +7776,7 @@ const capturedPids=new Set();
 const _spawnBonusActive=!!(G.pMeta&&G.pMeta[pid]&&G.pMeta[pid].spawnBonus);
 if(G.pMeta&&G.pMeta[pid])G.pMeta[pid].spawnBonus=false;
 async function checkAndPit(cellKey,movingPid,movingTid,isSpawn,actorSeat){
-const _ps=(actorSeat!=null?actorSeat:movingPid); // points / kill streak belong to the player whose turn it is
+const _ps=(actorSeat!=null?actorSeat:movingPid);
 const ownOnCell=G.tokens.filter(o=>{
 if(o.pid!==movingPid||o.step===0||o.step>=STEP_DONE)return false;
 if(o.tid===movingTid)return false;
@@ -8031,8 +7959,6 @@ movedPid:pid,
 movedTid:tid,
 auto:_wasAutoMove
 },pid).catch(e=>{_animating=false;});};
-/* MOVE-IN-COMMIT: new server writes action/moves/dice inside the same atomic commit as turn+tokens (response mw:1) ->
-   do NOT push it again. Old server / failed commit -> push as before (receivers dedupe by mid, hold logic covers the race). */
 if(_isOnlineMove&&_commitP){_commitP.then(function(_mr){},function(){});}
 else _pushMoveMsg();
 }catch(err){
