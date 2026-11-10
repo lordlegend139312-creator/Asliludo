@@ -115,7 +115,7 @@ throw e;
 })();
 (function(){
 function sa(a){if(a instanceof Error)return {message:a.message,code:a.code,stack:cl(a.stack,600)};if(a&&typeof a==='object'){try{return JSON.parse(JSON.stringify(a));}catch(e){return String(a);}}return a;}
-['log','warn','error','info'].forEach(function(lv){var o=console[lv];console[lv]=function(){try{o.apply(console,arguments);}catch(e){}try{window._dbgLog('CONSOLE_'+lv.toUpperCase(),[].slice.call(arguments).map(sa));}catch(e){}};});
+['log','warn','error','info'].forEach(function(lv){var o=console[lv];console[lv]=function(){try{o.apply(console,arguments);}catch(e){}try{var a=[].slice.call(arguments).map(sa);if(!/firebase\/|AppCheck|app-check/i.test(cl(a,300)))window._dbgLog('CONSOLE_'+lv.toUpperCase(),a);}catch(e){}};});
 })();
 window.addEventListener('error',function(e){try{window._dbgLog('WINDOW_ERROR',{msg:e.message,src:e.filename,line:e.lineno,col:e.colno});}catch(x){}});
 document.addEventListener('visibilitychange',function(){try{window._dbgLog('C_VIS',{h:document.hidden?1:0});}catch(e){}if(document.hidden)F();});
