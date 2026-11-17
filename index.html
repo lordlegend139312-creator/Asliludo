@@ -3746,6 +3746,59 @@ window._rotObs.observe(_bwo,{attributes:true,attributeFilter:['style','class']})
 setTimeout(function(){try{window._rotObs.disconnect();}catch(_x){}},6000);
 }
 window._rotSnapPrev=null;window._rotSnap('afterApply');
+try{
+window._tokSnap=function(label){
+try{
+const bw=document.getElementById('board-wrap'),tl=document.getElementById('tokens-layer');
+const ang=function(el){if(!el)return null;const m=/matrix\(([^)]+)\)/.exec(getComputedStyle(el).transform||'');if(!m)return 0;const a=m[1].split(',').map(Number);return Math.round(Math.atan2(a[1],a[0])*180/Math.PI);};
+const bAng=ang(bw);const toks=[];let bad=0;
+document.querySelectorAll('#tokens-layer .tok').forEach(function(el){
+const tA=ang(el);const abs=(((bAng+tA)%360)+540)%360-180;
+if(abs!==0)bad++;
+if(toks.length<16)toks.push([el.dataset.id||'',tA,abs,getComputedStyle(el).transitionDuration,el.getAnimations().length]);
+});
+const an=[];
+try{document.getAnimations().forEach(function(a){if(an.length>=12)return;const t=a.effect&&a.effect.target;if(!t||!bw||!bw.contains(t))return;an.push([a.constructor.name,a.transitionProperty||a.animationName||'',t.id||String(t.className).slice(0,20)||t.tagName,a.playState,Math.round(a.currentTime||0)]);});}catch(_x){}
+window._dbgLog('C_TOK_SNAP',{l:label,since:Date.now()-(window._rotStartAt||0),mySeat:MY_SEAT,deg:getBoardRotation(),tokRot:_tokenRotationDeg,boardAng:bAng,boardTr:bw?bw.style.transform:null,boardCls:bw?String(bw.className).slice(0,40):null,boardDur:bw?getComputedStyle(bw).transitionDuration:null,layerAng:ang(tl),n:toks.length,bad:bad,k:'id,tokAng,absAng,transDur,nAnim',toks:toks,anims:an});
+}catch(_x){}
+};
+[0,100,300,800,1500,4000,8000].forEach(function(ms){setTimeout(function(){window._tokSnap('t'+ms);},ms);});
+if(window._tokAnimH){['transitionrun','animationstart'].forEach(function(n){document.removeEventListener(n,window._tokAnimH,true);});}
+window._tokAnimN=0;
+window._tokAnimH=function(e){
+try{
+if(window._tokAnimN>=30)return;
+const bw=document.getElementById('board-wrap'),t=e.target;
+if(!bw||!t||!bw.contains(t))return;
+window._tokAnimN++;
+window._dbgLog('C_TOK_ANIM',{ev:e.type,prop:e.propertyName||e.animationName||'',tgt:t.id||String(t.className).slice(0,24)||t.tagName,tid:(t.dataset&&t.dataset.id)||null,mySeat:MY_SEAT,since:Date.now()-(window._rotStartAt||0)});
+}catch(_x){}
+};
+['transitionrun','animationstart'].forEach(function(n){document.addEventListener(n,window._tokAnimH,true);});
+setTimeout(function(){['transitionrun','animationstart'].forEach(function(n){document.removeEventListener(n,window._tokAnimH,true);});},8000);
+if(window._tokObs)window._tokObs.disconnect();
+const _tl=document.getElementById('tokens-layer');
+if(_tl&&window.MutationObserver){
+window._tokLogN=0;window._tokLast={};
+window._tokObs=new MutationObserver(function(ms){
+try{
+for(let i=0;i<ms.length;i++){
+if(window._tokLogN>=40)return;
+const el=ms[i].target;
+if(!el||!el.classList||!el.classList.contains('tok'))continue;
+const mm=/rotate\(([-\d.]+)deg\)/.exec(el.style.transform||'');
+const rot=mm?+mm[1]:null;
+if(window._tokLast[el.dataset.id]===rot)continue;
+window._tokLast[el.dataset.id]=rot;window._tokLogN++;
+const bwx=document.getElementById('board-wrap');
+window._dbgLog('C_TOK_ROT',{id:el.dataset.id,seat:+String(el.dataset.id||'').split('-')[0],mySeat:MY_SEAT,boardDeg:getBoardRotation(),rot:rot,tokRot:_tokenRotationDeg,board:bwx?bwx.style.transform:null,tr:el.style.transition||'',dur:getComputedStyle(el).transitionDuration,nAnim:el.getAnimations().length,anim:el.dataset.animating||null,since:Date.now()-(window._rotStartAt||0)});
+}
+}catch(_x){}
+});
+window._tokObs.observe(_tl,{attributes:true,subtree:true,attributeFilter:['style']});
+setTimeout(function(){try{window._tokObs.disconnect();}catch(_x){}},8000);
+}
+}catch(_x){}
 [400,1500,4000,8000].forEach(function(ms){setTimeout(function(){window._rotSnap('t'+ms);},ms);});
 try{const _vv=window.visualViewport;const _vf=function(){try{if(Date.now()-window._rotStartAt<12000)window._rotSnap('vpchange');}catch(_x){}};if(_vv)_vv.addEventListener('resize',_vf);window.addEventListener('orientationchange',_vf);setTimeout(function(){try{if(_vv)_vv.removeEventListener('resize',_vf);window.removeEventListener('orientationchange',_vf);}catch(_x){}},12000);}catch(_x){}
 }catch(_x){}
@@ -3753,6 +3806,7 @@ try{window._applyMatchMute();}catch(e){}
 setSyncStatus("ok");
 refreshUI();
 renderTokens();
+try{_doRenderTokens();}catch(_x){} // draw tokens in the same frame as the board, not a frame later
 
 
 _gameLoaded=true;
