@@ -68,78 +68,6 @@ window._srv=function(t,b,o){
   };
 })();
 
-/*T1*/
-(function(){
-var Q=[],B=0,FL=0,D='',R='',LS='',S={},U=[];
-function cl(v,n){try{var s=typeof v==='string'?v:JSON.stringify(v);return s&&s.length>n?s.slice(0,n):s;}catch(e){return '?';}}
-function rc(){try{return typeof window._getROOM_CODE==='function'?window._getROOM_CODE():null;}catch(e){return null;}}
-window._dbgIsOn=function(){return true;};
-window._dbgLog=function(tag,data){
-try{
-var e={t:new Date().toISOString().slice(11,23),tag:String(tag).slice(0,48),data:data===undefined?null:JSON.parse(JSON.stringify(data))};
-var s=JSON.stringify(e);
-if(s.length>3500)e.data={_trunc:true,len:s.length,preview:s.slice(0,2800)};
-Q.push(e);if(Q.length>600)Q.splice(0,Q.length-600);
-}catch(x){}
-};
-function F(){
-if(B||!Q.length)return;
-var c=rc();if(!c||!window.auth||!window.auth.currentUser||!window._srvRaw)return;
-var take=0,used=0;
-for(var i=0;i<Q.length&&take<60;i++){var sz=JSON.stringify(Q[i]).length+2;if(take>0&&used+sz>40000)break;used+=sz;take++;}
-var batch=Q.splice(0,take);
-B=1;
-var done=function(ok){
-B=0;
-if(/^q:/.test(window._srvLastStatus||''))window._srvLastStatus=LS;
-if(!ok){FL++;if(FL<=5)Q=batch.concat(Q).slice(-600);}else FL=0;
-};
-var p;try{p=window._srvRaw('q',{c:c,es:batch});}catch(e){p=null;}
-Promise.resolve(p).then(function(r){done(!!(r&&r.ok===1));},function(){done(false);});
-}
-(function(){
-var _inner=window._srv;
-window._srv=function(t,b,o){
-if(t==='ping'||t==='dp'||t==='q')return _inner(t,b,o);
-var t0=Date.now(),id=(window._srvSeq=(window._srvSeq||0)+1),p=(b&&b.p)||{};
-try{window._dbgLog('TO_SRV_REQ',{id:id,t:t,as:p.as,reroll:p.reroll,tid:p.tid,dv:p.dv,hidden:document.hidden,waitingCommit:!!window._lastCommitP});}catch(e){}
-return _inner(t,b,o).then(function(r){
-LS=window._srvLastStatus||'';
-try{window._dbgLog('TO_SRV_RES',{id:id,t:t,ms:Date.now()-t0,ok:!!r,v:r&&r.v,why:r&&r.why,turn:r&&r.turn,over:r&&r.over,lastStatus:LS});}catch(e){}
-return r;
-},function(e){
-try{window._dbgLog('TO_SRV_THROW',{id:id,t:t,ms:Date.now()-t0,msg:e&&e.message});}catch(e2){}
-throw e;
-});
-};
-})();
-(function(){
-function sa(a){if(a instanceof Error)return {message:a.message,code:a.code,stack:cl(a.stack,600)};if(a&&typeof a==='object'){try{return JSON.parse(JSON.stringify(a));}catch(e){return String(a);}}return a;}
-['log','warn','error','info'].forEach(function(lv){var o=console[lv];console[lv]=function(){try{o.apply(console,arguments);}catch(e){}try{var a=[].slice.call(arguments).map(sa);if(!/firebase\/|AppCheck|app-check/i.test(cl(a,300)))window._dbgLog('CONSOLE_'+lv.toUpperCase(),a);}catch(e){}};});
-})();
-window.addEventListener('error',function(e){try{window._dbgLog('WINDOW_ERROR',{msg:e.message,src:e.filename,line:e.lineno,col:e.colno});}catch(x){}});
-document.addEventListener('visibilitychange',function(){try{window._dbgLog('C_VIS',{h:document.hidden?1:0});}catch(e){}if(document.hidden)F();});
-window.addEventListener('online',function(){try{window._dbgLog('C_NET',{on:1});}catch(e){}});
-window.addEventListener('offline',function(){try{window._dbgLog('C_NET',{on:0});}catch(e){}});
-function off(){while(U.length){try{U.pop()();}catch(e){}}}
-function on(c){
-var d=window.db,base='rooms/'+c+'/';
-function L(path,tag,fn){var r=d.ref(base+path),cb=function(sn){try{var v=fn(sn.val());var s=cl(v,300);if(s!==S[tag]){S[tag]=s;window._dbgLog(tag,v);}}catch(e){}};r.on('value',cb);U.push(function(){try{r.off('value',cb);}catch(e){}});}
-L('game','C_DB',function(g){g=g||{};return {turn:g.turn,rolled:g.rolled,dv:g.diceVal,over:g.over,ver:g.ver,am:g.afkMiss};});
-L('afkSeats','C_DB_AFK',function(v){return v;});
-L('botVotes','C_DB_BV',function(v){var o={};if(v)for(var k in v){o[k]=(v[k]&&typeof v[k]==='object')?Object.keys(v[k]).length:1;}return o;});
-}
-function T(){
-try{
-var c=rc();
-if(c!==R){R=c;window._dbgLog('C_ROOM',{c:c});}
-if(!c){if(D){off();D='';}return;}
-if(D!==c&&window.db){off();S={};D=c;on(c);}
-}catch(e){}
-}
-setInterval(F,700);setInterval(T,400);
-})();
-/*T1END*/
 window._srvWarm=function(){
 try{
 var _n=Date.now();
@@ -215,7 +143,7 @@ entry.loading=false;
 const _lastAt={};let _burstT=0,_burstN=0,_burstNames=[];
 function play(name,opts){
 if(_muted)return;
-if(document.hidden){try{const _n=performance.now();window._sfxHL=window._sfxHL||{};if(!window._sfxHL[name]||_n-window._sfxHL[name]>800){window._sfxHL[name]=_n;window._dbgLog&&window._dbgLog('SFX_SKIP_HIDDEN',{n:name});}}catch(e){}return;}
+if(document.hidden)return;
 const entry=_buffers[name];
 if(!entry){return;}
 const ctx=_getCtx();
@@ -227,7 +155,6 @@ return;
 }
 if(_lastAt[name]!=null&&asked-_lastAt[name]<35){return;}
 _lastAt[name]=asked;
-try{window._dbgLog&&window._dbgLog('SFX_PLAY',{n:name,d:(opts&&opts.delay)||0,s:(new Error().stack||'').split('\n').slice(2,5).map(function(x){return x.trim().slice(0,70);}).join(' | ')});}catch(e){}
 if(asked-_burstT>1000){_burstT=asked;_burstN=0;_burstNames=[];}
 _burstN++;_burstNames.push(name);
 if(_burstN===6)void 0;
@@ -471,7 +398,7 @@ say('Unable to connect. Please reload the page.',true);
 <div id="win"><canvas id="win-confetti-canvas"></canvas><div id="win-content"><div id="win-trophy">🏆</div><h1 id="win-msg">You Win!</h1><div id="win-podium"></div><button id="btn-play-again">Back</button></div>
 </div>
 <div id="guide-overlay" role="dialog" aria-modal="true" aria-label="Guide"><div id="guide-header"><button id="guide-back" class="guide-icon-btn guide-hidden" type="button" aria-label="Back to topics"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f0f0ff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button><div id="guide-title">Guide</div><button id="guide-close" class="guide-icon-btn" type="button" aria-label="Close guide"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f0f0ff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div><div id="guide-body"></div></div>
-<div id="toast"></div><div id="signin-debug-box" style="display:none;position:fixed;left:12px;right:12px;bottom:90px;z-index:99998;background:var(--surface2);border:1.5px solid var(--gold);border-radius:12px;padding:12px 14px;box-shadow:0 8px 30px rgba(0,0,0,.6);"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;"><span style="color:var(--gold);font-size:11px;font-weight:800;font-family:'Rajdhani',sans-serif;letter-spacing:1px;">SIGN-IN DEBUG INFO</span><button onclick="document.getElementById('signin-debug-box').style.display='none'" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:2px 8px;line-height:1;">×</button></div><div id="signin-debug-text" style="color:var(--text);font-size:11px;font-family:monospace;white-space:pre-wrap;word-break:break-word;line-height:1.5;max-height:200px;overflow-y:auto;"></div><button onclick="try{navigator.clipboard.writeText(document.getElementById('signin-debug-text').textContent);showToast('📋 Copied!');}catch(e){}" style="margin-top:8px;width:100%;padding:9px 0;font-size:11px;font-weight:800;border:none;border-radius:8px;background:var(--gold);color:#1a1204;cursor:pointer;">Copy to send to dev</button></div>
+<div id="toast"></div>
 <div id="chat-panel"><div id="chat-header"><button id="chat-bubble-mute" type="button" title="Mute chat popups">Mute 🔔</button><div id="chat-tabs"><button id="chat-tab-general" class="chat-tab active" type="button">General<span class="chat-tab-dot" id="chat-tab-dot-general"></span></button><button id="chat-tab-team" class="chat-tab" type="button">Team<span class="chat-tab-dot" id="chat-tab-dot-team"></span></button></div><button id="chat-close" type="button">✕</button></div><div id="chat-messages"></div><div id="chat-messages-team"></div><div id="chat-reply-bar"><div id="chat-reply-bar-line"></div><div id="chat-reply-bar-content"><div id="chat-reply-bar-name"></div><div id="chat-reply-bar-text"></div></div><button id="chat-reply-cancel" onclick="window.clearReply()">✕</button></div><div id="chat-input-row"><input id="chat-input" name="chatmsg" type="text" inputmode="text" maxlength="120" placeholder="Say something..." autocomplete="off" autocorrect="off" data-lpignore="true" data-1p-ignore="true" data-form-type="other"><button id="chat-send">➤</button></div>
 </div>
 <script>(function(){
@@ -538,7 +465,7 @@ function _onSrvOffset(snap){try{const v=snap&&snap.val();if(typeof v==='number'&
 const _old=_serverOffset;_serverOffset=v;
 try{if(Math.abs(v-_old)>300&&typeof window._stampRawTs==='number'&&window._stampRawTs>0&&typeof G!=='undefined'&&G&&typeof G.timestamp==='number'){
 const _nt=_srvTsToLocal(window._stampRawTs);
-if(Math.abs(_nt-G.timestamp)>300){try{window._dbgLog('TO_OFFSET_RESTAMP',{oldOffset:_old,newOffset:v,oldTs:G.timestamp,newTs:_nt,gTurn:G.turn});}catch(_x){}G.timestamp=_nt;_lastTimerTurn=-1;}
+if(Math.abs(_nt-G.timestamp)>300){G.timestamp=_nt;_lastTimerTurn=-1;}
 }}catch(e2){}
 }}catch(e){}}
 function _bindServerOffset(){try{if(_srvOffRef){try{_srvOffRef.off('value',_onSrvOffset);}catch(e){}}_srvOffRef=db.ref('.info/serverTimeOffset');_srvOffRef.on('value',_onSrvOffset);}catch(e){}}
@@ -632,13 +559,11 @@ await _onGoogleSignedIn(result2.user);
 }catch(err2){
 const _dbgInfo='GOOGLE_SIGNIN_RESTORE_FAILED\ncode: '+(err2&&err2.code)+'\nmessage: '+(err2&&err2.message);
 console.error(_dbgInfo);
-if(typeof window.showSignInDebug==='function')window.showSignInDebug(_dbgInfo);
 showToast("❌ Sign-in failed. Try again.");
 }
 }else{
 const _dbgInfo='GOOGLE_SIGNIN_FAILED\ncode: '+(err&&err.code)+'\nmessage: '+(err&&err.message);
 console.error(_dbgInfo);
-if(typeof window.showSignInDebug==='function')window.showSignInDebug(_dbgInfo);
 if(err&&err.code==='auth/unauthorized-domain'){
 showToast("❌ Sign-in failed. Try again.");
 }else{
@@ -766,7 +691,6 @@ if(!_isGoogleProv){
 
 const _dbgInfo='SIGNIN_SKIPPED_NOT_GOOGLE_PROVIDER\nuid: '+(user&&user.uid)+'\nproviders: '+JSON.stringify(user&&user.providerData);
 console.warn(_dbgInfo);
-if(typeof window.showSignInDebug==='function')window.showSignInDebug(_dbgInfo);
 showToast("⚠️ Sign-in didn't complete. Please try again.");
 return;
 }
@@ -777,7 +701,6 @@ try{snap=await ref.once('value');}
 catch(e){
 const _dbgInfo='PROFILE_READ_FAILED\ncode: '+(e&&e.code)+'\nmessage: '+(e&&e.message);
 console.error(_dbgInfo);
-if(typeof window.showSignInDebug==='function')window.showSignInDebug(_dbgInfo);
 showToast("❌ Couldn't load profile. Please try again.");
 return;
 }
@@ -911,7 +834,6 @@ let _connRef=db.ref(".info/connected");
 let _wasConnected=false;
 function _onConnChange(snap){
 const connected=snap.val()===true;
-try{window._dbgLog('DB_CONNECTED_CHANGE',{connected,wasConnected:_wasConnected,uid:(auth&&auth.currentUser)?auth.currentUser.uid:null,roomCode:ROOM_CODE,mySeat:MY_SEAT});}catch(_x){}
 
 const lobbyDot=document.getElementById("lobby-conn-dot");
 const lobbyTxt=document.getElementById("lobby-conn-text");
@@ -965,7 +887,6 @@ _resyncInFlight=true;
 try{
 const gSnap=await gameRef.once('value').catch(()=>null);
 const gData=gSnap&&gSnap.val();
-try{window._dbgLog('BH_RESYNC_FETCHED',{reason,srv:{turn:gData&&gData.turn,rolled:gData&&gData.rolled,dice:gData&&gData.diceVal,by:gData&&gData.actionBy,act:gData&&gData.action,ver:gData&&gData.ver,tk:gData&&Array.isArray(gData.tokens)?gData.tokens.map(function(t){return t.pid+''+t.tid+':'+t.step;}).join(','):null},willApply:!!(gData&&!_resyncUnsafeNow()&&_syncAnimPending.length===0&&(!G||!G.over)),ctx:_bhCtx()});}catch(_x){}
 
 
 
@@ -988,13 +909,11 @@ if(!_lastChatKey||k>_lastChatKey){appendChatMessage(cdata[k],false);_lastChatKey
 scrollChatBottom();
 }
 }
-try{window._dbgLog('FORCE_RESYNC',{reason,roomCode:ROOM_CODE});}catch(_x){}
 
 }catch(e){}
 _resyncInFlight=false;
 }
 document.addEventListener('visibilitychange',function(){
-try{window._dbgLog('TO_VISIBILITY',{hidden:document.hidden,MY_SEAT,gTurn:G.turn,gRolled:G.rolled,gWaiting:G.waiting,rolling:_rolling,animating:_animating,botActing:_botActing,elder:amIElderPlayer()});}catch(_x){}
 
 if(document.hidden){_lastHiddenAt=Date.now();}
 else if(_lastHiddenAt&&(Date.now()-_lastHiddenAt>3000)){
@@ -1716,28 +1635,10 @@ if(t.colors&&t.colors[seat])return t.colors[seat];
 const ov=window._colorAssign||window._lobbyColorAssign;
 return(ov&&ov[seat])||SEAT_COLOR[seat]||"#888";
 }
-window._rotSnap=function(label){
-try{
-const R=function(e){if(!e)return null;const b=e.getBoundingClientRect();return [Math.round(b.left),Math.round(b.top),Math.round(b.width),Math.round(b.height)];};
-const bw=document.getElementById('board-wrap'),gw=document.getElementById('game-wrap'),bd=document.getElementById('board'),tl=document.getElementById('tokens-layer');
-let ang=null,cs=null;
-if(bw){cs=getComputedStyle(bw).transform;const m=cs&&cs.match(/matrix\(([^)]+)\)/);if(m){const a=m[1].split(',').map(Number);ang=Math.round(Math.atan2(a[1],a[0])*180/Math.PI);}}
-const lc=document.querySelector('.lc-inner');
-const bc=bw?(function(){const b=bw.getBoundingClientRect();return [b.left+b.width/2,b.top+b.height/2];})():[0,0];
-const side=function(pid){const e=document.getElementById('pbox-'+pid);if(!e)return null;const b=e.getBoundingClientRect();const dx=b.left+b.width/2-bc[0],dy=b.top+b.height/2-bc[1];return (Math.abs(dy)>=Math.abs(dx)?(dy>0?'B':'T'):(dx>0?'R':'L'));};
-const sides={};[0,1,2,3].forEach(function(i){const v=side(i);if(v)sides[i]=v;});
-const vv=window.visualViewport;
-const o={l:label,sinceStartMs:Date.now()-(window._rotStartAt||0),mySeat:MY_SEAT,slot:MY_SLOT,layout:SEAT_LAYOUT_ACTIVE,n:(typeof NUM_PLAYERS!=='undefined')?NUM_PLAYERS:null,host:(typeof IS_HOST!=='undefined')?IS_HOST:null,degWant:getBoardRotation(),tokRot:_tokenRotationDeg,pnp:!!window._pnpMode,cpu:!!window._cpuMode,theme:(typeof _boardThemeId!=='undefined')?_boardThemeId:null,angNow:ang,inline:bw?bw.style.transform:null,cls:bw?String(bw.className).slice(0,30):null,trans:bw?getComputedStyle(bw).transitionProperty+' '+getComputedStyle(bw).transitionDuration:null,lcInline:lc?lc.style.transform:null,gw:R(gw),bw:R(bw),bd:R(bd),tl:R(tl),pboxSide:sides,iw:innerWidth,ih:innerHeight,vv:vv?[Math.round(vv.width),Math.round(vv.height),+vv.scale.toFixed(2),Math.round(vv.offsetLeft),Math.round(vv.offsetTop)]:null,dpr:window.devicePixelRatio,ori:(screen.orientation&&screen.orientation.type)||null,hidden:document.hidden,zoom:+(document.documentElement.clientWidth/innerWidth).toFixed(2)};
-const prev=window._rotSnapPrev;window._rotSnapPrev=o;
-if(prev){const ch=[];['mySeat','slot','degWant','angNow','inline','cls','theme','n'].forEach(function(k){if(JSON.stringify(prev[k])!==JSON.stringify(o[k]))ch.push(k+':'+JSON.stringify(prev[k])+'>'+JSON.stringify(o[k]));});if(JSON.stringify(prev.pboxSide)!==JSON.stringify(o.pboxSide))ch.push('pboxSide');if(JSON.stringify(prev.bw)!==JSON.stringify(o.bw))ch.push('bwRect');o.changed=ch;}
-window._dbgLog('C_ROT_SNAP',o);
-}catch(e){try{window._dbgLog('C_ROT_SNAP_ERR',{l:label,m:String(e&&e.message)});}catch(_x){}}
-};
 function applyBoardRotation(noAnim){
 const deg=getBoardRotation();
 const _rq=Date.now()<(window._rotQuietUntil||0);
 if(_rq)noAnim=true;
-try{const _b0=document.getElementById('board-wrap');window._dbgLog('C_ROT_APPLY',{deg:deg,mySeat:MY_SEAT,noAnim:!!noAnim,quiet:_rq,prev:_b0?_b0.style.transform:null,sinceStartMs:Date.now()-(window._rotStartAt||0),hidden:document.hidden,from:String(new Error().stack||'').split('\n').slice(2,4).join('|').slice(0,200)});}catch(_x){}
 const bw=document.getElementById("board-wrap");
 if(noAnim&&bw)bw.classList.add('rot-noanim');
 if(bw)bw.style.transform=`rotate(${deg}deg)`;
@@ -2212,10 +2113,8 @@ if(G.over||G.turn==null)return;
 {const _d=window._wdLast||{};const _sb=_afkSeats[G.turn]||PLAYERS[G.turn]?.isBot;const _st=_sb&&(_d.rolled===true||(_d.proxyRollBy!=null&&Number(_d.actionBy)===Number(G.turn)));if(Date.now()-_wdAt<(_st?20000:57000))return;}
 _wdBusy=true;
 const seat=G.turn;
-try{window._dbgLog('WATCHDOG_TRY',{seat,MY_SEAT,idleLocalMs:Date.now()-_wdAt,gRolled:G.rolled,rolling:_rolling,animating:_animating});}catch(_x){}
 
 const r=await window._srv('f',{c:ROOM_CODE,p:{as:(seat!==MY_SEAT?seat:undefined),wd:true}});
-try{window._dbgLog('WATCHDOG_RESULT',{seat,ok:!!r,turn:r&&r.turn});}catch(_x){}
 
 if(r){_rolling=false;_animating=false;_wdAt=Date.now();try{await _forceResyncGame('watchdog');}catch(e){}}
 else{_wdAt=Date.now()-47000;}
@@ -2231,17 +2130,15 @@ const bad=data.over!==true&&data.turn===MY_SEAT&&data.rolled===true&&dv>=1&&dv<=
 &&G.turn===MY_SEAT&&!G.rolled&&!G.waiting&&!_rolling&&!_animating&&!_syncAnimPlaying&&!window._lastCommitP&&!_rerollWindowActive;
 if(!bad){
 if(_n&&_n<12&&data&&data.over!==true&&data.turn===MY_SEAT&&data.rolled===true&&G.turn===MY_SEAT&&!G.rolled&&!G.waiting){
-try{window._dbgLog('DESYNC_RETRY_WAIT',{n:_n,rolling:_rolling,animating:_animating,syncAnim:_syncAnimPlaying,lastCommit:!!window._lastCommitP,rerollWin:!!_rerollWindowActive});}catch(_x){}
 
 setTimeout(function(){try{_recoverRolledDesync(data,_n+1);}catch(e){}},1000);return;
 }
 _desyncSeen=null;return;
 }
 const key=String(data.timestamp||'')+':'+dv,now=Date.now();
-if(!_desyncSeen||_desyncSeen.key!==key){_desyncSeen={key,at:now};try{window._dbgLog('DESYNC_SEEN',{MY_SEAT,srvDice:dv,gTurn:G.turn,gRolled:G.rolled,gDice:G.diceVal,ts:data.timestamp});}catch(_x){}setTimeout(function(){try{_recoverRolledDesync(data,1);}catch(e){}},1600);return;}
+if(!_desyncSeen||_desyncSeen.key!==key){_desyncSeen={key,at:now};setTimeout(function(){try{_recoverRolledDesync(data,1);}catch(e){}},1600);return;}
 if(now-_desyncSeen.at<1500)return;
 _desyncSeen=null;
-try{window._dbgLog('DESYNC_RECOVER_ROLLED',{MY_SEAT,srvDice:dv,gTurn:G.turn,gRolled:G.rolled});}catch(_x){}
 
 doRoll(MY_SEAT);
 }catch(e){}
@@ -2255,8 +2152,7 @@ const _prev=window._lastCommitP;
 await _waitRollCommit();
 if(_prev)await Promise.race([_prev.catch(function(){}),new Promise(function(r){setTimeout(r,15000);})]);
 const _dm=window._dNoMove;
-if(_dm&&_dm.pid===pid&&Date.now()-_dm.at<120000&&_dm.r&&typeof _dm.r.turn==='number'){window._dNoMove=null;try{window._dbgLog('C_SKIP_REUSED',{pid:pid,ageMs:Date.now()-_dm.at});}catch(_x){}return _dm.r;}
-try{window._dbgLog('C_SKIP_SENT',{pid:pid,hadDm:!!_dm,dmPid:_dm?_dm.pid:null,dmAgeMs:_dm?Date.now()-_dm.at:null,gTurn:G.turn});}catch(_x){}
+if(_dm&&_dm.pid===pid&&Date.now()-_dm.at<120000&&_dm.r&&typeof _dm.r.turn==='number'){window._dNoMove=null;return _dm.r;}
 const r=await window._srv('s',{c:ROOM_CODE,p:{as:(pid!==MY_SEAT?pid:undefined)}},{noWait:true});
 return (r&&typeof r.turn==='number')?r:null;
 }
@@ -2281,10 +2177,8 @@ const expTurn=G.turn;
 srvP.then(function(r){
 try{
 if(!r){
-try{window._dbgLog('SKIP_COMMIT_SERVER_FAILED',{optimistic:true});}catch(_x){}
 
 showToast("Sync error — reconnecting...");
-try{window._dbgLog('C_SKIP_FAIL_DETAIL',{gTurn:G.turn,expTurn:expTurn,lastStatus:window._srvLastStatus});}catch(_x){}
 _forceResyncGame('skip-commit-failed');
 return;
 }
@@ -2297,7 +2191,6 @@ renderTokens();_renderFrozenVisuals();_renderAegisVisuals();syncUI();
 }
 function _reconcileOptimisticMove(r,expTurn,pid,tid,v){
 try{
-try{window._dbgLog('BH_RECON_IN',{pid,tid,v,expTurn,okTokens:!!(r&&Array.isArray(r.tokens)),why:r&&r.why,srvTurn:r&&r.turn,ctx:_bhCtx()});}catch(_x){}
 
 if(!r||!Array.isArray(r.tokens)){
 
@@ -2313,7 +2206,6 @@ const _sig=a=>a.map(t=>t.pid+'-'+t.tid+':'+t.step).sort().join(',');
 const _tokDiff=_sig(r.tokens)!==_sig(G.tokens);
 const _turnDiff=(typeof r.turn==='number'&&r.turn!==G.turn);
 if(!_tokDiff&&!_turnDiff)return;
-try{window._dbgLog('MOVE_OPTIMISTIC_MISMATCH',{pid,tid,v,tokDiff:_tokDiff,turnDiff:_turnDiff,localTurn:G.turn,srvTurn:r.turn});}catch(_x){}
 
 if(_tokDiff){G.tokens=JSON.parse(JSON.stringify(r.tokens));_invalidateStackedTokenCache(G.tokens);}
 if(_turnDiff){G.turn=r.turn;G.rolled=false;G.waiting=false;G.diceVal=null;}
@@ -3012,7 +2904,6 @@ if(_cachedElderOnlineSet===onlineKey&&_cachedElderResult!==null){
 return _cachedElderResult;
 }
 _cachedElderOnlineSet=onlineKey;
-try{window._dbgLog('TO_ELDER_RECOMPUTE',{MY_SEAT,excludeSeat:excludeSeat??null,online:[..._onlineSeats],visible:[..._visibleSeats],forced:_forcedElderSeat});}catch(_x){}
 
 
 
@@ -3078,20 +2969,17 @@ throw lastErr;
 async function _joinRoomAsMember(code){
 try{
 const uid=window.auth.currentUser.uid;
-try{window._dbgLog('JOIN_MEMBER_START',{code,uid,dbConnectedNow:_wasConnected});}catch(_x){}
 
 const connected=await _waitForDbConnected(4000);
-try{window._dbgLog('JOIN_MEMBER_CONNECTED_WAIT',{code,uid,connected});}catch(_x){}
 
 const memberRef=db.ref(`rooms/${code}/memberUids/${uid}`);
 const snap=await memberRef.once('value').catch(()=>null);
 if(snap&&snap.exists()){
-try{window._dbgLog('JOIN_MEMBER_ALREADY_MEMBER',{code,uid});}catch(_x){}
 
 return;
 }
 await _retryAsync('JOIN_MEMBER_UPDATE',async()=>{const x=await window._srv('j',{c:code,p:{name:MY_NAME,photo:(MY_PROFILE&&MY_PROFILE.photoURL)||''}});if(!x||!x.ok)throw new Error('join-denied');return x;},3,900);
-}catch(e){try{window._dbgLog('JOIN_MEMBER_FAILED',{code:e.code,message:e.message});}catch(_x){}console.error('JOIN_MEMBER_FAILED',{code:e.code,message:e.message});}
+}catch(e){console.error('JOIN_MEMBER_FAILED',{code:e.code,message:e.message});}
 }
 function _bindPresence(code,seat){
 
@@ -3176,10 +3064,6 @@ el._hideTimer=setTimeout(()=>{el.classList.remove("show");},dur);
 }
 
 
-window.showSignInDebug=function(text){
-
-return;
-};
 function setSyncStatus(status){
 const dot=document.getElementById("sync-dot");
 const txt=document.getElementById("sync-text");
@@ -3288,7 +3172,7 @@ if(!_createRes||!_createRes.code){console.error('TO_CREATE_ROOM_FAILED',{res:_cr
 const code=_createRes.code;
 NUM_PLAYERS=numPlayers;
 IS_HOST=true;
-MY_SEAT=_createRes.seat;try{window._dbgLog('C_ROT_SEAT',{src:'create',seat:MY_SEAT});}catch(_x){}
+MY_SEAT=_createRes.seat;
 ROOM_CODE=code;
 roomRef=db.ref(`rooms/${code}`);
 gameRef=db.ref(`rooms/${code}/game`);
@@ -3350,7 +3234,7 @@ _jr=(_js===400||_js===403||_js===409)?null:await _retryAsync('JOIN_SEAT',async()
 }
 if(!_jr||_jr.st!=='waiting'){ROOM_CODE=null;roomRef=null;gameRef=null;playersRef=null;showToast("Couldn't join — room not available");return;}
 if(_alreadyIn)showToast("You are already seated in this room (same login on another tab). Rejoining your seat.",4000);
-MY_SEAT=_jr.seat;try{window._dbgLog('C_ROT_SEAT',{src:'join',seat:MY_SEAT});}catch(_x){}
+MY_SEAT=_jr.seat;
 NUM_PLAYERS=_jr.np;
 const rData={numPlayers:_jr.np,teamMode:_jr.tm,colorAssign:_jr.ca,createdAt:_jr.ct};
 _bindPresence(code,MY_SEAT);
@@ -3397,7 +3281,6 @@ const _lrCode=ROOM_CODE;
 if(!_gameStarted)window._setRoomUrl(ROOM_CODE);
 const cb1=snap=>{
 const players=(v=>{if(Array.isArray(v)){const o={};v.forEach((x,i)=>{if(x)o[i]=x});return o}return v||{}})(snap.val());
-try{window._dbgLog('PLAYERS_SNAPSHOT',{roomCode:ROOM_CODE,summary:Object.values(players).map(p=>({seat:p.seat,name:p.name,connsCount:p.conns?Object.keys(p.conns).length:0}))});}catch(_x){}
 
 updatePlayerList(players);
 const count=Object.keys(players).length;
@@ -3656,13 +3539,10 @@ let SEAT_LAYOUT_ACTIVE=[0,1,2,3];
 let _trapCache=[];
 function _myTrapsFromCache(){return _trapCache.map(k=>({cellKey:k,ownerPid:MY_SEAT}));}
 async function loadAndStartGame(){
-window._lsgN=(window._lsgN||0)+1;
-try{window._dbgLog('C_ROT_ENTER',{n:window._lsgN,mySeat:MY_SEAT,started:!!_gameStarted,lock:!!_gameStartLock,hidden:document.hidden,from:String(new Error().stack||'').split('\n').slice(2,4).join('|').slice(0,200)});}catch(_x){}
 const snap=await playersRef.once('value');
 const playersData=(v=>{if(Array.isArray(v)){const o={};v.forEach((x,i)=>{if(x)o[i]=x});return o}return v||{}})(snap.val());
 const gSnap=await gameRef.once('value');
 const gData=gSnap.val()||{};
-console.log('[LOAD-DEBUG]',{turn:gData.turn,tokensCount:(gData.tokens||[]).length,hasProgress:(gData.tokens||[]).some(t=>t&&t.step>0)});
 SEAT_LAYOUT_ACTIVE=gData.seatLayout||SEAT_LAYOUTS[NUM_PLAYERS]||[0,1,2,3];
 window._teamMode=(NUM_PLAYERS===4)&&(gData.teamMode===true);
 
@@ -3735,73 +3615,8 @@ buildPlayers();
 Object.keys(_timerExpireCount).forEach(k=>delete _timerExpireCount[k]);
 _botVotes={};
 PLAYERS.forEach(p=>{if(p.active)renderSeatVisuals(p.id);});
-window._rotStartAt=Date.now();window._rotQuietUntil=Date.now()+4000;
+window._rotQuietUntil=Date.now()+4000;
 applyBoardRotation(true);
-try{
-if(window._rotObs)window._rotObs.disconnect();
-const _bwo=document.getElementById('board-wrap');
-if(_bwo&&window.MutationObserver){
-window._rotObs=new MutationObserver(function(){try{window._dbgLog('C_ROT_STYLE',{t:_bwo.style.transform,cls:String(_bwo.className).slice(0,40),sinceStartMs:Date.now()-window._rotStartAt});}catch(_x){}});
-window._rotObs.observe(_bwo,{attributes:true,attributeFilter:['style','class']});
-setTimeout(function(){try{window._rotObs.disconnect();}catch(_x){}},6000);
-}
-window._rotSnapPrev=null;window._rotSnap('afterApply');
-try{
-window._tokSnap=function(label){
-try{
-const bw=document.getElementById('board-wrap'),tl=document.getElementById('tokens-layer');
-const ang=function(el){if(!el)return null;const m=/matrix\(([^)]+)\)/.exec(getComputedStyle(el).transform||'');if(!m)return 0;const a=m[1].split(',').map(Number);return Math.round(Math.atan2(a[1],a[0])*180/Math.PI);};
-const bAng=ang(bw);const toks=[];let bad=0;
-document.querySelectorAll('#tokens-layer .tok').forEach(function(el){
-const tA=ang(el);const abs=(((bAng+tA)%360)+540)%360-180;
-if(abs!==0)bad++;
-if(toks.length<16)toks.push([el.dataset.id||'',tA,abs,getComputedStyle(el).transitionDuration,el.getAnimations().length]);
-});
-const an=[];
-try{document.getAnimations().forEach(function(a){if(an.length>=12)return;const t=a.effect&&a.effect.target;if(!t||!bw||!bw.contains(t))return;an.push([a.constructor.name,a.transitionProperty||a.animationName||'',t.id||String(t.className).slice(0,20)||t.tagName,a.playState,Math.round(a.currentTime||0)]);});}catch(_x){}
-window._dbgLog('C_TOK_SNAP',{l:label,since:Date.now()-(window._rotStartAt||0),mySeat:MY_SEAT,deg:getBoardRotation(),tokRot:_tokenRotationDeg,boardAng:bAng,boardTr:bw?bw.style.transform:null,boardCls:bw?String(bw.className).slice(0,40):null,boardDur:bw?getComputedStyle(bw).transitionDuration:null,layerAng:ang(tl),n:toks.length,bad:bad,k:'id,tokAng,absAng,transDur,nAnim',toks:toks,anims:an});
-}catch(_x){}
-};
-[0,100,300,800,1500,4000,8000].forEach(function(ms){setTimeout(function(){window._tokSnap('t'+ms);},ms);});
-if(window._tokAnimH){['transitionrun','animationstart'].forEach(function(n){document.removeEventListener(n,window._tokAnimH,true);});}
-window._tokAnimN=0;
-window._tokAnimH=function(e){
-try{
-if(window._tokAnimN>=30)return;
-const bw=document.getElementById('board-wrap'),t=e.target;
-if(!bw||!t||!bw.contains(t))return;
-window._tokAnimN++;
-window._dbgLog('C_TOK_ANIM',{ev:e.type,prop:e.propertyName||e.animationName||'',tgt:t.id||String(t.className).slice(0,24)||t.tagName,tid:(t.dataset&&t.dataset.id)||null,mySeat:MY_SEAT,since:Date.now()-(window._rotStartAt||0)});
-}catch(_x){}
-};
-['transitionrun','animationstart'].forEach(function(n){document.addEventListener(n,window._tokAnimH,true);});
-setTimeout(function(){['transitionrun','animationstart'].forEach(function(n){document.removeEventListener(n,window._tokAnimH,true);});},8000);
-if(window._tokObs)window._tokObs.disconnect();
-const _tl=document.getElementById('tokens-layer');
-if(_tl&&window.MutationObserver){
-window._tokLogN=0;window._tokLast={};
-window._tokObs=new MutationObserver(function(ms){
-try{
-for(let i=0;i<ms.length;i++){
-if(window._tokLogN>=40)return;
-const el=ms[i].target;
-if(!el||!el.classList||!el.classList.contains('tok'))continue;
-const mm=/rotate\(([-\d.]+)deg\)/.exec(el.style.transform||'');
-const rot=mm?+mm[1]:null;
-if(window._tokLast[el.dataset.id]===rot)continue;
-window._tokLast[el.dataset.id]=rot;window._tokLogN++;
-const bwx=document.getElementById('board-wrap');
-window._dbgLog('C_TOK_ROT',{id:el.dataset.id,seat:+String(el.dataset.id||'').split('-')[0],mySeat:MY_SEAT,boardDeg:getBoardRotation(),rot:rot,tokRot:_tokenRotationDeg,board:bwx?bwx.style.transform:null,tr:el.style.transition||'',dur:getComputedStyle(el).transitionDuration,nAnim:el.getAnimations().length,anim:el.dataset.animating||null,since:Date.now()-(window._rotStartAt||0)});
-}
-}catch(_x){}
-});
-window._tokObs.observe(_tl,{attributes:true,subtree:true,attributeFilter:['style']});
-setTimeout(function(){try{window._tokObs.disconnect();}catch(_x){}},8000);
-}
-}catch(_x){}
-[400,1500,4000,8000].forEach(function(ms){setTimeout(function(){window._rotSnap('t'+ms);},ms);});
-try{const _vv=window.visualViewport;const _vf=function(){try{if(Date.now()-window._rotStartAt<12000)window._rotSnap('vpchange');}catch(_x){}};if(_vv)_vv.addEventListener('resize',_vf);window.addEventListener('orientationchange',_vf);setTimeout(function(){try{if(_vv)_vv.removeEventListener('resize',_vf);window.removeEventListener('orientationchange',_vf);}catch(_x){}},12000);}catch(_x){}
-}catch(_x){}
 try{window._applyMatchMute();}catch(e){}
 setSyncStatus("ok");
 refreshUI();
@@ -3880,8 +3695,7 @@ const age=Date.now()-h.at;
 const busy=_animating||_syncAnimPlaying||_syncAnimPending.length>0;
 if(age<2500||(busy&&age<12000)){h.tm=setTimeout(_turnHoldTick,300);return;}
 window._TH=null;
-try{const _e=h.echo;if(_e&&_e.turn!=null&&G.turn!=null&&_e.turn!==G.turn&&typeof _e.timestamp==='number'&&typeof G.timestamp==='number'&&_e.timestamp<G.timestamp){window._dbgLog('C_TURNHOLD_DROP',{seat:h.seat,gTurn:G.turn,srvTurn:_e.turn});return;}}catch(_x){}
-try{window._dbgLog('TURNHOLD_FALLBACK_REPLAY',{ageMs:age,seat:h.seat,gTurn:G.turn,srvTurn:h.echo&&h.echo.turn});}catch(_x){}
+try{const _e=h.echo;if(_e&&_e.turn!=null&&G.turn!=null&&_e.turn!==G.turn&&typeof _e.timestamp==='number'&&typeof G.timestamp==='number'&&_e.timestamp<G.timestamp){return;}}catch(_x){}
 
 try{syncGameState(h.echo);}catch(e){}
 }
@@ -3909,32 +3723,30 @@ function syncGameState(data,_forceApply){
 if(!_gameLoaded){return;}
 _wdNote(data);
 _recoverRolledDesync(data);
-try{window._dbgLog('TO_SYNC_IN',{actionBy:data.actionBy,action:data.action,reason:data.reason,auto:data.auto,dice:data.dice??data.diceVal,srvTurn:data.turn,srvRolled:data.rolled,srvWaiting:data.waiting,ts:data.timestamp,force:!!_forceApply,MY_SEAT,gTurn:G.turn,gRolled:G.rolled,gWaiting:G.waiting,animPlaying:_syncAnimPlaying,animating:_animating,rolling:_rolling,queued:_syncAnimPending.length});}catch(_x){}
 
-if(!_forceApply&&data.actionBy===MY_SEAT){try{window._dbgLog('TO_SYNC_SKIP_OWN_ACTIONBY',{actionBy:data.actionBy,action:data.action,srvTurn:data.turn,gTurn:G.turn,gRolled:G.rolled,note:'if an elder acted FOR me (timeout) this is also skipped -> my screen never learns about it'});}catch(_x){}return;}
-if(!_forceApply&&data.actionBy!=null&&data.actionBy!==MY_SEAT&&PLAYERS[data.actionBy]?.isBot&&amIElderPlayer()){try{window._dbgLog('TO_SYNC_SKIP_BOT_ELDER',{actionBy:data.actionBy,action:data.action});}catch(_x){}return;}
+if(!_forceApply&&data.actionBy===MY_SEAT){return;}
+if(!_forceApply&&data.actionBy!=null&&data.actionBy!==MY_SEAT&&PLAYERS[data.actionBy]?.isBot&&amIElderPlayer()){return;}
 if(!_forceApply&&typeof data.timestamp==='number'&&data.actionBy!==MY_SEAT){
 const _own=window._ownCommitSrvTs||0,_mx=window._maxSeenSrvTs||0;
-if((_own&&data.timestamp<_own)||(_mx&&data.timestamp<_mx)){try{window._dbgLog('SYNC_DROP_STALE',{actionBy:data.actionBy,action:data.action,ts:data.timestamp,ownCommit:_own,maxSeen:_mx,incomingTurn:data.turn,gTurn:G.turn});}catch(_x){}return;}
+if((_own&&data.timestamp<_own)||(_mx&&data.timestamp<_mx)){return;}
 }
-if(_turnHoldCheck(data,!!_forceApply)){try{window._dbgLog('TURNHOLD_ECHO_HELD',{seat:data.actionBy,srvTurn:data.turn,gTurn:G.turn,ts:data.timestamp,animating:_animating,animPlaying:_syncAnimPlaying});}catch(_x){}return;}
+if(_turnHoldCheck(data,!!_forceApply)){return;}
 if(typeof data.timestamp==='number'&&data.timestamp>(window._maxSeenSrvTs||0))window._maxSeenSrvTs=data.timestamp;
 if(!_forceApply){
 const _dk=_syncDupKey(data);
 if(_dk){
-if(_syncSeenKeys.has(_dk)){_syncDupCount++;try{window._dbgLog('SYNC_DUP_DROPPED',{key:_dk,dupN:_syncDupCount,firstSeenAgoMs:Date.now()-_syncSeenKeys.get(_dk),gTurn:G.turn,gRolled:G.rolled,gDice:G.diceVal,srvTurn:data.turn,srvRolled:data.rolled,rolling:_rolling,MY_SEAT});}catch(_x){}return;}
+if(_syncSeenKeys.has(_dk)){_syncDupCount++;return;}
 _syncSeenKeys.set(_dk,Date.now());
 if(_syncSeenKeys.size>400){const _k0=_syncSeenKeys.keys().next().value;_syncSeenKeys.delete(_k0);}
 }
 }
-if(!_forceApply&&_midDup(data)){try{window._dbgLog('SYNC_DUP_MID_DROPPED',{actionBy:data.actionBy,mid:data.mid,srvTurn:data.turn,gTurn:G.turn});}catch(_x){}return;}
+if(!_forceApply&&_midDup(data)){return;}
 const _rawDice=(data.rolled===true&&typeof data.diceVal==='number')?data.diceVal:(data.dice??data.diceVal);
 if(data.action==="roll"&&_rawDice!=null)_lastSeenDice[data.actionBy]=_rawDice;
 if(data.action==="move"&&_rawDice==null&&_lastSeenDice[data.actionBy]!=null){
 data={...data,dice:_lastSeenDice[data.actionBy],diceVal:_lastSeenDice[data.actionBy]};
 }
 if(_syncAnimPlaying||_animating){
-try{window._dbgLog('SYNC_RECEIVE_QUEUED',{actionBy:data.actionBy,action:data.action,dice:data.dice??data.diceVal,reason:_syncAnimPlaying?'anim_playing':'local_animating'});}catch(_x){}
 
 if(data.action==="move"){
 const ts=data.timestamp;
@@ -3987,7 +3799,6 @@ else{_syncAnimPending.push(data);_syncPendingRebuildIndex();}
 }
 return;
 }
-try{window._dbgLog('SYNC_RECEIVE_APPLY_IMMEDIATE',{actionBy:data.actionBy,action:data.action,dice:data.dice??data.diceVal});}catch(_x){}
 
 _applySyncGameState(data,_forceApply);
 }
@@ -4008,10 +3819,9 @@ if(G.timestamp!==_ts0&&_timerSeat===G.turn){try{resetTurnTimeout();}catch(e){}st
 }
 }
 function _applySyncGameStateCore(data,_forceApply){
-if(window._TH&&data&&data.turn!=null&&G.turn!=null&&data.turn!==G.turn){const _pa=data.action||data.lastAction;if(_pa!=='move'&&_pa!=='skip'&&_pa!=='noMove'&&_pa!=='skip3six'){try{window._dbgLog('TURNHOLD_TURN_PINNED',{from:data.turn,to:G.turn,action:_pa});}catch(_x){}data=Object.assign({},data,{turn:G.turn});}}
-try{if(G.rolled&&G.turn===MY_SEAT&&data&&data.turn===MY_SEAT&&data.rolled!==true&&!data.over){try{window._dbgLog('ROLLED_RESET_RISK',{action:data.action,actionBy:data.actionBy,ts:data.timestamp,force:!!_forceApply,gDice:G.diceVal,MY_SEAT,rolling:_rolling,animating:_animating,commitPending:!!window._lastCommitP});}catch(_x){}}}catch(e){}
+if(window._TH&&data&&data.turn!=null&&G.turn!=null&&data.turn!==G.turn){const _pa=data.action||data.lastAction;if(_pa!=='move'&&_pa!=='skip'&&_pa!=='noMove'&&_pa!=='skip3six'){data=Object.assign({},data,{turn:G.turn});}}
+try{if(G.rolled&&G.turn===MY_SEAT&&data&&data.turn===MY_SEAT&&data.rolled!==true&&!data.over){}}catch(e){}
 setSyncStatus("ok");
-try{window._dbgLog('SYNC_APPLY_STATE',{actionBy:data.actionBy,action:data.action,incomingTurn:data.turn,incomingDice:data.diceVal,incomingSixes:data.sixes,localSixesBefore:G.sixes,localDiceBefore:G.diceVal,localTurnBefore:G.turn,localRolledBefore:G.rolled,srvRolledIn:data.rolled,force:!!_forceApply,rollingNow:_rolling,incomingPoints:data.points,incomingInventoryForActor:data.inventory&&data.actionBy!=null?data.inventory[data.actionBy]:undefined});}catch(_x){}
 
 if(data.seatLayout){
 const changed=JSON.stringify(data.seatLayout)!==JSON.stringify(SEAT_LAYOUT_ACTIVE);
@@ -4105,7 +3915,7 @@ return;
 }
 const action=data.action||data.lastAction;
 const _srvRollFresh=(data.rolled===true&&typeof data.diceVal==='number');
-if(_srvRollFresh&&data.dice!=null&&data.dice!==data.diceVal)try{window._dbgLog('SYNC_STALE_DICE_FIELD',{action:data.action,actionBy:data.actionBy,staleDice:data.dice,srvDiceVal:data.diceVal,rolled:data.rolled});}catch(_x){}void 0;
+if(_srvRollFresh&&data.dice!=null&&data.dice!==data.diceVal)void 0;
 const dice=_srvRollFresh?data.diceVal:(data.dice??data.diceVal??(action==="move"?G.diceVal:null));
 const rolledBy=data.actionBy;
 if(action==="roll"){
@@ -4123,7 +3933,7 @@ G.sixes=data.sixes||0;
 G.waiting=(rolledBy===MY_SEAT&&G.turn===MY_SEAT&&data.waiting===true);
 try{if(G.turn===MY_SEAT&&rolledBy!==MY_SEAT)void 0;}catch(e){}
 if(G.turn===MY_SEAT&&rolledBy!==MY_SEAT){G.rolled=false;G.diceVal=null;}
-if(_kRoll){G.turn=MY_SEAT;G.rolled=true;G.waiting=_kRoll.w;G.diceVal=_kRoll.d;try{window._dbgLog('ROLL_WIPE_BLOCKED',{site:'roll',action:'roll',actionBy:data.actionBy,srvRolled:data.rolled,srvTs:data.timestamp,keptDice:_kRoll.d,keptWaiting:_kRoll.w,rolling:_rolling,animating:_animating,MY_SEAT});}catch(_x){}syncUI();_flushSyncPending();return;}
+if(_kRoll){G.turn=MY_SEAT;G.rolled=true;G.waiting=_kRoll.w;G.diceVal=_kRoll.d;syncUI();_flushSyncPending();return;}
 if(rolledBy===MY_SEAT){
 syncUI();
 _flushSyncPending();
@@ -4135,7 +3945,7 @@ if(data.waiting===true&&rolledBy!=null&&!PLAYERS[rolledBy]?.isBot)_stampRemoteTu
 const _rcA=(typeof data.srvTs==='number'&&data.timestamp===data.srvTs);
 const _rollDup=(!_rcA&&rolledBy!=null&&typeof data.srvTs==='number'&&_rollSrvSeen[rolledBy]===data.srvTs);
 if(rolledBy!=null&&typeof data.srvTs==='number'&&!_rollDup)_rollSrvSeen[rolledBy]=data.srvTs;
-if(_rollDup){try{window._dbgLog('ROLL_ANIM_DEDUPED',{seat:rolledBy,srvTs:data.srvTs,dice:dice});}catch(_x){}syncUI();_flushSyncPending();}
+if(_rollDup){syncUI();_flushSyncPending();}
 else if(dice!=null&&rolledBy!=null){
 if(PLAYERS[rolledBy]?.isBot){
 const _bd=document.getElementById('botdice-'+rolledBy);
@@ -4364,7 +4174,7 @@ const _kRoll=(_fbPrevTurn===MY_SEAT&&G.rolled===true&&data.turn===MY_SEAT&&data.
 G.rolled=false;
 G.waiting=false;
 G.diceVal=null;
-if(_kRoll){G.rolled=true;G.waiting=_kRoll.w;G.diceVal=_kRoll.d;try{window._dbgLog('ROLL_WIPE_BLOCKED',{site:'fallback',action:action,actionBy:data.actionBy,srvRolled:data.rolled,srvTs:data.timestamp,keptDice:_kRoll.d,keptWaiting:_kRoll.w,rolling:_rolling,animating:_animating,MY_SEAT});}catch(_x){}}
+if(_kRoll){G.rolled=true;G.waiting=_kRoll.w;G.diceVal=_kRoll.d;}
 G.sixes=data.sixes||0;
 _applyPlacements(data.placements);
 if(G.turn!==_fbPrevTurn||data.action==="reverse")_stampRemoteTurnWindow(data,_forceApply);
@@ -4406,7 +4216,6 @@ timestamp:(window._cpuMode||window._pnpMode?Date.now():firebase.database.ServerV
 ...extra,
 ...(extra.action==='roll'?{rollTs:Date.now()}:{})
 };
-try{window._dbgLog('SYNC_PUSH',{dNoMoveRecentMs:(window._dNoMove&&window._dNoMove.at)?(Date.now()-window._dNoMove.at):null,action:extra.action,reason:extra.reason,turn:payload.turn,dice:payload.diceVal,sixes:payload.sixes,pointsSnapshot:payload.points,inventorySnapshot:payload.inventory,trapsCount:(payload.traps||[]).length,aegisCount:(payload.aegisShields||[]).length,frozenCount:(payload.frozenTokens||[]).length});}catch(_x){}
 
 if(!gameRef){setSyncStatus("ok");return Promise.resolve();}
 if(_isOnlineRoom()){['turn','diceVal','rolled','sixes','pMeta','traps','frozenTokens','aegisShields','seatLayout','lastPurchase','lastPowerUse','lastAmbushTrigger'].forEach(k=>{delete payload[k];});}
@@ -4414,7 +4223,6 @@ return gameRef.update(payload).then(()=>{
 setSyncStatus("ok");
 }).catch(e=>{
 setSyncStatus("err");
-try{window._dbgLog('SYNC_PUSH_FAILED',{action:extra.action,message:e&&e.message,code:e&&e.code});}catch(_x){}
 
 showToast("Sync error-reconnecting...");
 });
@@ -4465,7 +4273,6 @@ try{
 if(!/^[A-Z0-9]{6}$/.test(code||''))return;
 const q=new URLSearchParams(location.search);
 q.set('j',code);
-try{window._dbgLog('C_URL_SET',{});}catch(_x){}
 history.replaceState(null,'',location.pathname+'?'+q.toString()+location.hash);
 }catch(e){}
 };
@@ -4474,7 +4281,6 @@ try{
 const q=new URLSearchParams(location.search);
 if(!q.has('j'))return;
 q.delete('j');
-try{window._dbgLog('C_URL_CLEARED',{});}catch(_x){}
 const s=q.toString();
 history.replaceState(null,'',location.pathname+(s?'?'+s:'')+location.hash);
 }catch(e){}
@@ -4645,7 +4451,6 @@ for(const c of delCodes){await _deleteWaitingRoom(c);}
 }
 function _onWaitingRoomDeleted(code){
 if(ROOM_CODE!==code||_gameStarted)return;
-try{window._dbgLog('WAITING_ROOM_DELETED',{code});}catch(_x){}
 
 clearSession(code);
 showToast('This room has been deleted.',5000);
@@ -4697,7 +4502,6 @@ const dropped=infos.filter(i=>i.s.code!==code);
 const dropCodes=new Set(dropped.map(i=>i.s.code));
 _writeSessions(_readSessions().filter(x=>!dropCodes.has(x.code)));
 checkRejoin();
-try{window._dbgLog('REJOIN_CHOSEN',{keep:code,drop:[...dropCodes]});}catch(_x){}
 
 dropped.forEach(i=>{if(i.status==='waiting'&&i.isHost)_deleteWaitingRoom(i.s.code);});
 await _rejoinSession(chosen.s);
@@ -4728,7 +4532,6 @@ _showRejoinChooser(live);
 };
 async function _rejoinSession(s){
 if(!s){return;}
-try{window._dbgLog('REJOIN_ATTEMPT_START',{code:s.code,seat:s.seat,name:s.name});}catch(_x){}
 
 
 
@@ -4747,7 +4550,7 @@ roomBase.child('abandonedAt').once('value').catch(()=>null),
 roomBase.child('lastActiveAt').once('value').catch(()=>null),
 roomBase.child('createdAt').once('value').catch(()=>null)
 ]);
-if(!statusSnap||!statusSnap.exists()){try{window._dbgLog('REJOIN_FAILED',{code:s.code,reason:'room_no_longer_exists'});}catch(_x){}showToast('Room no longer exists');clearSession(s.code);checkRejoin();return;}
+if(!statusSnap||!statusSnap.exists()){showToast('Room no longer exists');clearSession(s.code);checkRejoin();return;}
 const rData={
 status:statusSnap.val(),
 host:hostSnap&&hostSnap.val(),
@@ -4756,11 +4559,9 @@ abandonedAt:abandonedAtSnap&&abandonedAtSnap.val(),
 lastActiveAt:lastActiveAtSnap&&lastActiveAtSnap.val(),
 createdAt:createdAtSnap&&createdAtSnap.val()
 };
-try{window._dbgLog('REJOIN_ROOM_STATE_FETCHED',{code:s.code,status:rData.status,host:rData.host,abandonedAt:rData.abandonedAt,lastActiveAt:rData.lastActiveAt});}catch(_x){}
 
 if(rData.status==='waiting'&&rData.createdAt&&(Date.now()-rData.createdAt)>=15*60*1000){
 try{await window._srv('x',{c:s.code});}catch(e){}
-try{window._dbgLog('REJOIN_FAILED',{code:s.code,reason:'waiting_room_expired_15min'});}catch(_x){}
 
 showToast('Room expired — not started within 15 min');
 clearSession(s.code);
@@ -4769,7 +4570,7 @@ return;
 }
 await _joinRoomAsMember(s.code);
 if(rData.status==='waiting'){
-MY_SEAT=s.seat;try{window._dbgLog('C_ROT_SEAT',{src:'rejoin',seat:MY_SEAT});}catch(_x){}IS_HOST=(rData.host===s.seat);
+MY_SEAT=s.seat;IS_HOST=(rData.host===s.seat);
 NUM_PLAYERS=rData.numPlayers||4;
 ROOM_CODE=s.code;
 roomRef=db.ref(`rooms/${s.code}`);
@@ -4785,18 +4586,18 @@ return;
 }
 const gameSnap=await db.ref(`rooms/${s.code}/game/over`).once('value').catch(()=>null);
 const gameOver=gameSnap&&gameSnap.val()===true;
-if(gameOver){try{window._dbgLog('REJOIN_FAILED',{code:s.code,reason:'game_already_over'});}catch(_x){}showToast('That game has already ended');clearSession(s.code);checkRejoin();return;}
+if(gameOver){showToast('That game has already ended');clearSession(s.code);checkRejoin();return;}
 if(rData.abandonedAt){
 const elapsed=Date.now()-rData.abandonedAt;
-if(elapsed>=15*60*1000){try{window._dbgLog('REJOIN_FAILED',{code:s.code,reason:'room_abandoned_15min',elapsed});}catch(_x){}showToast('Room expired — everyone left');clearSession(s.code);checkRejoin();return;}
+if(elapsed>=15*60*1000){showToast('Room expired — everyone left');clearSession(s.code);checkRejoin();return;}
 }
 if(!rData.abandonedAt&&rData.lastActiveAt){
 const elapsed=Date.now()-rData.lastActiveAt;
-if(elapsed>=15*60*1000){try{window._dbgLog('REJOIN_FAILED',{code:s.code,reason:'inactive_15min',elapsed});}catch(_x){}showToast('Room expired — inactive for 15 min');clearSession(s.code);checkRejoin();return;}
+if(elapsed>=15*60*1000){showToast('Room expired — inactive for 15 min');clearSession(s.code);checkRejoin();return;}
 }
 const playerSnap=await db.ref(`rooms/${s.code}/players/${s.seat}`).once('value').catch(()=>null);
-if(!playerSnap||!playerSnap.exists()){try{window._dbgLog('REJOIN_FAILED',{code:s.code,seat:s.seat,reason:'seat_no_longer_available'});}catch(_x){}showToast('Seat no longer available');clearSession(s.code);checkRejoin();return;}
-MY_SEAT=s.seat;try{window._dbgLog('C_ROT_SEAT',{src:'rejoin',seat:MY_SEAT});}catch(_x){}IS_HOST=(rData.host===s.seat);
+if(!playerSnap||!playerSnap.exists()){showToast('Seat no longer available');clearSession(s.code);checkRejoin();return;}
+MY_SEAT=s.seat;IS_HOST=(rData.host===s.seat);
 NUM_PLAYERS=rData.numPlayers||4;
 ROOM_CODE=s.code;
 roomRef=db.ref(`rooms/${s.code}`);
@@ -4806,7 +4607,6 @@ _bindPresence(s.code,s.seat);
 _gameStarted=true;
 _gameStartLock=true;
 closeModals();
-try{window._dbgLog('REJOIN_SUCCESS_LOADING_GAME',{code:s.code,seat:s.seat,isHost:IS_HOST});}catch(_x){}
 
 showToast('🔄 Rejoining...');
 
@@ -4965,7 +4765,6 @@ if(pid!==MY_SEAT||PLAYERS[pid]?.isBot)return false;
 if(!G.inventory||!G.inventory[pid]||!(G.inventory[pid].reroll>0))return false;
 _rerollWindowActive=true;
 try{if(window._srvWarm)window._srvWarm();}catch(e){}
-try{window._dbgLog('REROLL_WINDOW_STARTED',{pid,dice:v,hasMove});}catch(_x){}
 
 _renderRerollBox();
 clearTimeout(_rerollWindowTimer);
@@ -4974,7 +4773,6 @@ if(!_rerollWindowActive)return;
 _rerollWindowActive=false;
 _rerollBoxSuppressed=true;
 _renderRerollBox();
-try{window._dbgLog('REROLL_WINDOW_EXPIRED',{pid,dice:v,hadMove:hasMove,turnSkipped:!hasMove&&G.turn===pid});}catch(_x){}
 
 if(!hasMove&&G.turn===pid){
 const _skP=_trackCommit(_srvSkip(pid));
@@ -5117,7 +4915,6 @@ if(cv===true||cv==null||cv.v!==false)_seatVisible=true;
 if(_seatVisible){_visibleSeats.add(seat);}else{_visibleSeats.delete(seat);}
 _cachedElderResult=null;
 const _nowElder=amIElderPlayer();
-try{window._dbgLog('ELDER_PRESENCE_EVENT',{seat,online,seatVisible:_seatVisible,wasElder,nowElder:_nowElder,elderChanged:wasElder!==_nowElder,onlineSeats:[..._onlineSeats],visibleSeats:[..._visibleSeats],gTurn:G.turn});}catch(_x){}
 
 
 if(!wasElder&&amIElderPlayer()&&_gameLoaded&&!G.over&&G.turn!==MY_SEAT){
@@ -5230,7 +5027,7 @@ const seat=Number(k);
 const ts=val[k];
 if(_botOffSeen[seat]===ts)return;
 _botOffSeen[seat]=ts;
-if(PLAYERS[seat]?.isBot){try{window._dbgLog('BOT_OFF_SIGNAL_RECEIVED',{seat,ts});}catch(_x){}_deactivateBot(seat);}
+if(PLAYERS[seat]?.isBot){_deactivateBot(seat);}
 });
 };
 ref.on('value',cb);
@@ -5240,7 +5037,7 @@ function listenAfkSeats(){
 if(!ROOM_CODE)return;
 const ref=db.ref(`rooms/${ROOM_CODE}/afkSeats`);
 const cb=snap=>{
-{const _nv=snap.val()||{};try{window._dbgLog('AFK_SEATS_CHANGED',{from:_afkSeats,to:_nv,me:MY_SEAT,turn:G.turn});}catch(_x){}}
+{const _nv=snap.val()||{};}
 _afkSeats=snap.val()||{};
 SEAT_LAYOUT_ACTIVE.forEach(seat=>{
 if(!PLAYERS[seat]?.active)return;
@@ -5255,7 +5052,6 @@ function listenBotVotes(){
 if(!ROOM_CODE)return;
 const ref=db.ref(`rooms/${ROOM_CODE}/botVotes`);
 const cb=snap=>{
-try{window._dbgLog('BOT_VOTES_CHANGED',{votes:snap.val()||{},me:MY_SEAT,turn:G.turn});}catch(_x){}
 
 _botVotes=snap.val()||{};
 SEAT_LAYOUT_ACTIVE.forEach(seat=>{
@@ -5264,13 +5060,12 @@ const votes=Object.keys(_botVotes[seat]||{}).length;
 const activePlayers=SEAT_LAYOUT_ACTIVE.filter(s=>PLAYERS[s]?.active&&s!==seat);
 const needed=Math.ceil(activePlayers.length*2/3)||1;
 if(votes>=needed&&votes>0){
-if(!PLAYERS[seat]?.isBot){try{window._dbgLog('VOTE_THRESHOLD_MET_ACTIVATING_BOT',{seat,votes,needed,activePlayersCount:activePlayers.length});}catch(_x){}_activateBot(seat);}
+if(!PLAYERS[seat]?.isBot){_activateBot(seat);}
 return;
 }
 
 
 if(PLAYERS[seat]?.isBot){
-try{window._dbgLog('VOTE_BELOW_THRESHOLD_UNDOING_BOT',{seat,votes,needed});}catch(_x){}
 
 _deactivateBot(seat);
 return;
@@ -5302,15 +5097,12 @@ if(votes>=needed)_activateBot(seat);
 return;
 }
 try{
-try{window._dbgLog('VOTE_ATTEMPT',{seat,mySeat:MY_SEAT,voteKey,localAfkSeats:_afkSeats[seat]||false,timerExpireCount:_timerExpireCount[seat]||0,localBotVotes:Object.keys(_botVotes[seat]||{})});}catch(_x){}
 
 await waitForAuth();
 await db.ref(`rooms/${ROOM_CODE}/botVotes/${seat}/${voteKey}`).set(true);
-try{window._dbgLog('VOTE_OK',{seat,mySeat:MY_SEAT,voteKey});}catch(_x){}
 
 }catch(e){
 console.error('VOTE_FOR_BOT_FAILED',{seat,mySeat:MY_SEAT,voteKey,code:e.code,message:e.message});
-try{window._dbgLog('VOTE_FAILED',{seat,mySeat:MY_SEAT,voteKey,code:e.code,message:e.message,localAfkSeatsAtFailure:_afkSeats[seat]||false});}catch(_x){}
 
 showToast('Vote failed');
 if(badge)badge.classList.remove('voted');
@@ -5326,7 +5118,6 @@ _deactivateBot(seat);
 window.turnOffMyBot=async function(seat){
 if(MY_SEAT===null||seat!==MY_SEAT)return;
 if(!PLAYERS[seat]?.isBot)return;
-try{window._dbgLog('TURN_OFF_MY_BOT_CLICKED',{seat});}catch(_x){}
 
 navigator.vibrate&&navigator.vibrate(18);
 _deactivateBot(seat);
@@ -5341,7 +5132,6 @@ if(!PLAYERS[seat])return;
 const wasInactive=!PLAYERS[seat].active;
 PLAYERS[seat].isBot=true;
 PLAYERS[seat].active=true;
-try{window._dbgLog('BOT_ACTIVATED',{seat,wasInactive,amIElder:amIElderPlayer(),gTurn:G.turn,gRolled:G.rolled});}catch(_x){}
 
 if(wasInactive){
 buildPlayers();
@@ -5390,7 +5180,6 @@ const _ovStuck=document.getElementById(`offbadge-${seat}`);
 if(!PLAYERS[seat]?.isBot&&!(_ovStuck&&_ovStuck.classList.contains('bot-mode')))return;
 if(PLAYERS[seat])PLAYERS[seat].isBot=false;
 _timerExpireCount[seat]=0;
-try{window._dbgLog('BOT_DEACTIVATED',{seat,reclaimedBySelf:seat===MY_SEAT,amIElder:amIElderPlayer(),gTurn:G.turn});}catch(_x){}
 
 const lbl=document.getElementById(`lbl-${seat}`);
 if(lbl){const bl=lbl.querySelector('.bot-label');if(bl)bl.remove();}
@@ -5656,7 +5445,6 @@ const mateTokens=movable(mateId,dv);
 return[...own,...mateTokens];
 }
 function buildBoard(){
-try{window._bbN=(window._bbN||0)+1;window._dbgLog('C_ROT_BUILD',{fn:'board',n:window._bbN,sinceStartMs:Date.now()-(window._rotStartAt||0),mySeat:MY_SEAT});}catch(_x){}
 _syncCellVar();
 const DEF=_getThemeDEF(),BOARD_BG=_getThemeBoardBG();
 const _themeId=getBoardTheme().id;
@@ -5851,7 +5639,6 @@ return[cw1,cw2,me,-1];
 return[cw1,cw2,me,cw3];
 }
 function buildPlayers(){
-try{window._bpN=(window._bpN||0)+1;window._dbgLog('C_ROT_BUILD',{fn:'players',n:window._bpN,sinceStartMs:Date.now()-(window._rotStartAt||0),mySeat:MY_SEAT});}catch(_x){}
 const top=document.getElementById("top-row");
 const bot=document.getElementById("bot-row");
 top.innerHTML="";bot.innerHTML="";
@@ -6396,12 +6183,6 @@ if(cb)cb();
 }
 requestAnimationFrame(tick);
 }
-try{(function(){
-const _tp=function(e){try{const t=e.target;window._lastTap={at:Date.now(),tr:e.isTrusted,ty:e.type,pt:e.pointerType||'',tg:((t&&t.id)||(t&&t.className&&String(t.className).slice(0,24))||(t&&t.tagName)||'')};}catch(_x){}};
-document.addEventListener('pointerdown',_tp,{capture:true,passive:true});
-document.addEventListener('touchstart',_tp,{capture:true,passive:true});
-document.addEventListener('visibilitychange',function(){try{window._lastVisAt=Date.now();}catch(_x){}});
-})();}catch(_x){}
 function makeDice(pid){
 dAcc.last[pid]=null;dAcc.rx[pid]=0;dAcc.ry[pid]=0;dAcc.busy[pid]=false;if(_domCache.dcube)_domCache.dcube[pid]=null;if(_domCache.d3d)_domCache.d3d[pid]=null;
 const TZ=19;
@@ -6429,7 +6210,6 @@ cube.appendChild(f);
 });
 wrap.appendChild(cube);
 wrap.addEventListener("click",function(ev){
-try{const _lt=window._lastTap||{};window._dbgLog('C_DICE_CLICK',{pid:pid,trusted:ev&&ev.isTrusted,off:this.classList.contains("off"),inactive:this.classList.contains("inactive"),gTurn:G.turn,sinceTurnMs:Date.now()-(G.timestamp||0),tapAgoMs:_lt.at?Date.now()-_lt.at:null,tapType:_lt.ty,tapPtr:_lt.pt,hidden:document.hidden});}catch(_x){}
 if(this.classList.contains("off")||this.classList.contains("inactive"))return;
 onHumanRoll();
 });
@@ -6943,13 +6723,13 @@ const active=G.turn===p.id&&!G.over;
 const isMyTurn=G.turn===MY_SEAT&&p.id===MY_SEAT;
 if(active){
 const wasInactive=d3d.classList.contains("inactive");
-if(wasInactive){d3d.classList.remove("inactive");try{window._dbgLog('DICE_CUBE_SHOWN',{pid:p.id,gTurn:G.turn,gDiceVal:G.diceVal,gRolled:G.rolled});}catch(_x){}}
+if(wasInactive){d3d.classList.remove("inactive");}
 const canRoll=isMyTurn&&!G.rolled&&!G.over;
 const wasOff=d3d.classList.contains("off");
 if(wasOff!==!canRoll)d3d.classList.toggle("off",!canRoll);
 }else{
 const wasInactive2=d3d.classList.contains("inactive");
-if(!wasInactive2){d3d.classList.add("inactive");try{window._dbgLog('DICE_CUBE_HIDDEN',{pid:p.id,gTurn:G.turn,gDiceVal:G.diceVal,gRolled:G.rolled});}catch(_x){}}
+if(!wasInactive2){d3d.classList.add("inactive");}
 const wasOff2=d3d.classList.contains("off");
 if(wasOff2)d3d.classList.remove("off");
 }
@@ -6974,7 +6754,6 @@ let t=Date.now();
 if(data&&typeof data.srvTs==='number'&&data.srvTs>0&&_isOnlineRoom()){
 if(window._stampedSrvTs===data.srvTs&&data.turn!=null&&G.turn===data.turn&&typeof G.timestamp==='number'&&G.timestamp>0){
 if(_lastTimerTurn!==G.turn)_lastTimerTurn=-1;
-try{window._dbgLog('TO_STAMP_SAME_SRVTS',{srvTs:data.srvTs,timestampField:data.timestamp,keptTs:G.timestamp,force:!!forceApply,gTurn:G.turn,actionBy:data.actionBy,MY_SEAT});}catch(_x){}
 
 return;
 }
@@ -6982,7 +6761,6 @@ window._stampedSrvTs=data.srvTs;
 window._stampRawTs=data.srvTs;
 t=_srvTsToLocal(data.srvTs);
 if(!forceApply)t=Math.max(t,Date.now()-(TURN_TIMER_SEC-3)*1000);
-try{window._dbgLog('TO_STAMP_TURN',{src:'srvTs',rawTs:data.srvTs,timestampField:data.timestamp,stamped:t,ageMs:Date.now()-t,force:!!forceApply,prevTs:G.timestamp,gTurn:G.turn,srvTurn:data.turn,MY_SEAT});}catch(_x){}
 
 G.timestamp=t;
 _lastTimerTurn=-1;
@@ -6990,18 +6768,16 @@ return;
 }
 if(data&&typeof data.timestamp==='number'&&data.timestamp>0){
 if(data.turn!=null&&G.turn===data.turn&&data.actionBy!=null&&data.actionBy!==data.turn&&_lastTimerTurn===G.turn&&typeof G.timestamp==='number'&&G.timestamp>0&&(Date.now()-G.timestamp)<(TURN_TIMER_SEC+5)*1000){
-try{window._dbgLog('TO_STAMP_IGNORED_NONTURN_PUSH',{rawTs:data.timestamp,keptTs:G.timestamp,keptAgeMs:Date.now()-G.timestamp,force:!!forceApply,gTurn:G.turn,actionBy:data.actionBy,MY_SEAT});}catch(_x){}
 
 return;
 }
 
 let _rawTs=data.timestamp;
-if(typeof data.srvTs==='number'&&data.srvTs>0&&data.timestamp>data.srvTs+15000){_rawTs=data.srvTs+15000;try{window._dbgLog('TO_STAMP_CLAMPED_TO_SRVTS',{timestamp:data.timestamp,srvTs:data.srvTs,usedTs:_rawTs,lateByMs:data.timestamp-data.srvTs,gTurn:G.turn,actionBy:data.actionBy});}catch(_x){}}
+if(typeof data.srvTs==='number'&&data.srvTs>0&&data.timestamp>data.srvTs+15000){_rawTs=data.srvTs+15000;}
 window._stampRawTs=_rawTs;
 t=_srvTsToLocal(_rawTs);
 if(!forceApply)t=Math.max(t,Date.now()-(TURN_TIMER_SEC-3)*1000);
 }
-try{window._dbgLog('TO_STAMP_TURN',{rawTs:data&&data.timestamp,stamped:t,ageMs:Date.now()-t,force:!!forceApply,prevTs:G.timestamp,gTurn:G.turn,srvTurn:data&&data.turn,MY_SEAT});}catch(_x){}
 
 G.timestamp=t;
 _lastTimerTurn=-1;
@@ -7010,8 +6786,6 @@ let _lastTimerTurn=-1;
 let _turnExpiryHandled=false;
 function updateTurnBanner(){
 if(G.turn!==_lastTimerTurn){
-try{const _pv=window._prevTurnInfo;if(_pv&&_pv.turn!==G.turn&&typeof G.timestamp==='number'&&G.timestamp<_pv.ts-500)window._dbgLog('C_TURN_REGRESS',{from:_pv.turn,to:G.turn,prevTs:_pv.ts,newTs:G.timestamp,backMs:_pv.ts-G.timestamp,sinceChangeMs:Date.now()-_pv.at,MY_SEAT});window._prevTurnInfo={turn:G.turn,ts:G.timestamp||0,at:Date.now()};}catch(_x){}
-try{window._dbgLog('TO_TURN_CHANGED',{turn:G.turn,MY_SEAT,rolled:G.rolled,waiting:G.waiting,ts:G.timestamp,ageMs:Date.now()-(G.timestamp||Date.now()),isBot:!!PLAYERS[G.turn]?.isBot,elder:amIElderPlayer()});}catch(_x){}
 
 _lastTimerTurn=G.turn;
 _turnExpiryHandled=false;
@@ -7037,7 +6811,6 @@ const tryN=_try||0;
 const _pl=lk?{c:ROOM_CODE,p:{lucky:true}}:{c:ROOM_CODE};
 const _dpT0=Date.now();
 _preP=window._srv('dp',_pl).then(function(r){
-try{window._dbgLog('BH_DP_RES',{key,ms:Date.now()-_dpT0,ok:!!(r&&typeof r.v==='number'),v:r&&r.v,why:r&&r.why,st:window._srvStatusBy&&window._srvStatusBy.dp,stale:_preKey!==key});}catch(_x){}
 
 if(_preKey!==key)return;
 if(r&&typeof r.v==='number'&&r.v>=1&&r.v<=6){window._dpValueSeen=true;_preRoll={seat:seat,v:r.v,at:Date.now(),lk:r.lk===1,lucky:(r.lucky==null?null:r.lucky),key:key};return;}
@@ -7105,10 +6878,8 @@ if(seat===MY_SEAT&&ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode){windo
 
 _timerStart=(typeof G.timestamp==='number'&&G.timestamp>0)?G.timestamp:Date.now();
 const _elapsedAtStart=(Date.now()-_timerStart)/1000;
-try{window._dbgLog('TO_TIMER_START',{build:'to-dbg1',seat,MY_SEAT,elapsedSec:+_elapsedAtStart.toFixed(1),gTs:G.timestamp,hidden:document.hidden,elder:amIElderPlayer(),rolled:G.rolled});}catch(_x){}
 
 if(_elapsedAtStart>=TURN_TIMER_SEC){
-try{window._dbgLog('TIMER_EXPIRE_CATCHUP',{seat,elapsedSec:+_elapsedAtStart.toFixed(1)});}catch(_x){}
 
 setTimeout(()=>{if(_timerSeat===seat)_onTurnTimerExpired(seat);},0);
 return;
@@ -7137,7 +6908,6 @@ _timerInterval=setInterval(()=>{
 const elapsed=(Date.now()-_timerStart)/1000;
 const remaining=TURN_TIMER_SEC-elapsed;
 if(remaining<=0){
-try{window._dbgLog('TO_TIMER_INTERVAL_FIRE',{seat:_capturedSeat,MY_SEAT,gTurn:G.turn,elapsed:+elapsed.toFixed(1),hidden:document.hidden});}catch(_x){}
 
 stopTurnTimer();
 _onTurnTimerExpired(_capturedSeat);
@@ -7202,7 +6972,6 @@ return false;
 }
 if(srvTurn===seat&&srv.rolled===true&&G.rolled&&G.turn===seat)return false;
 if((srvTurn!=null&&srvTurn!==seat)||srv.rolled===true){
-try{window._dbgLog('ELDER_STALE_VIEW',{seat,localTurn:G.turn,serverTurn:srvTurn,serverRolled:srv.rolled});}catch(_x){}
 
 if(!_resyncUnsafeNow()&&_syncAnimPending.length===0)syncGameState(srv,true);
 return true;
@@ -7216,39 +6985,31 @@ async function _claimExpiredTurn(seat,turnTs){
 if(!ROOM_CODE||!gameRef)return true;
 try{
 const lockKey=`${seat}_${Math.round(turnTs||0)}`;
-try{window._dbgLog('TO_CLAIM_TRY',{seat,lockKey,turnTs,MY_SEAT,gTs:G.timestamp});}catch(_x){}
-try{window._dbgLog('TURN_CLAIM_WON',{seat,lockKey,MY_SEAT});}catch(_x){}
 
 
 return true;
 }catch(e){
-try{window._dbgLog('TURN_CLAIM_ERROR',{seat,message:e&&e.message});}catch(_x){}
 
 return true;
 }
 }
 async function _onTurnTimerExpired(seat){
-try{window._dbgLog('TO_EXPIRE_STATE',{seat,MY_SEAT,gTurn:G.turn,rolled:G.rolled,waiting:G.waiting,diceVal:G.diceVal,rolling:_rolling,animating:_animating,botActing:_botActing,isBotSeat:!!PLAYERS[seat]?.isBot,hidden:document.hidden,ts:G.timestamp,ageMs:Date.now()-(G.timestamp||Date.now()),elder:amIElderPlayer(seat),forcedElder:_forcedElderSeat,pendingAutoRoll:_pendingAutoRoll,expiryHandled:_turnExpiryHandled});}catch(_x){}
-try{window._dbgLog('TIMER_EXPIRE_CALLED',{seat,MY_SEAT,gTurn:G.turn,gOver:G.over,gRolled:G.rolled,gWaiting:G.waiting,turnExpiryHandled:_turnExpiryHandled});}catch(_x){}
 
 
-if(G.over||G.turn!==seat){try{window._dbgLog('TIMER_EXPIRE_BAIL_STALE',{seat,gTurn:G.turn,gOver:G.over});}catch(_x){}return;}
+if(G.over||G.turn!==seat){return;}
 if(G.rolled&&!G.waiting&&seat===MY_SEAT){return;}
 if(seat!==MY_SEAT&&!PLAYERS[seat]?.isBot){
 
 if(!_turnExpiryHandled){
 _turnExpiryHandled=true;
 _timerExpireCount[seat]=(_timerExpireCount[seat]||0)+1;
-try{window._dbgLog('TIMER_EXPIRE_COUNT_INC',{seat,newCount:_timerExpireCount[seat]});}catch(_x){}
 
 }
 }
-try{window._dbgLog('ELDER_CHECK_AT_EXPIRY',{seat,MY_SEAT,amIElder:amIElderPlayer(seat),onlineSeats:[..._onlineSeats],visibleSeats:[..._visibleSeats]});}catch(_x){}
 
-if(seat===MY_SEAT&&_placingPower){try{window._dbgLog('TIMER_EXPIRE_CANCEL_PENDING_POWER',{seat,power:_placingPower});}catch(_x){}cancelPlacement();}
+if(seat===MY_SEAT&&_placingPower){cancelPlacement();}
 if(seat===MY_SEAT&&!G.rolled){
-if(_rolling||_animating){try{window._dbgLog('TO_EXPIRE_ME_BLOCKED',{seat,rolling:_rolling,animating:_animating});}catch(_x){}return;}
-try{window._dbgLog('TIMER_EXPIRE_FORCE_AUTOROLL',{seat,hidden:document.hidden,visAgoMs:window._lastVisAt?Date.now()-window._lastVisAt:null,sinceTurnMs:Date.now()-(G.timestamp||0),rerollWindowActiveAtForce:_rerollWindowActive});}catch(_x){}
+if(_rolling||_animating){return;}
 
 if(!(await _claimExpiredTurn(seat,G.timestamp)))return;
 if(G.over||G.turn!==seat||G.rolled||_rolling||_animating)return;
@@ -7257,11 +7018,10 @@ doRoll(seat);
 return;
 }
 if(seat===MY_SEAT&&G.waiting&&G.rolled&&G.diceVal!=null){
-if(_animating||_rolling){try{window._dbgLog('TO_EXPIRE_ME_MOVE_BLOCKED',{seat,rolling:_rolling,animating:_animating});}catch(_x){}return;}
-if(G.turn!==MY_SEAT||!G.rolled||!G.waiting){try{window._dbgLog('TO_EXPIRE_ME_MOVE_STALE',{seat,gTurn:G.turn,rolled:G.rolled,waiting:G.waiting});}catch(_x){}return;}
+if(_animating||_rolling){return;}
+if(G.turn!==MY_SEAT||!G.rolled||!G.waiting){return;}
 const savedDice=G.diceVal;
 const mv=teamMovable(seat,savedDice);
-try{window._dbgLog('TIMER_EXPIRE_FORCE_MOVE_OR_SKIP',{seat,savedDice,hasLegalMove:mv.length>0});}catch(_x){}
 
 if(mv.length>0){
 
@@ -7298,7 +7058,6 @@ if(G.over||G.turn!==seat)return;
 
 
 
-try{window._dbgLog('BOTTURN_ELDER_ATTEMPT',{MY_SEAT:MY_SEAT,seat:seat,expireCount:_timerExpireCount[seat]||0,gRolled:G.rolled,gWaiting:G.waiting});}catch(_x){}
 let _sm=0;try{const _gs=(await gameRef.once('value')).val()||{};const _am=Number((_gs.afkMiss||{})[seat])||0;const _ats=Number((_gs.afkMissTs||{})[seat])||0;const _st=Number(_gs.srvTs||_gs.timestamp||0);_sm=_am+((_ats&&_ats===_st)?0:1);}catch(_x){}
 const _voteUp=(_timerExpireCount[seat]||0)>=EXPIRE_COUNT_FOR_VOTE||!!_afkSeats[seat]||_sm>=EXPIRE_COUNT_FOR_VOTE;
 if(_voteUp&&!PLAYERS[seat]?.isBot){try{_updateOfflineBadge(seat,true);}catch(_x){}}
@@ -7311,7 +7070,6 @@ _updateOfflineBadge(seat,true);
 }
 return;
 }
-try{window._dbgLog('ELDER_NOT_ME_RESYNC',{seat,MY_SEAT,amINotElder:!amIElderPlayer(seat)});}catch(_x){}
 
 if(!amIElderPlayer(seat)&&seat!==MY_SEAT&&ROOM_CODE&&gameRef){
 gameRef.once('value').then(snap=>{
@@ -7380,14 +7138,13 @@ async function _doBotTurn(seat,forceAfk,mode){
 mode=mode||'full';
 if(mode==='full'&&PLAYERS[seat]?.isBot&&G.turn===seat&&G.rolled&&!_botActing)mode='move';
 if(G.over||G.turn!==seat){return;}
-if(mode==='move'){if(!G.rolled)return;}else if(G.rolled||G.waiting){try{window._dbgLog('BOTTURN_BAIL',{seat,reason:'already_rolled_or_waiting',gRolled:G.rolled,gWaiting:G.waiting});}catch(_x){}return;}
-if(_rolling){try{window._dbgLog('BOTTURN_BAIL',{seat,reason:'rolling_in_progress'});}catch(_x){}return;}
-if(_botActing){try{window._dbgLog('BOTTURN_BAIL',{seat,reason:'bot_already_acting'});}catch(_x){}return;}
+if(mode==='move'){if(!G.rolled)return;}else if(G.rolled||G.waiting){return;}
+if(_rolling){return;}
+if(_botActing){return;}
 
-if(!PLAYERS[seat]?.isBot&&!forceAfk){try{window._dbgLog('BOTTURN_BAIL',{seat,reason:'not_bot_no_force'});}catch(_x){}return;}
+if(!PLAYERS[seat]?.isBot&&!forceAfk){return;}
 _botActing=true;
 let _contBonus=false;
-try{window._dbgLog('BOTTURN_ENTRY',{seat:seat,mode:mode,forceAfk:!!forceAfk,isBot:!!PLAYERS[seat]?.isBot,gTurn:G.turn,gRolled:G.rolled,gWaiting:G.waiting,botActing:_botActing,rolling:_rolling});}catch(_x){}
 if(G.over||G.turn!==seat||(mode!=='move'&&G.rolled)){_botActing=false;return;}
 try{
 const diff=typeof _cpuDifficulty!=='undefined'?_cpuDifficulty:'normal';
@@ -7397,8 +7154,8 @@ const thinkMs=diff==='easy'?150+Math.random()*150
 await new Promise(res=>setTimeout(res,thinkMs));
 
 
-if(!PLAYERS[seat]?.isBot&&!forceAfk){try{window._dbgLog('BOTTURN_BAIL',{seat,reason:'reclaimed_after_think'});}catch(_x){}return;}
-if(G.over||G.turn!==seat){try{window._dbgLog('BOTTURN_BAIL',{seat,reason:'stale_after_think',gTurn:G.turn});}catch(_x){}return;}
+if(!PLAYERS[seat]?.isBot&&!forceAfk){return;}
+if(G.over||G.turn!==seat){return;}
 let v;
 if(mode==='move'){
 v=G.diceVal;
@@ -7406,8 +7163,8 @@ if(typeof v!=='number')return;
 }else{
 if(ROOM_CODE&&gameRef&&!window._cpuMode&&!window._pnpMode){
 const _br=await window._srv('d',{c:ROOM_CODE,p:(seat!==MY_SEAT?{as:seat}:{})});
-if(!_br||typeof _br.v!=='number'){try{window._dbgLog('BOTTURN_BAIL',{seat,reason:'server_roll_failed',resp:_br,lastStatus:window._srvLastStatus,MY_SEAT,forceAfk:!!forceAfk,gTurn:G.turn,gRolled:G.rolled});}catch(_x){}try{_botRollRetry(seat,forceAfk,mode);}catch(_x){}return;}
-v=_br.v;if(_br.noMove)window._dNoMove={pid:seat,r:_br,at:Date.now()};try{window._dbgLog('BOTTURN_ROLLED',{seat:seat,dice:v,mode:mode,forceAfk:!!forceAfk});}catch(_x){}
+if(!_br||typeof _br.v!=='number'){try{_botRollRetry(seat,forceAfk,mode);}catch(_x){}return;}
+v=_br.v;if(_br.noMove)window._dNoMove={pid:seat,r:_br,at:Date.now()};
 }else{
 return;
 }
@@ -7416,11 +7173,10 @@ G.rolled=true;G.diceVal=v;
 
 const _botDiceEl=document.getElementById('botdice-'+seat);
 if(_botDiceEl&&PLAYERS[seat]?.isBot){_botDiceEl.style.display='block';_botDiceEl.textContent=v;}
-if(G.over||G.turn!==seat){G.rolled=false;G.diceVal=null;try{window._dbgLog('BOTTURN_BAIL',{seat,reason:'stale_after_roll'});}catch(_x){}return;}
+if(G.over||G.turn!==seat){G.rolled=false;G.diceVal=null;return;}
 if(mode!=='move'){
 if(v===6){G.sixes=(G.sixes||0)+1;
 if(G.sixes>=3){const _ffP=_trackCommit(_srvForfeit(seat));G.sixes=0;G.rolled=false;G.diceVal=null;_rolling=false;nextTurn(false);_optimisticPass(_ffP);
-try{window._dbgLog('BOTTURN_3SIXES',{seat});}catch(_x){}
 
 pushGameState({action:"skip",dice:v,reason:"3sixes",auto:true},seat);return;}
 }else{G.sixes=0;}
@@ -7431,15 +7187,13 @@ try{
 const _vs=await gameRef.once('value');const _sv=_vs&&_vs.val();
 if(_sv&&Number(_sv.turn)===seat&&G.turn===seat&&_adoptSrvTokens(_sv)){
 mv=teamMovable(seat,v);
-try{window._dbgLog('BOTTURN_TOKENS_REFRESHED',{seat,dice:v,movable:mv.map(t=>t.tid)});}catch(_x){}
 
 }
 }catch(e){}
 }
 if(mv.length===0){
 await new Promise(res=>setTimeout(res,150));
-if(!PLAYERS[seat]?.isBot&&!forceAfk){G.rolled=false;G.diceVal=null;try{window._dbgLog('BOTTURN_BAIL',{seat,reason:'reclaimed_no_moves'});}catch(_x){}return;}
-try{window._dbgLog('BOTTURN_NO_MOVES',{seat,dice:v});}catch(_x){}
+if(!PLAYERS[seat]?.isBot&&!forceAfk){G.rolled=false;G.diceVal=null;return;}
 
 pushGameState({action:"roll",dice:v,selectable:[],auto:true},seat);
 const _skP=_trackCommit(_srvSkip(seat));
@@ -7450,7 +7204,7 @@ pushGameState({action:"skip",dice:v,reason:"noMove",auto:true},seat);
 return;
 }
 if(mode!=='move')pushGameState({action:"roll",dice:v,selectable:mv.map(t=>t.tid),auto:true},seat);
-if(mode==='roll'){try{window._dbgLog('BOTTURN_ROLL_ONLY',{seat:seat,dice:v,movable:mv.length});}catch(_x){}G.waiting=true;try{G.timestamp=Date.now();_lastTimerTurn=-1;updateTurnBanner();}catch(_x){}return;}
+if(mode==='roll'){G.waiting=true;try{G.timestamp=Date.now();_lastTimerTurn=-1;updateTurnBanner();}catch(_x){}return;}
 let best=mv[0];
 let bestScore=-Infinity;
 const _scoreBoard=[];
@@ -7459,7 +7213,6 @@ const s=_aiScoreMove(seat,tok,v);
 _scoreBoard.push({tid:tok.tid,step:tok.step,score:+s.toFixed(1)});
 if(s>bestScore){bestScore=s;best=tok;}
 }
-try{window._dbgLog('BOTTURN_SCORES',{seat,dice:v,candidates:_scoreBoard,chosenTid:best.tid,chosenScore:+bestScore.toFixed(1)});}catch(_x){}
 
 if(_isOnlineRoom()&&seat!==MY_SEAT){
 let _bmTid=null,_bmOf=seat;
@@ -7467,23 +7220,20 @@ for(let _bi=0;_bi<2&&_bmTid===null;_bi++){try{const _bm=await window._srv('bm',{
 if(_bmTid===null&&window._srvStatusBy&&window._srvStatusBy.bm===404)break;}
 const _bt=_bmTid===null?null:mv.find(t=>t.tid===_bmTid&&t.pid===_bmOf);
 if(!_bt&&forceAfk&&!PLAYERS[seat]?.isBot&&window._srvStatusBy&&window._srvStatusBy.bm===403){return;}
-if(_bt){best=_bt;try{window._dbgLog('BOTTURN_SRV_PICK',{seat,tid:best.tid});}catch(_x){}}else{try{window._dbgLog('BOTTURN_SRV_PICK_MISSING',{seat,bmTid:_bmTid,movable:mv.map(t=>t.tid)});}catch(_x){}}
+if(_bt){best=_bt;}else{}
 }
 await new Promise(res=>setTimeout(res,80+Math.random()*80));
-if(G.over||G.turn!==seat){G.rolled=false;G.diceVal=null;try{window._dbgLog('BOTTURN_BAIL',{seat,reason:'stale_after_pick'});}catch(_x){}return;}
-if(!PLAYERS[seat]?.isBot&&!forceAfk){try{window._dbgLog('BOTTURN_BAIL',{seat,reason:'reclaimed_after_pick'});}catch(_x){}return;}
+if(G.over||G.turn!==seat){G.rolled=false;G.diceVal=null;return;}
+if(!PLAYERS[seat]?.isBot&&!forceAfk){return;}
 G.rolled=false;G.waiting=false;
 _pendingAutoMove=true;
-try{window._dbgLog('BOTTURN_MOVE_PICKED',{seat,dice:v,tid:best.tid,forceAfk:!!forceAfk});}catch(_x){}
 
 await doMove(best.pid!=null?best.pid:seat,best.tid,v);
-try{window._dbgLog('BOTTURN_MOVE_DONE',{seat:seat,mode:mode,tid:best.tid,dice:v});}catch(_x){}
 
 if(forceAfk&&(mode==='full'||_isSeatAfk(seat))&&!G.over&&G.turn===seat&&!G.rolled&&!G.waiting&&PLAYERS[seat]&&!PLAYERS[seat].isBot&&amIElderPlayer(seat))_contBonus=true;
 }catch(err){
 
 console.error('[BOT-RECOVER] _doBotTurn failed, forcing recovery:',err);
-try{window._dbgLog('BOTTURN_ERROR',{seat,message:err&&err.message,stack:err&&String(err.stack||'').slice(0,300)});}catch(_x){}
 
 if(!G.over&&G.turn===seat){
 G.rolled=false;G.waiting=false;G.diceVal=null;_pendingAutoMove=false;
@@ -7492,10 +7242,9 @@ nextTurn(false);_applySrvSkip(_ff);
 pushGameState({action:"skip",dice:0,reason:"botError",auto:true},seat).catch(()=>{});
 }
 }finally{
-try{window._dbgLog('TO_BOT_END',{seat,gTurn:G.turn,gRolled:G.rolled,gWaiting:G.waiting,gDice:G.diceVal,animating:_animating,rolling:_rolling,note:'gRolled=true here with no move after = stuck flag'});}catch(_x){}
 
 _botActing=false;
-if(_contBonus){setTimeout(function(){try{if(!G.over&&G.turn===seat&&!G.rolled&&!G.waiting&&!_rolling&&!_animating&&amIElderPlayer(seat)){try{window._dbgLog('BOTTURN_BONUS_CONTINUE',{seat});}catch(_x){}_doBotTurn(seat,true);}}catch(e){}},700);}
+if(_contBonus){setTimeout(function(){try{if(!G.over&&G.turn===seat&&!G.rolled&&!G.waiting&&!_rolling&&!_animating&&amIElderPlayer(seat)){_doBotTurn(seat,true);}}catch(e){}},700);}
 }
 }
 let _brKey='',_brN=0;
@@ -7557,7 +7306,6 @@ if(mode==='move'&&!_pa.rolled)return;
 if(mode!=='move'&&_pa.rolled)mode='move';
 _supN++;_supAt=Date.now();
 _supBusy=true;
-try{window._dbgLog('SUP_ACT',{seat,mode,n:_supN,flagged,expired});}catch(_x){}
 await _doBotTurn(seat,true,mode);
 }catch(e){}finally{_supBusy=false;}
 },1000);
@@ -7576,15 +7324,13 @@ _turnTimeoutTimer=setTimeout(()=>{if(!G.over&&PLAYERS[G.turn]?.isBot)_doBotTurn(
 }
 return;
 }
-if(!amIElderPlayer()||!ROOM_CODE){try{window._dbgLog('TO_RESETTO_SKIP_NOT_ELDER',{turn:G.turn,MY_SEAT});}catch(_x){}return;}
+if(!amIElderPlayer()||!ROOM_CODE){return;}
 
 
 const _elapsedMs=Date.now()-((typeof G.timestamp==='number'&&G.timestamp>0)?G.timestamp:Date.now());
 const _remainingMs=Math.max(0,TURN_TIMEOUT_MS-_elapsedMs);
-try{window._dbgLog('TO_RESETTO_SCHEDULED',{turn:G.turn,remainingMs:_remainingMs,elapsedMs:_elapsedMs,MY_SEAT});}catch(_x){}
 
 _turnTimeoutTimer=setTimeout(()=>{
-try{window._dbgLog('TO_RESETTO_FIRED',{turn:G.turn,MY_SEAT,gOver:G.over,gRolled:G.rolled,gWaiting:G.waiting});}catch(_x){}
 
 if(G.over||G.turn===MY_SEAT)return;
 if(PLAYERS[G.turn]?.isBot)return;
@@ -7599,19 +7345,16 @@ if(_g)window._setMY_SEAT(_g.turn);
 }
 if(G.turn!==MY_SEAT)return;
 _pendingAutoRoll=false;
-try{window._dbgLog('C_ROLL_HUMAN',{seat:G.turn,sinceTurnMs:Date.now()-(G.timestamp||0),hidden:document.hidden});}catch(_x){}
 doRoll(G.turn);
 }
 async function doRoll(pid){
-if(_rolling){try{window._dbgLog('DICE_ROLL_BLOCKED_ALREADY_ROLLING',{pid});}catch(_x){}return;}
-try{window._dbgLog('DICE_ROLL_START',{pid,pendingAuto:!!_pendingAutoRoll,sinceTurnMs:Date.now()-(G.timestamp||0),tapAgoMs:(window._lastTap&&window._lastTap.at)?Date.now()-window._lastTap.at:null,tapTrusted:window._lastTap?window._lastTap.tr:null,tapTarget:window._lastTap?window._lastTap.tg:null,visAgoMs:window._lastVisAt?Date.now()-window._lastVisAt:null,hidden:document.hidden,sixesStreakBefore:G.sixes||0,luckyActivePending:!!(G.pMeta&&G.pMeta[pid]&&G.pMeta[pid].luckyActive)});}catch(_x){}
-try{window._dbgLog('BH_ROLL_ENTER',{pid,preReady:!!_preRoll,preInFlight:!!(_preP&&_preKey),ctx:_bhCtx()});}catch(_x){}
+if(_rolling){return;}
 
 
 _cancelRerollWindow();
 window._dNoMove=null;
 _rolling=true;
-let rollSafety=setTimeout(()=>{try{window._dbgLog('TO_ROLLING_SAFETY_RESET',{pid,gTurn:G.turn,gRolled:G.rolled});}catch(_x){}_rolling=false;},DICE_DUR_MS+300);
+let rollSafety=setTimeout(()=>{_rolling=false;},DICE_DUR_MS+300);
 const d3d=document.getElementById(`d3d-${pid}`);
 
 
@@ -7642,11 +7385,10 @@ if(_wantLucky){G.pMeta[pid].luckyActive=false;_setLuckyVisual(pid,false);if(_pre
 _deferSrv=true;
 _srvPromise=window._srv('d',{c:ROOM_CODE,p:_dp}).then(function(_x){if(_x&&_x.noMove)window._dNoMove={pid:pid,r:_x,at:Date.now()};return _x;}).catch(function(){return null;});
 window._rollCommitP=_srvPromise;
-clearTimeout(rollSafety);rollSafety=setTimeout(()=>{try{window._dbgLog('TO_ROLLING_SAFETY_RESET',{pid,gTurn:G.turn,gRolled:G.rolled});}catch(_x){}_rolling=false;},23000);
-try{window._dbgLog('DICE_ROLLED_NORMAL',{pid,dice:v,source:'preroll'});}catch(_x){}
+clearTimeout(rollSafety);rollSafety=setTimeout(()=>{_rolling=false;},23000);
 
 }else{
-clearTimeout(rollSafety);rollSafety=setTimeout(()=>{try{window._dbgLog('TO_ROLLING_SAFETY_RESET',{pid,gTurn:G.turn,gRolled:G.rolled});}catch(_x){}_rolling=false;},23000);
+clearTimeout(rollSafety);rollSafety=setTimeout(()=>{_rolling=false;},23000);
 const _spin=_earlySpin||(_tmRoll?function(){}:_dicePreSpin(pid));
 let _r=null;
 try{_r=await window._srv('d',{c:ROOM_CODE,p:_dp});}catch(e){_r=null;}
@@ -7662,14 +7404,13 @@ showToast((window._srvStatusBy&&window._srvStatusBy.d===403)?"Syncing turn. Plea
 return;
 }
 v=_r.v;
-clearTimeout(rollSafety);rollSafety=setTimeout(()=>{try{window._dbgLog('TO_ROLLING_SAFETY_RESET',{pid,gTurn:G.turn,gRolled:G.rolled});}catch(_x){}_rolling=false;},DICE_DUR_MS+300);
+clearTimeout(rollSafety);rollSafety=setTimeout(()=>{_rolling=false;},DICE_DUR_MS+300);
 if(_r.pm){_srvPm=_r.pm;_srvPts=Number(_r.pts)||0;}
 if(_wantLucky){
 G.pMeta[pid].luckyActive=false;_setLuckyVisual(pid,false);
 if(_r.lucky===0&&pid===MY_SEAT)showToast("Lucky Number couldn't help this roll — no favorable move available");
 
 }
-try{window._dbgLog('DICE_ROLLED_NORMAL',{pid,dice:v,sixesStreakBeforeThisRoll:G.sixes||0,blockSixWasActive:(G.sixes||0)>=2,source:'server'});}catch(_x){}
 
 }
 }else{
@@ -7688,7 +7429,6 @@ m.lv=v;
 }
 G.rolled=true;
 G.diceVal=v;
-try{window._dbgLog('DICE_ROLLED_SELF',{pid,dice:v,MY_SEAT});}catch(_x){}
 
 
 
@@ -7701,16 +7441,13 @@ const _shownV=v;
 _srvPromise.then(function(_r){
 try{
 if(!(_r&&typeof _r.v==='number')){
-try{window._dbgLog('DICE_ROLL_SERVER_FAILED',{pid,preRoll:true,lastStatus:window._srvLastStatus,gTurn:G.turn,gRolled:G.rolled,gWaiting:G.waiting,note:'retrying once before rollback'});}catch(_x){}
 
 return window._srv('d',{c:ROOM_CODE,p:_dp}).catch(function(){return null;}).then(function(_r2){
 try{
 if(_r2&&typeof _r2.v==='number'){
-try{window._dbgLog('ROLL_COMMIT_RETRY_OK',{pid,shown:_shownV,srv:_r2.v});}catch(_x){}
 
 if(_r2.pm&&G.pMeta&&G.pMeta[pid]){const m=G.pMeta[pid];m.lr=_r2.pm.lr;m.sr=_r2.pm.sr;m.lv=_r2.pm.lv;}
 if(_r2.v!==_shownV&&!_animating&&G.turn===pid&&G.rolled&&G.diceVal===_shownV){
-try{window._dbgLog('DICE_PREROLL_CORRECTED',{pid,from:_shownV,to:_r2.v,via:'retry'});}catch(_x){}
 
 if(_shownV===6)G.sixes=Math.max(0,(G.sixes||0)-1);
 G.waiting=false;G.diceVal=_r2.v;
@@ -7725,7 +7462,6 @@ if(!_animating&&G.turn===pid&&G.rolled){G.rolled=false;G.diceVal=null;G.waiting=
 }
 if(_r.pm&&G.pMeta&&G.pMeta[pid]){const m=G.pMeta[pid];m.lr=_r.pm.lr;m.sr=_r.pm.sr;m.lv=_r.pm.lv;if(Number(_r.pts))addPoints(pid,Number(_r.pts),true);}
 if(_r.v!==_shownV){
-try{window._dbgLog('DICE_PREROLL_CORRECTED',{pid,from:_shownV,to:_r.v});}catch(_x){}
 
 if(!_animating&&G.turn===pid&&G.rolled&&G.diceVal===_shownV){
 if(_shownV===6)G.sixes=Math.max(0,(G.sixes||0)-1);
@@ -7753,13 +7489,12 @@ return true;
 }
 function shouldAutoMove(mv,v,pid){
 const _r=_shouldAutoMoveRaw(mv,v,pid);
-try{window._dbgLog('AUTOMOVE_DECISION',{pid,v,result:_r,movable:mv.map(t=>t.pid+''+t.tid+':'+t.step),me:MY_SEAT,hasReverse:!!(G.inventory&&G.inventory[pid]&&G.inventory[pid].reverse>0),animating:_animating,rolling:_rolling,botActing:_botActing,waiting:G.waiting});}catch(_x){}
 
 return _r;
 }
 function _shouldAutoMoveRaw(mv,v,pid){
 if(mv.length===0)return false;
-if(pid===MY_SEAT&&_hasUsableReversePower(pid,v)){try{window._dbgLog('AUTOMOVE_SKIPPED_REVERSE_AVAILABLE',{pid,dice:v});}catch(_x){}return false;}
+if(pid===MY_SEAT&&_hasUsableReversePower(pid,v)){return false;}
 if(mv.length===1)return true;
 const destCells=mv.map(t=>{
 const tpid=t.pid!==undefined?t.pid:(mv[0].pid!==undefined?mv[0].pid:MY_SEAT);
@@ -7792,14 +7527,11 @@ return true;
 function afterRoll(pid,v){
 const _wasAutoRoll=_pendingAutoRoll;
 _pendingAutoRoll=false;
-try{window._dbgLog('DICE_AFTERROLL_ENTRY',{pid,dice:v,sixesStreakBeforeThisRoll:G.sixes||0,wasAutoRoll:_wasAutoRoll});}catch(_x){}
 
 if(v===6){
 G.sixes=(G.sixes||0)+1;
-try{window._dbgLog('EXTRA_CHANCE_SIX',{pid,sixesInRow:G.sixes});}catch(_x){}
 
 if(G.sixes>=3){
-try{window._dbgLog('THREE_SIXES_TURN_FORFEIT',{pid,note:'if this followed a Re-roll usage without a sixes reset, that is the known reroll-streak bug — check for POWER_REROLL_USED entries just before this'});}catch(_x){}
 
 G.sixes=0;G.rolled=false;G.diceVal=null;G.waiting=false;_rolling=false;
 renderTokens();
@@ -7813,7 +7545,6 @@ return;
 }else{if(G.sixes)void 0;G.sixes=0;}
 const mv=teamMovable(pid,v);
 if(mv.length===0){
-try{window._dbgLog('NO_LEGAL_MOVE',{pid,v});}catch(_x){}
 
 if(_maybeStartRerollWindow(pid,v,false)){
 stopTurnTimer();
@@ -7836,7 +7567,6 @@ return;
 
 const _holdForReroll=!_wasAutoRoll&&pid===MY_SEAT&&!PLAYERS[pid]?.isBot&&!!(G.inventory&&G.inventory[pid]&&G.inventory[pid].reroll>0);
 if(!_holdForReroll&&shouldAutoMove(mv,v,pid)){
-try{window._dbgLog('DICE_AUTOMOVE_TRIGGERED',{pid,dice:v,onlyLegalMoveTidsOrSameDest:mv.map(t=>({pid:t.pid,tid:t.tid,step:t.step})),reason:mv.length===1?'single_legal_move':'all_candidates_same_destination'});}catch(_x){}
 
 pushGameState({action:"roll",dice:v,selectable:[],auto:_wasAutoRoll});
 const moveTid=mv[0].tid;
@@ -8222,7 +7952,6 @@ const _fx=document.createElement('div');_fx.className='star-glow-fx';cell.append
 setTimeout(()=>{try{_fx.remove();}catch(e){}},760);
 }
 async function doMove(pid,tid,v){
-try{window._dbgLog('DICE_DOMOVE_START',{pid,tid,v,gDiceValBefore:G.diceVal,gRolledBefore:G.rolled,wasAutoMove:_pendingAutoMove});}catch(_x){}
 
 if(_placingPower)cancelPlacement();
 const _wasAutoMove=_pendingAutoMove;
@@ -8238,7 +7967,6 @@ const _myMid=Date.now().toString(36)+'-'+(MY_SEAT==null?'x':MY_SEAT)+'-'+Math.ra
 function _fireCommit(){
 if(!_isOnlineMove||_commitP)return;
 _regOwnMid(_myMid);
-try{window._dbgLog('BH_V_FIRE',{pid,tid,v,actor:_actorSeat,mid:_myMid,auto:!!_wasAutoMove,ctx:_bhCtx()});}catch(_x){}
 
 const _vT0=Date.now();
 _commitP=(window._rollCommitP||Promise.resolve()).then(function(){return window._srv('v',{c:ROOM_CODE,p:{tid,dv:v,mid:_myMid,auto:(_wasAutoMove?true:undefined),tm:(_wasTimerMove?true:undefined),as:(_actorSeat!==MY_SEAT?_actorSeat:undefined),of:(pid!==_actorSeat?pid:undefined)}});});
@@ -8267,12 +7995,11 @@ if(_r.placements)G.placements=_r.placements;
 return true;
 }
 const tok=tokOf(pid,tid);
-if(!tok){try{window._dbgLog('TO_DOMOVE_REJECT',{why:'no_token',pid,tid,v});}catch(_x){}_animating=false;return;}
-try{window._dbgLog('DOMOVE_STEP_BEFORE',{pid,tid,v,stepBefore:tok.step});}catch(_x){}
+if(!tok){_animating=false;return;}
 
 const allowed=movable(pid,v);
-if(!allowed.find(t=>t.tid===tid)){try{window._dbgLog('TO_DOMOVE_REJECT',{why:'not_movable',pid,tid,v,allowed:allowed.map(t=>t.tid),gTurn:G.turn,gRolled:G.rolled,gWaiting:G.waiting,note:'returns without clearing G.rolled/waiting -> possible stuck turn'});}catch(_x){}_animating=false;return;}
-if(tok.step>=STEP_STRETCH_START&&tok.step+v>STEP_DONE){try{window._dbgLog('TO_DOMOVE_REJECT',{why:'overshoot',pid,tid,v,step:tok.step});}catch(_x){}_animating=false;return;}
+if(!allowed.find(t=>t.tid===tid)){_animating=false;return;}
+if(tok.step>=STEP_STRETCH_START&&tok.step+v>STEP_DONE){_animating=false;return;}
 _fireCommit();
 if(_wasTimerMove&&_isOnlineMove&&_actorSeat===MY_SEAT){
 const _r0=await _commitP;
@@ -8337,7 +8064,6 @@ if(tok.step===0&&v===6){
 const[spawnHr,spawnHc]=getHomeCornerBySeat(tok.pid);
 const spawnStart=baseCirclePx(spawnHr,spawnHc,tok.tid);
 tok.step=1;bonus=diceWasSix;
-try{window._dbgLog('DOMOVE_SPAWN_ENTRY',{pid:tok.pid,tid:tok.tid,v,stepAfter:tok.step});}catch(_x){}
 
 if(G.pMeta&&G.pMeta[tok.pid])G.pMeta[tok.pid].spawnBonus=true;
 renderTokens();
@@ -8394,18 +8120,16 @@ renderTokens();await rafDelay(100);
 addPoints(_actorSeat,POINTS.stepDone,_isOnlineRoom());
 if(!tok.everKilled)addPoints(_actorSeat,POINTS.flawlessRun,_isOnlineRoom());
 if(toksOf(pid).every(t=>t.step>=STEP_DONE)){
-if(!G.placements.includes(pid)){G.placements.push(pid);stampRank(pid);try{window._dbgLog('PLAYER_FINISHED_ALL_TOKENS',{pid,rank:G.placements.indexOf(pid)+1});}catch(_x){}}
+if(!G.placements.includes(pid)){G.placements.push(pid);stampRank(pid);}
 renderTokens();
 const remaining=PLAYERS.filter(p=>p.active&&!G.placements.includes(p.id));
 if(remaining.length<=1){
 if(remaining.length===1&&!G.placements.includes(remaining[0].id)){
 G.placements.push(remaining[0].id);
 stampRank(remaining[0].id);
-try{window._dbgLog('PLAYER_FINISHED_ALL_TOKENS',{pid:remaining[0].id,rank:G.placements.indexOf(remaining[0].id)+1,reason:'last_remaining_auto_placed'});}catch(_x){}
 
 }
 G.over=true;
-try{window._dbgLog('GAME_OVER',{finalPlacements:G.placements.slice()});}catch(_x){}
 
 _animating=false;
 _replayPendingDroppedTokens();
@@ -8433,7 +8157,6 @@ if(!SAFE.has(cellKey)){const _trapped=await checkTrapTrigger(cellKey,pid,tok.tid
 }
 if(captured)bonus=true;
 if(G.pMeta&&G.pMeta[pid]&&!captured)G.pMeta[pid].ks=0;
-try{window._dbgLog('DOMOVE_END',{pid,tid,v,diceWasSix,captured,bonusExtraChance:bonus,finalStep:tok.step});}catch(_x){}
 
 renderTokens();await rafDelay(60);
 _animating=false;
@@ -8458,11 +8181,9 @@ await _checkAegisShieldKills();
 if(_isOnlineMove){
 _fireCommit();
 const _optP=_trackCommit(_commitP);
-try{window._dbgLog('BH_DOMOVE_PRE_NEXTTURN',{pid,tid,v,bonus,diceWasSix,ctx:_bhCtx()});}catch(_x){}
 
 nextTurn(bonus,diceWasSix);
 const _optTurn=G.turn;
-try{window._dbgLog('BH_DOMOVE_OPT_TURN',{optTurn:_optTurn,bonus,ctx:_bhCtx()});}catch(_x){}
 
 _optP.then(function(_r){
 _reconcileOptimisticMove(_r,_optTurn,pid,tid,v);
@@ -8479,7 +8200,7 @@ movedPid:pid,
 movedTid:tid,
 auto:_wasAutoMove
 },pid).catch(e=>{_animating=false;});};
-if(_isOnlineMove&&_commitP){_commitP.then(function(_mr){try{window._dbgLog('MOVE_PUSH_SKIPPED_SERVER_WROTE',{pid,tid,v,mw:_mr&&_mr.mw});}catch(_x){}},function(){});}
+if(_isOnlineMove&&_commitP){_commitP.then(function(_mr){},function(){});}
 else _pushMoveMsg();
 }catch(err){
 
@@ -8496,7 +8217,6 @@ pushGameState({action:"skip",dice:v,reason:"moveError",auto:true},pid).catch(()=
 }
 }
 function nextTurn(same,wasSix){
-try{window._dbgLog('DICE_NEXTTURN_START',{fromSeat:G.turn,same:!!same,wasSix:!!wasSix,diceValBefore:G.diceVal});}catch(_x){}
 
 _cancelRerollWindow();
 G.rolled=false;_rolling=false;G.diceVal=null;G.waiting=false;
@@ -8504,12 +8224,12 @@ G.timestamp=Date.now();
 if(!same){
 G.sixes=0;
 if(G.pMeta&&G.pMeta[G.turn]){
-if(G.pMeta[G.turn].rf!=null||G.pMeta[G.turn].spawnBonus){try{window._dbgLog('TURN_RESET_PMETA',{pid:G.turn,revengeFlagCleared:G.pMeta[G.turn].rf,spawnBonusCleared:G.pMeta[G.turn].spawnBonus});}catch(_x){}}
+if(G.pMeta[G.turn].rf!=null||G.pMeta[G.turn].spawnBonus){}
 G.pMeta[G.turn].rf=null;G.pMeta[G.turn].spawnBonus=false;
 }
 if(G.frozenTokens&&G.frozenTokens.length){
 const _clearing=G.frozenTokens.filter(f=>f.pid===G.turn);
-if(_clearing.length)try{window._dbgLog('TURN_RESET_FREEZE_CLEARED',{pid:G.turn,tokens:_clearing.map(f=>f.tid)});}catch(_x){}void 0;
+if(_clearing.length)void 0;
 G.frozenTokens=G.frozenTokens.filter(f=>f.pid!==G.turn);
 _renderFrozenVisuals();
 }
@@ -8532,7 +8252,6 @@ const nextSeat=layout[nextIdx];
 const p=PLAYERS[nextSeat];
 if(p&&p.active&&(!toksOf(nextSeat).every(t=>t.step>=STEP_DONE)||_finishedKeepsTurn(nextSeat))){
 G.turn=nextSeat;
-try{window._dbgLog('TO_NEXTTURN_SET',{newTurn:nextSeat,same:!!same,MY_SEAT,ts:G.timestamp});}catch(_x){}
 
 break;
 }
@@ -8552,7 +8271,6 @@ if(window._pnpMode&&window._setMY_SEAT){
 window._setMY_SEAT(G.turn);
 if(window._setCacheValid)window._setCacheValid(false);
 }
-try{window._dbgLog('DICE_NEXTTURN_END',{toSeat:G.turn});}catch(_x){}
 
 syncUI();
 }
@@ -8792,7 +8510,7 @@ clearTimeout(_resizeTimer);
 _cacheValid=false;
 for(const k in _slotPxCache)delete _slotPxCache[k];
 _resizeTimer=setTimeout(()=>{
-if(MY_SEAT!==null){try{window._dbgLog('C_ROT_RESIZE',{w:innerWidth,h:innerHeight,hidden:document.hidden});}catch(_x){}applyBoardRotation(true);}
+if(MY_SEAT!==null){applyBoardRotation(true);}
 else renderTokens();
 },100);
 });
@@ -9514,7 +9232,6 @@ window._setMY_SLOT=function(v){MY_SLOT=v;};
 
 
 window.addEventListener('unhandledrejection',e=>{
-try{window._dbgLog('PROMISE_REJECTION',{reason:(e.reason&&e.reason.message)?e.reason.message:String(e.reason)});}catch(_x){}
 
 });
 })();</script>
